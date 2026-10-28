@@ -33,7 +33,7 @@ Click the toolbar icon for settings: types to detect, an exact-match allowlist, 
 
 ```bash
 npm run typecheck
-npm run smoke   # detection logic in Node, no browser
+npm test   # unit tests in Node, with the real Core wasm
 ```
 
 To try the badge without ChatGPT, serve `harness/` (for example `python3 -m http.server --directory harness`) and open `harness.html`.

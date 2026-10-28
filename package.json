@@ -7,15 +7,17 @@
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
-    "typecheck": "tsc --noEmit",
-    "smoke": "node scripts/smoke.mjs"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "@datafog/wasm": "0.4.4"
   },
   "devDependencies": {
     "@types/chrome": "*",
+    "@types/node": "^24.19.2",
     "esbuild": "^0.28.2",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
   }
 }
