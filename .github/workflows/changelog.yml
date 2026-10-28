@@ -1,0 +1,35 @@
+name: Changelog
+
+# Reruns when the description or labels change, so adding an exemption takes
+# effect without a new push
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    name: Changelog policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      # The PR description is read from the event file, never interpolated
+      # into the shell
+      - name: Check for a changelog entry or exemption
+        env:
+          CHANGELOG_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-changelog.mjs --event "$GITHUB_EVENT_PATH"
