@@ -4,28 +4,82 @@
     <meta charset="utf-8" />
     <title>DataFog settings</title>
     <style>
-      body { font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f1f1f; max-width: 560px; margin: 32px auto; padding: 0 16px; }
-      h1 { font-size: 20px; margin: 0 0 4px; }
-      h2 { font-size: 15px; margin: 24px 0 8px; }
-      .muted { color: #666; font-size: 13px; }
-      fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
-      .hint { color: #666; font-size: 12px; margin-left: 4px; }
-      textarea { width: 100%; min-height: 96px; font: 13px ui-monospace, monospace; box-sizing: border-box; }
-      button { margin-top: 20px; padding: 8px 16px; border-radius: 8px; border: 1px solid #1f1f1f; background: #1f1f1f; color: #fff; font: inherit; cursor: pointer; }
-      #status { margin-left: 12px; color: #3d6b3d; }
+      body {
+        font:
+          14px/1.5 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        color: #1f1f1f;
+        max-width: 560px;
+        margin: 32px auto;
+        padding: 0 16px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 4px;
+      }
+      h2 {
+        font-size: 15px;
+        margin: 24px 0 8px;
+      }
+      .muted {
+        color: #666;
+        font-size: 13px;
+      }
+      fieldset {
+        border: 0;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 4px;
+      }
+      .hint {
+        color: #666;
+        font-size: 12px;
+        margin-left: 4px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 96px;
+        font:
+          13px ui-monospace,
+          monospace;
+        box-sizing: border-box;
+      }
+      button {
+        margin-top: 20px;
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: 1px solid #1f1f1f;
+        background: #1f1f1f;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+      }
+      #status {
+        margin-left: 12px;
+        color: #3d6b3d;
+      }
     </style>
   </head>
   <body>
     <h1>DataFog settings</h1>
-    <p class="muted">Prototype. Checks run on this device; nothing is sent anywhere.</p>
+    <p class="muted">
+      Prototype. Checks run on this device; nothing is sent anywhere.
+    </p>
 
-    <label><input type="checkbox" id="enabled" /> Check prompts on ChatGPT</label>
+    <label
+      ><input type="checkbox" id="enabled" /> Check prompts on ChatGPT</label
+    >
 
     <h2>What to look for</h2>
     <fieldset id="types"></fieldset>
 
     <h2>Always allow</h2>
-    <p class="muted">One value per line, matched exactly, such as your own work email.</p>
+    <p class="muted">
+      One value per line, matched exactly, such as your own work email.
+    </p>
     <textarea id="allowlist" spellcheck="false"></textarea>
 
     <button id="save" type="button">Save</button><span id="status"></span>

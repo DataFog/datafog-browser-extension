@@ -39,11 +39,17 @@ export function hasEntry(patch) {
  * @throws If the PR is labeled but its description gives no reason.
  */
 export function exemption(pullRequest) {
-  const labeled = (pullRequest.labels ?? []).some((label) => label.name === LABEL);
+  const labeled = (pullRequest.labels ?? []).some(
+    (label) => label.name === LABEL,
+  );
   if (!labeled) return null;
-  const match = /^Changelog exemption:[ \t]*(\S[^\r\n]*)/m.exec(pullRequest.body ?? "");
+  const match = /^Changelog exemption:[ \t]*(\S[^\r\n]*)/m.exec(
+    pullRequest.body ?? "",
+  );
   if (!match) {
-    throw new Error(`The ${LABEL} label requires 'Changelog exemption: <reason>' in the PR description.`);
+    throw new Error(
+      `The ${LABEL} label requires 'Changelog exemption: <reason>' in the PR description.`,
+    );
   }
   return match[1].trim();
 }
@@ -55,7 +61,10 @@ export function exemption(pullRequest) {
  * @returns Its standard output.
  */
 function git(...args) {
-  return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  return execFileSync("git", args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 }
 
 /**
@@ -68,7 +77,10 @@ export function main(argv) {
   const { values } = parseArgs({
     args: argv,
     options: {
-      base: { type: "string", default: process.env.CHANGELOG_BASE || "origin/main" },
+      base: {
+        type: "string",
+        default: process.env.CHANGELOG_BASE || "origin/main",
+      },
       event: { type: "string" },
     },
   });
@@ -81,14 +93,24 @@ export function main(argv) {
     }
 
     if (values.event) {
-      const reason = exemption(JSON.parse(readFileSync(values.event, "utf8")).pull_request);
+      const reason = exemption(
+        JSON.parse(readFileSync(values.event, "utf8")).pull_request,
+      );
       if (reason) {
         console.log(`Changelog exemption: ${reason}`);
         return 0;
       }
     }
 
-    const patch = git("diff", "--no-ext-diff", "--unified=0", base, "HEAD", "--", "CHANGELOG.md");
+    const patch = git(
+      "diff",
+      "--no-ext-diff",
+      "--unified=0",
+      base,
+      "HEAD",
+      "--",
+      "CHANGELOG.md",
+    );
     if (hasEntry(patch)) {
       console.log("Changelog entry found.");
       return 0;
@@ -105,6 +127,9 @@ export function main(argv) {
   return 1;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   process.exitCode = main(process.argv.slice(2));
 }

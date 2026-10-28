@@ -175,12 +175,16 @@ export class Badge {
       );
     } else {
       this.dot.innerHTML = LOGO;
-      this.dot.title = state.kind === "clean" ? "DataFog: no sensitive data found" : "DataFog";
+      this.dot.title =
+        state.kind === "clean" ? "DataFog: no sensitive data found" : "DataFog";
       this.title.textContent =
-        state.kind === "clean" ? "No sensitive data found" : "DataFog is checking this chat box";
+        state.kind === "clean"
+          ? "No sensitive data found"
+          : "DataFog is checking this chat box";
       this.list.replaceChildren();
       // Nothing flagged, nothing to act on; a stale panel shouldn't linger
-      if (state.kind !== "clean" && state.kind !== "idle") this.panel.hidden = true;
+      if (state.kind !== "clean" && state.kind !== "idle")
+        this.panel.hidden = true;
     }
 
     this.list.hidden = state.kind !== "found";

@@ -31,10 +31,30 @@ prepare("harness", ["harness.html"]);
 const common = { bundle: true, target: "chrome120", logLevel: "info" };
 const builds = await Promise.all([
   // The service worker is a module so import.meta.url works for the wasm path
-  context({ ...common, entryPoints: ["src/background.ts"], outfile: "dist/background.js", format: "esm" }),
-  context({ ...common, entryPoints: ["src/content.ts"], outfile: "dist/content.js", format: "iife" }),
-  context({ ...common, entryPoints: ["src/options.ts"], outfile: "dist/options.js", format: "iife" }),
-  context({ ...common, entryPoints: ["src/harness.ts"], outfile: "harness/harness.js", format: "esm" }),
+  context({
+    ...common,
+    entryPoints: ["src/background.ts"],
+    outfile: "dist/background.js",
+    format: "esm",
+  }),
+  context({
+    ...common,
+    entryPoints: ["src/content.ts"],
+    outfile: "dist/content.js",
+    format: "iife",
+  }),
+  context({
+    ...common,
+    entryPoints: ["src/options.ts"],
+    outfile: "dist/options.js",
+    format: "iife",
+  }),
+  context({
+    ...common,
+    entryPoints: ["src/harness.ts"],
+    outfile: "harness/harness.js",
+    format: "esm",
+  }),
 ]);
 
 if (watch) {
