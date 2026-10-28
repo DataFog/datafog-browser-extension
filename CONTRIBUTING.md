@@ -47,7 +47,6 @@ Run the regular quality checks before opening a PR:
 ```sh
 npm run typecheck
 npm run build
-npm run smoke
-node --test scripts/check-changelog.test.mjs
+npm test
 node scripts/check-changelog.mjs --base origin/main
 ```

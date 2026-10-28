@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   checks:
-    name: Typecheck, build and smoke test
+    name: Typecheck, build and test
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -40,8 +40,5 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Smoke test
-        run: npm run smoke
-
-      - name: Changelog check tests
-        run: node --test scripts/check-changelog.test.mjs
+      - name: Unit tests
+        run: npm test

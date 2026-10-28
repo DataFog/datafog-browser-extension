@@ -4,7 +4,7 @@
  * The end-to-end cases mirror datafog-mcp's tests/test_changelog.py, so both
  * checkers are held to the same behavior.
  *
- * Usage: node --test scripts/check-changelog.test.mjs
+ * Usage: npm test
  */
 
 import assert from "node:assert/strict";
@@ -12,7 +12,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, test } from "node:test";
+import { afterEach, beforeEach, describe, test } from "vitest";
 import { fileURLToPath } from "node:url";
 
 import { exemption, hasEntry, LABEL } from "./check-changelog.mjs";
