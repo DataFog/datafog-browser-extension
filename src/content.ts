@@ -48,7 +48,9 @@ function findComposer(): HTMLElement | null {
  * @returns Its current text.
  */
 function readText(element: HTMLElement): string {
-  return element instanceof HTMLTextAreaElement ? element.value : element.innerText;
+  return element instanceof HTMLTextAreaElement
+    ? element.value
+    : element.innerText;
 }
 
 /**
@@ -93,7 +95,10 @@ async function scanNow(force = false): Promise<void> {
   if (!response.enabled) badge.show({ kind: "hidden" });
   // A dismissed warning falls back to the plain logo until the text changes
   else if (text === dismissedText) badge.show({ kind: "idle" });
-  else badge.show(found ? { kind: "found", counts: response.counts } : { kind: "clean" });
+  else
+    badge.show(
+      found ? { kind: "found", counts: response.counts } : { kind: "clean" },
+    );
 }
 
 /**
@@ -119,7 +124,10 @@ function replaceText(element: HTMLElement, text: string): void {
   element.focus();
 
   if (element instanceof HTMLTextAreaElement) {
-    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
     setter?.call(element, text);
     element.dispatchEvent(new Event("input", { bubbles: true }));
     return;
@@ -135,7 +143,10 @@ function replaceText(element: HTMLElement, text: string): void {
 /** Redact the chat box's sensitive values in place. */
 async function redactComposer(): Promise<void> {
   if (!composer) return;
-  const response = await ask<RedactResponse>({ type: "redact", text: readText(composer) });
+  const response = await ask<RedactResponse>({
+    type: "redact",
+    text: readText(composer),
+  });
   if (!response) return;
 
   replaceText(composer, response.text);

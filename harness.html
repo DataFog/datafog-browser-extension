@@ -4,16 +4,48 @@
     <meta charset="utf-8" />
     <title>DataFog test page</title>
     <style>
-      body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; min-height: 100vh; display: flex; flex-direction: column; justify-content: flex-end; background: #fafafa; }
-      main { max-width: 720px; width: 100%; margin: 0 auto 40px; padding: 0 16px; box-sizing: border-box; }
-      p { color: #666; font-size: 13px; }
-      #prompt-textarea { min-height: 56px; border: 1px solid #d0d0d0; border-radius: 24px; padding: 16px 20px; background: #fff; outline: none; white-space: pre-wrap; }
+      body {
+        font:
+          15px/1.5 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        background: #fafafa;
+      }
+      main {
+        max-width: 720px;
+        width: 100%;
+        margin: 0 auto 40px;
+        padding: 0 16px;
+        box-sizing: border-box;
+      }
+      p {
+        color: #666;
+        font-size: 13px;
+      }
+      #prompt-textarea {
+        min-height: 56px;
+        border: 1px solid #d0d0d0;
+        border-radius: 24px;
+        padding: 16px 20px;
+        background: #fff;
+        outline: none;
+        white-space: pre-wrap;
+      }
     </style>
   </head>
   <body>
     <main>
-      <p>Mock chat box. Try: my email is jane@example.com and card 4111 1111 1111 1111</p>
-      <form onsubmit="return false">
+      <p>
+        Mock chat box. Try: my email is jane@example.com and card 4111 1111 1111
+        1111
+      </p>
+      <form onsubmit="return false;">
         <div id="prompt-textarea" contenteditable="true"></div>
       </form>
     </main>

@@ -58,15 +58,19 @@ async function render(): Promise<void> {
 
 /** Save the form. */
 async function save(): Promise<void> {
-  const entities = [...document.querySelectorAll<HTMLInputElement>("fieldset input:checked")].map(
-    (box) => box.value,
-  );
+  const entities = [
+    ...document.querySelectorAll<HTMLInputElement>("fieldset input:checked"),
+  ].map((box) => box.value);
   const values = allowlist.value
     .split("\n")
     .map((value) => value.trim())
     .filter(Boolean);
 
-  await saveSettings({ enabled: enabled.checked, entities, allowlist: [...new Set(values)] });
+  await saveSettings({
+    enabled: enabled.checked,
+    entities,
+    allowlist: [...new Set(values)],
+  });
   status.textContent = "Saved";
   window.setTimeout(() => (status.textContent = ""), 1500);
 }

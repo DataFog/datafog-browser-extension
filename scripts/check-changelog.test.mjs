@@ -25,7 +25,10 @@ describe("hasEntry", () => {
   });
 
   test("ignores headings, blank lines and bare bullets", () => {
-    assert.equal(hasEntry("+++ b/CHANGELOG.md\n+## [0.1.0]\n+\n+-\n+   "), false);
+    assert.equal(
+      hasEntry("+++ b/CHANGELOG.md\n+## [0.1.0]\n+\n+-\n+   "),
+      false,
+    );
   });
 
   test("ignores removed lines", () => {
@@ -41,7 +44,10 @@ describe("exemption", () => {
   const labeled = { labels: [{ name: LABEL }] };
 
   test("is null without the label", () => {
-    assert.equal(exemption({ labels: [], body: "Changelog exemption: tests only" }), null);
+    assert.equal(
+      exemption({ labels: [], body: "Changelog exemption: tests only" }),
+      null,
+    );
   });
 
   test("is null when labels or body are missing", () => {
@@ -49,16 +55,28 @@ describe("exemption", () => {
   });
 
   test("returns the reason with the label", () => {
-    assert.equal(exemption({ ...labeled, body: "Summary\n\nChangelog exemption:  Tests only. \n" }), "Tests only.");
+    assert.equal(
+      exemption({
+        ...labeled,
+        body: "Summary\n\nChangelog exemption:  Tests only. \n",
+      }),
+      "Tests only.",
+    );
   });
 
   test("requires a reason with the label", () => {
-    assert.throws(() => exemption({ ...labeled, body: "Changelog exemption:   \n" }), /requires/);
+    assert.throws(
+      () => exemption({ ...labeled, body: "Changelog exemption:   \n" }),
+      /requires/,
+    );
     assert.throws(() => exemption({ ...labeled, body: null }), /requires/);
   });
 
   test("requires the line to start the reason", () => {
-    assert.throws(() => exemption({ ...labeled, body: "See Changelog exemption: tests" }), /requires/);
+    assert.throws(
+      () => exemption({ ...labeled, body: "See Changelog exemption: tests" }),
+      /requires/,
+    );
   });
 });
 
@@ -99,7 +117,10 @@ describe("check-changelog", () => {
    * @returns The exit status.
    */
   function check(...args) {
-    return spawnSync(process.execPath, [SCRIPT, "--base", "main", ...args], { cwd: repo, encoding: "utf8" }).status;
+    return spawnSync(process.execPath, [SCRIPT, "--base", "main", ...args], {
+      cwd: repo,
+      encoding: "utf8",
+    }).status;
   }
 
   /**
@@ -151,7 +172,11 @@ describe("check-changelog", () => {
     assert.equal(check(), 0);
   });
 
-  for (const entry of ["", "# Changelog\n", "# Changelog\n\nExisting entry.\n\n"]) {
+  for (const entry of [
+    "",
+    "# Changelog\n",
+    "# Changelog\n\nExisting entry.\n\n",
+  ]) {
     test(`deletions, headings and blank additions do not count (${JSON.stringify(entry)})`, () => {
       stageBehavior();
       write("CHANGELOG.md", entry);
@@ -181,7 +206,11 @@ describe("check-changelog", () => {
   }
 
   test("a missing base or malformed event fails closed", () => {
-    assert.equal(spawnSync(process.execPath, [SCRIPT, "--base", "missing"], { cwd: repo }).status, 1);
+    assert.equal(
+      spawnSync(process.execPath, [SCRIPT, "--base", "missing"], { cwd: repo })
+        .status,
+      1,
+    );
     stageBehavior();
     git("commit", "-q", "-m", "change");
     const path = join(dir, "event.json");

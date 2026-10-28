@@ -20,13 +20,20 @@ const engine = ready();
 async function sendMessage(request: Request): Promise<unknown> {
   await engine;
   if (request.type === "scan") {
-    return { seq: request.seq, enabled: true, counts: countFindings(request.text, DEFAULT_SETTINGS) };
+    return {
+      seq: request.seq,
+      enabled: true,
+      counts: countFindings(request.text, DEFAULT_SETTINGS),
+    };
   }
-  if (request.type === "redact") return { text: redact(request.text, DEFAULT_SETTINGS) };
+  if (request.type === "redact")
+    return { text: redact(request.text, DEFAULT_SETTINGS) };
   return {};
 }
 
-(globalThis as unknown as { chrome: unknown }).chrome = { runtime: { sendMessage } };
+(globalThis as unknown as { chrome: unknown }).chrome = {
+  runtime: { sendMessage },
+};
 
 // Imported after the stub exists: the content script starts running on import
 await import("./content");
