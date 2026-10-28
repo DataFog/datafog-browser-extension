@@ -42,3 +42,6 @@ jobs:
 
       - name: Smoke test
         run: npm run smoke
+
+      - name: Changelog check tests
+        run: node --test scripts/check-changelog.test.mjs
