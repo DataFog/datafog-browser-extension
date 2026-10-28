@@ -45,6 +45,7 @@ status check in branch protection so failed checks prevent merging.
 Run the regular quality checks before opening a PR:
 
 ```sh
+npm run format:check
 npm run typecheck
 npm run build
 npm test
