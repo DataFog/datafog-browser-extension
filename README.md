@@ -37,3 +37,11 @@ npm test   # unit tests in Node, with the real Core wasm
 ```
 
 To try the badge without ChatGPT, serve `harness/` (for example `python3 -m http.server --directory harness`) and open `harness.html`.
+
+## Security
+
+Report vulnerabilities through [SECURITY.md](SECURITY.md), rather than a public issue.
+
+## License
+
+[MIT](LICENSE). Built by [DataFog](https://datafog.ai).

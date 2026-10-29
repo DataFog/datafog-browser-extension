@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "description": "Prototype: local DataFog checks for prompts typed into ChatGPT",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
