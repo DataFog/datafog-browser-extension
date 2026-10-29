@@ -46,6 +46,7 @@ Run the regular quality checks before opening a PR:
 
 ```sh
 npm run format:check
+npm run lint
 npm run typecheck
 npm run build
 npm test

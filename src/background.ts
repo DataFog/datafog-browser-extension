@@ -46,7 +46,10 @@ async function handle(request: Request, tabId?: number): Promise<unknown> {
  * @returns An error response.
  */
 function toError(error: unknown): ErrorResponse {
-  const code = (error as { code?: unknown } | null)?.code;
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? error.code
+      : undefined;
   return { error: typeof code === "string" ? code : "datafog_failed" };
 }
 

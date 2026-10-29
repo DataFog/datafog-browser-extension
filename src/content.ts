@@ -6,7 +6,12 @@
  */
 
 import { Badge } from "./badge";
-import type { Request, ScanResponse, RedactResponse } from "./messages";
+import type {
+  ErrorResponse,
+  RedactResponse,
+  Request,
+  ScanResponse,
+} from "./messages";
 
 /** Idle time after the last keystroke before scanning. */
 const DEBOUNCE_MS = 400;
@@ -59,10 +64,13 @@ function readText(element: HTMLElement): string {
  * @param request The request.
  * @returns The response, or null if the extension was reloaded.
  */
-async function ask<T>(request: Request): Promise<T | null> {
+async function ask<T extends object>(request: Request): Promise<T | null> {
   try {
-    const response = await chrome.runtime.sendMessage(request);
-    return response && !("error" in response) ? (response as T) : null;
+    const response = await chrome.runtime.sendMessage<
+      Request,
+      T | ErrorResponse | undefined
+    >(request);
+    return response && !("error" in response) ? response : null;
   } catch {
     // The extension was reloaded under this page; the old script is orphaned
     return null;
@@ -124,11 +132,8 @@ function replaceText(element: HTMLElement, text: string): void {
   element.focus();
 
   if (element instanceof HTMLTextAreaElement) {
-    const setter = Object.getOwnPropertyDescriptor(
-      HTMLTextAreaElement.prototype,
-      "value",
-    )?.set;
-    setter?.call(element, text);
+    // The native setter, bypassing any the page's framework put on the element
+    Reflect.set(HTMLTextAreaElement.prototype, "value", text, element);
     element.dispatchEvent(new Event("input", { bubbles: true }));
     return;
   }

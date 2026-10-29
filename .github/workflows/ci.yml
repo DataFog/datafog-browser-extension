@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   checks:
-    name: Format, typecheck, build and test
+    name: Format, lint, typecheck, build and test
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -36,6 +36,9 @@ jobs:
 
       - name: Format check
         run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
 
       - name: Typecheck
         run: npm run typecheck

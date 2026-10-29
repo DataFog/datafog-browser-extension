@@ -31,9 +31,7 @@ async function sendMessage(request: Request): Promise<unknown> {
   return {};
 }
 
-(globalThis as unknown as { chrome: unknown }).chrome = {
-  runtime: { sendMessage },
-};
+Object.assign(globalThis, { chrome: { runtime: { sendMessage } } });
 
 // Imported after the stub exists: the content script starts running on import
 await import("./content");
