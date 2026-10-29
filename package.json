@@ -7,6 +7,7 @@
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
+    "lint": "oxlint",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
     "format": "prettier --write .",
@@ -19,6 +20,8 @@
     "@types/chrome": "*",
     "@types/node": "^24.19.2",
     "esbuild": "^0.28.2",
+    "oxlint": "1.90.0",
+    "oxlint-tsgolint": "7.0.2005",
     "prettier": "3.9.10",
     "typescript": "^7.0.2",
     "vitest": "^5.0.5"
