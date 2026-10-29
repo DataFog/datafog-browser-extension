@@ -57,8 +57,10 @@ export const DEFAULT_SETTINGS: Settings = {
  * @returns The current settings.
  */
 export async function loadSettings(): Promise<Settings> {
-  const stored = await chrome.storage.local.get("settings");
-  return { ...DEFAULT_SETTINGS, ...(stored.settings ?? {}) };
+  const stored = await chrome.storage.local.get<{
+    settings?: Partial<Settings>;
+  }>("settings");
+  return { ...DEFAULT_SETTINGS, ...stored.settings };
 }
 
 /**
