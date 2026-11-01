@@ -97,7 +97,11 @@ async function scanNow(force = false): Promise<void> {
   const mine = ++seq;
   badge.show({ kind: "checking" });
   const response = await ask<ScanResponse>({ type: "scan", seq: mine, text });
-  if (!response || response.seq !== seq) return;
+  if (mine !== seq) return;
+  if (!response) {
+    badge.show({ kind: "failed" });
+    return;
+  }
 
   const found = Object.keys(response.counts).length > 0;
   if (!response.enabled) badge.show({ kind: "hidden" });
@@ -152,7 +156,10 @@ async function redactComposer(): Promise<void> {
     type: "redact",
     text: readText(composer),
   });
-  if (!response) return;
+  if (!response) {
+    badge.show({ kind: "failed" });
+    return;
+  }
 
   replaceText(composer, response.text);
   dismissedText = null;
