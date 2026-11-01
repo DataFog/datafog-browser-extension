@@ -1,6 +1,6 @@
 # DataFog browser extension (prototype)
 
-Checks what you type into ChatGPT for sensitive data, on your device, using [DataFog Core](https://github.com/DataFog/datafog-core)'s WebAssembly build (`@datafog/wasm`). A badge beside the chat box shows what was found; click it to **Redact** the values or **Dismiss** the warning. The extension never touches ChatGPT's send button.
+Checks what you type into ChatGPT for sensitive data, on your device, using [DataFog Core](https://github.com/DataFog/datafog-core)'s WebAssembly build (`@datafog/wasm`). A badge beside the chat box shows what was found; click it to **Redact** the values or **Dismiss** the warning.
 
 Prototype only: ChatGPT only, Core's default types, no file uploads, no pseudonymization.
 

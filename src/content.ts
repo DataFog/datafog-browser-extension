@@ -1,8 +1,8 @@
 /**
  * Content script on chatgpt.com: watches the chat box as the user types.
  *
- * Never touches the send button. Redact edits the chat box; Dismiss hides the
- * warning, and the user sends with ChatGPT's own button.
+ * Redact edits the chat box; Dismiss hides the warning, and the user sends with
+ * ChatGPT's own button.
  */
 
 import { Badge } from "./badge";
