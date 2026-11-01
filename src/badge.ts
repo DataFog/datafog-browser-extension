@@ -14,6 +14,7 @@ export type BadgeState =
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "clean" }
+  | { kind: "failed" }
   | { kind: "found"; counts: Record<string, number> };
 
 /** The DataFog mark, from datafog-mcp/docs/assets/datafog-icon.svg. */
@@ -41,6 +42,10 @@ const STYLE = `
   .dot.found {
     background: #d93025; color: #fff; font-weight: 700; font-size: 12px;
     box-shadow: 0 1px 4px rgba(217, 48, 37, 0.45);
+  }
+  .dot.failed {
+    background: #b06000; color: #fff; font-weight: 700; font-size: 13px;
+    box-shadow: 0 1px 4px rgba(176, 96, 0, 0.45);
   }
   @keyframes pulse { 50% { opacity: 0.4; } }
   .panel {
@@ -77,6 +82,7 @@ export class Badge {
   private readonly panel: HTMLDivElement;
   private readonly title: HTMLHeadingElement;
   private readonly list: HTMLUListElement;
+  private readonly note: HTMLParagraphElement;
   private readonly actions: HTMLDivElement;
   private anchor: Element | null = null;
   private kind: BadgeState["kind"] = "hidden";
@@ -97,7 +103,7 @@ export class Badge {
         <div class="panel" hidden>
           <h2></h2>
           <ul></ul>
-          <p class="note">Checked on this device by DataFog. Nothing was sent.</p>
+          <p class="note"></p>
           <div class="actions">
             <button class="act dismiss" type="button"
               title="Hide this warning. Send with ChatGPT's own button.">Dismiss</button>
@@ -111,6 +117,7 @@ export class Badge {
     this.panel = root.querySelector(".panel")!;
     this.title = root.querySelector("h2")!;
     this.list = root.querySelector("ul")!;
+    this.note = root.querySelector(".note")!;
     this.actions = root.querySelector(".actions")!;
 
     this.dot.addEventListener("click", () => {
@@ -173,6 +180,12 @@ export class Badge {
           return item;
         }),
       );
+    } else if (state.kind === "failed") {
+      // Say so rather than look like a check still running
+      this.dot.textContent = "!";
+      this.dot.title = "DataFog couldn't check this text. Click for details.";
+      this.title.textContent = "DataFog couldn't check this text";
+      this.list.replaceChildren();
     } else {
       this.dot.innerHTML = LOGO;
       this.dot.title =
@@ -187,6 +200,10 @@ export class Badge {
         this.panel.hidden = true;
     }
 
+    this.note.textContent =
+      state.kind === "failed"
+        ? "Reload the page to try again."
+        : "Checked on this device by DataFog. Nothing was sent.";
     this.list.hidden = state.kind !== "found";
     this.actions.hidden = state.kind !== "found";
     this.dot.setAttribute("aria-label", this.dot.title);
