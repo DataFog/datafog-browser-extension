@@ -1,5 +1,6 @@
 node_modules/
 dist/
 harness/
-graphify-out/
+.code-graph/
+.review/
 package-lock.json
