@@ -17,7 +17,7 @@ Prototype: a Chrome extension that checks what you type into ChatGPT for sensiti
 
 ### Security
 
-- Detection runs on your device with [DataFog Core](https://github.com/DataFog/datafog-core) (`@datafog/wasm` 0.5.0-beta.1). The extension makes no network requests.
+- Detection runs on your device with [DataFog Core](https://github.com/DataFog/datafog-core) (`@datafog/wasm` 1.0.0). The extension makes no network requests.
 - The only permission requested is `storage`, for settings.
 - Errors carry codes only, never text from the chat box.
 
