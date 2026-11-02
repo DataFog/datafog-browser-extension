@@ -234,3 +234,14 @@ test("retypes the chat box when a value spans formatting", async () => {
 
   expect(exec).toHaveBeenCalledWith("selectAll");
 });
+
+test("shows the failure code, so it can be reported", async () => {
+  const box = await start(async (request) =>
+    request.type === "scan" ? { error: "review_conflict" } : {},
+  );
+  await type(box, "jane@example.com");
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  expect(root.querySelector(".note")!.textContent).toBe(
+    "Reload the page to try again. Error code: review_conflict",
+  );
+});
