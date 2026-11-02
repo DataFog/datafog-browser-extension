@@ -144,3 +144,23 @@ test("watches the visible chat box, not one a page change left hidden", async ()
   );
   expect(badge().dot.className).toBe("dot found");
 });
+
+test("returns to the logo when the editor clears the text without an input event", async () => {
+  await start(
+    async (request) =>
+      request.type === "scan"
+        ? { seq: request.seq, enabled: true, counts: { EMAIL: 1 } }
+        : {},
+    '<form><div id="prompt-textarea" contenteditable="true"><p>jane@example.com</p></div></form>',
+  );
+  const box = document.querySelector<HTMLElement>("#prompt-textarea")!;
+  box.dispatchEvent(new Event("input"));
+  await vi.advanceTimersByTimeAsync(400);
+  expect(badge().dot.className).toBe("dot found");
+
+  // As ChatGPT does for Ctrl+A then Backspace: the DOM changes, no input event
+  box.replaceChildren(document.createElement("p"));
+  await vi.advanceTimersByTimeAsync(400);
+
+  expect(badge().dot.className).toBe("dot idle");
+});
