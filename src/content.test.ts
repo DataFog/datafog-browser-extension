@@ -164,3 +164,73 @@ test("returns to the logo when the editor clears the text without an input event
 
   expect(badge().dot.className).toBe("dot idle");
 });
+
+/**
+ * Stand in for the browser's editing commands, which happy-dom lacks.
+ * insertText replaces the selection, as it does in a real editor.
+ *
+ * @returns The stub, to see which commands ran.
+ */
+function stubEditing(): ReturnType<typeof vi.fn> {
+  const exec = vi.fn((command: string, _ui?: boolean, value?: string) => {
+    if (command === "insertText") {
+      const range = window.getSelection()!.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(document.createTextNode(value ?? ""));
+    }
+    return true;
+  });
+  Object.assign(document, { execCommand: exec });
+  return exec;
+}
+
+/**
+ * Load the content script on a rich-text chat box and choose Redact.
+ *
+ * @param lines The chat box's paragraphs, as markup.
+ * @returns The chat box.
+ */
+async function redactRichText(lines: string[]): Promise<HTMLElement> {
+  const value = "jane@example.com";
+  await start(
+    async (request) => {
+      if (request.type === "scan")
+        return { seq: request.seq, enabled: true, counts: { EMAIL: 1 } };
+      if (request.type !== "redact") return {};
+      const at = request.text.indexOf(value);
+      return {
+        text: request.text.replace(value, "[EMAIL]"),
+        edits: [{ start: at, end: at + value.length, replacement: "[EMAIL]" }],
+      };
+    },
+    `<form><div id="prompt-textarea" contenteditable="true">${lines
+      .map((line) => `<p>${line}</p>`)
+      .join("")}</div></form>`,
+  );
+  const box = document.querySelector<HTMLElement>("#prompt-textarea")!;
+  box.dispatchEvent(new Event("input"));
+  await vi.advanceTimersByTimeAsync(400);
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  root.querySelector<HTMLButtonElement>(".redact")!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  return box;
+}
+
+test("redacts a long prompt with one edit per value", async () => {
+  const exec = stubEditing();
+  const filler = Array.from({ length: 300 }, (_, index) => `line ${index}`);
+
+  const box = await redactRichText(["Contact: jane@example.com", ...filler]);
+
+  expect(exec.mock.calls).toEqual([["insertText", false, "[EMAIL]"]]);
+  expect(box.textContent).toContain("Contact: [EMAIL]");
+  expect(box.textContent).not.toContain("jane@example.com");
+});
+
+test("retypes the chat box when a value spans formatting", async () => {
+  const exec = stubEditing();
+
+  await redactRichText(["Contact: jane@<b>example.com</b>"]);
+
+  expect(exec).toHaveBeenCalledWith("selectAll");
+});
