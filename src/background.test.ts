@@ -89,14 +89,16 @@ test("sets the toolbar badge itself", async () => {
   expect(sendMessage).not.toHaveBeenCalled();
 });
 
-test("answers a code when the offscreen document fails", async () => {
-  sendMessage.mockRejectedValueOnce(
-    new Error("Could not establish connection"),
-  );
+test("answers and logs a code when the offscreen document fails", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  sendMessage.mockRejectedValueOnce(new Error("a@b.co"));
 
   expect(await send({ type: "redact", text: "a@b.co" })).toEqual({
     error: "datafog_failed",
   });
+  expect(warn).toHaveBeenCalledWith("DataFog redact failed: datafog_failed");
+  expect(JSON.stringify(warn.mock.calls)).not.toContain("a@b.co");
+  warn.mockRestore();
 });
 
 test("opens the side panel for the tab that asked", async () => {

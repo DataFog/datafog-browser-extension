@@ -81,7 +81,8 @@ test("skips Core when checking is off", async () => {
   expect(countFindings).not.toHaveBeenCalled();
 });
 
-test("answers a code when Core fails", async () => {
+test("answers and logs a code when Core fails", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.mocked(redact).mockImplementationOnce(() => {
     throw Object.assign(new Error("a@b.co"), { code: "invalid_input" });
   });
@@ -89,4 +90,7 @@ test("answers a code when Core fails", async () => {
   expect(await forward({ type: "redact", text: "a@b.co" })).toEqual({
     error: "invalid_input",
   });
+  expect(warn).toHaveBeenCalledWith("DataFog redact failed: invalid_input");
+  expect(JSON.stringify(warn.mock.calls)).not.toContain("a@b.co");
+  warn.mockRestore();
 });
