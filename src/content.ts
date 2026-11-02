@@ -157,19 +157,101 @@ function replaceText(element: HTMLElement, text: string): void {
   });
 }
 
+/**
+ * Count a value's occurrences in text that start before a position.
+ *
+ * @param text The text.
+ * @param value The value.
+ * @param end Count occurrences starting before this offset.
+ * @returns How many there are.
+ */
+function countBefore(text: string, value: string, end: number): number {
+  let count = 0;
+  for (
+    let at = text.indexOf(value);
+    at !== -1 && at < end;
+    at = text.indexOf(value, at + value.length)
+  ) {
+    count++;
+  }
+  return count;
+}
+
+/**
+ * Find a value's nth occurrence within a single text node of the chat box.
+ *
+ * @param root The chat box.
+ * @param value The value.
+ * @param nth Which occurrence, from 0.
+ * @returns A range covering it, or null if it isn't in one text node.
+ */
+function locate(root: HTMLElement, value: string, nth: number): Range | null {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let seen = 0;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const data = node.nodeValue ?? "";
+    for (
+      let at = data.indexOf(value);
+      at !== -1;
+      at = data.indexOf(value, at + value.length)
+    ) {
+      if (seen++ < nth) continue;
+      const range = document.createRange();
+      range.setStart(node, at);
+      range.setEnd(node, at + value.length);
+      return range;
+    }
+  }
+  return null;
+}
+
+/**
+ * Swap each found value for its label with one small edit apiece, so a long
+ * prompt with a few values isn't retyped line by line.
+ *
+ * @param element The chat box.
+ * @param text The text that was redacted.
+ * @param response The redacted text and where each label goes.
+ * @returns Whether every value was found and the chat box now matches.
+ */
+function replaceValues(
+  element: HTMLElement,
+  text: string,
+  response: RedactResponse,
+): boolean {
+  const selection = window.getSelection();
+  if (!selection) return false;
+  element.focus();
+  // Last first, so the values before each edit keep their places
+  for (let index = response.edits.length - 1; index >= 0; index--) {
+    const edit = response.edits[index];
+    const value = text.slice(edit.start, edit.end);
+    const range = locate(element, value, countBefore(text, value, edit.start));
+    if (!range) return false;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.execCommand("insertText", false, edit.replacement);
+  }
+  return readText(element) === response.text;
+}
+
 /** Redact the chat box's sensitive values in place. */
 async function redactComposer(): Promise<void> {
   if (!composer) return;
-  const response = await ask<RedactResponse>({
-    type: "redact",
-    text: readText(composer),
-  });
+  const text = readText(composer);
+  const response = await ask<RedactResponse>({ type: "redact", text });
   if (!response) {
     badge.show({ kind: "failed" });
     return;
   }
 
-  replaceText(composer, response.text);
+  // Retype the whole chat box only when the values can't be edited in place
+  if (
+    composer instanceof HTMLTextAreaElement ||
+    !replaceValues(composer, text, response)
+  ) {
+    replaceText(composer, response.text);
+  }
   dismissedText = null;
   await scanNow(true);
 }
