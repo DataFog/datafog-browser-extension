@@ -34,6 +34,10 @@ let dismissedText: string | null = null;
 
 const badge = new Badge(redactComposer, dismiss);
 
+// ChatGPT's editor applies some edits itself, such as Backspace over a
+// selection, without an input event; the DOM change still shows them
+const edits = new MutationObserver(() => schedule(DEBOUNCE_MS));
+
 /**
  * Find the chat box.
  *
@@ -187,6 +191,12 @@ function bind(element: HTMLElement): void {
   lastScanned = "";
   badge.attach(element);
   element.addEventListener("input", () => schedule(DEBOUNCE_MS));
+  edits.disconnect();
+  edits.observe(element, {
+    characterData: true,
+    childList: true,
+    subtree: true,
+  });
   // Pasted text lands after the event; scan on the next tick, not after a pause
   element.addEventListener("paste", () => schedule(0));
   void ask({ type: "protection", protected: true });
