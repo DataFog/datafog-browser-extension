@@ -119,7 +119,8 @@ export class Badge {
   private readonly actions: HTMLDivElement;
   private anchor: Element | null = null;
   private kind: BadgeState["kind"] = "hidden";
-  private resize = new ResizeObserver(() => this.place());
+  private resize = new ResizeObserver(() => this.reposition());
+  private frame = 0;
 
   /**
    * Build the badge and wire its buttons.
@@ -170,8 +171,8 @@ export class Badge {
     document.addEventListener("pointerdown", (event) => {
       if (!event.composedPath().includes(this.host)) this.panel.hidden = true;
     });
-    window.addEventListener("resize", () => this.place());
-    window.addEventListener("scroll", () => this.place(), true);
+    window.addEventListener("resize", () => this.reposition());
+    window.addEventListener("scroll", () => this.reposition(), true);
     document.documentElement.append(this.host);
   }
 
@@ -241,6 +242,18 @@ export class Badge {
     this.actions.hidden = state.kind !== "found";
     this.dot.setAttribute("aria-label", this.dot.title);
     this.place();
+  }
+
+  /**
+   * Move the badge on the next frame, for when the chat box may have moved.
+   * Many calls in one frame cost one layout.
+   */
+  reposition(): void {
+    if (this.frame) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = 0;
+      this.place();
+    });
   }
 
   /**

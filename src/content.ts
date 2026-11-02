@@ -190,10 +190,12 @@ function bind(element: HTMLElement): void {
   void scanNow(true);
 }
 
-// ChatGPT re-renders the chat box when switching conversations
+// ChatGPT re-renders the chat box when switching conversations, and moves it
+// between layouts, such as to the middle of a new chat, without resizing it
 new MutationObserver(() => {
   const element = findComposer();
   if (element && element !== composer) bind(element);
+  else badge.reposition();
 }).observe(document.documentElement, { childList: true, subtree: true });
 
 // The page tab opens the side panel; send right away, within the click
