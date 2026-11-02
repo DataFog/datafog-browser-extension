@@ -1,14 +1,30 @@
 /**
- * Messages between the content script and the service worker.
+ * Messages between the content script, the service worker and the offscreen
+ * document.
  *
  * Prompt text only travels inside the extension; nothing is sent over the
  * network.
  */
 
+import type { Settings } from "./settings";
+
 export type Request =
   | { type: "scan"; seq: number; text: string }
   | { type: "redact"; text: string }
   | { type: "protection"; protected: boolean };
+
+/** A content script request that needs Core. */
+export type CoreRequest = Exclude<Request, { type: "protection" }>;
+
+/**
+ * A request the service worker forwards to the offscreen document. Offscreen
+ * documents can't read chrome.storage, so the settings travel with it.
+ */
+export interface OffscreenRequest {
+  target: "offscreen";
+  request: CoreRequest;
+  settings: Settings;
+}
 
 export interface ScanResponse {
   seq: number;

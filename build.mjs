@@ -25,7 +25,12 @@ function prepare(out, files) {
   for (const file of files) cpSync(file, `${out}/${file}`);
 }
 
-prepare("dist", ["manifest.json", "options.html", "panel.html"]);
+prepare("dist", [
+  "manifest.json",
+  "offscreen.html",
+  "options.html",
+  "panel.html",
+]);
 prepare("harness", ["harness.html"]);
 
 const common = { bundle: true, target: "chrome120", logLevel: "info" };
@@ -35,6 +40,12 @@ const builds = await Promise.all([
     ...common,
     entryPoints: ["src/background.ts"],
     outfile: "dist/background.js",
+    format: "esm",
+  }),
+  context({
+    ...common,
+    entryPoints: ["src/offscreen.ts"],
+    outfile: "dist/offscreen.js",
     format: "esm",
   }),
   context({
