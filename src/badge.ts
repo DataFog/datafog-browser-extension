@@ -57,6 +57,43 @@ const STYLE = `
   [hidden] { display: none !important; }
 `;
 
+/** A box in viewport coordinates. */
+interface Box {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/**
+ * The part of an element that's on screen: its box clipped by every
+ * scrolling or clipping ancestor below the page body, and by the viewport,
+ * which clips the page itself.
+ *
+ * @param element The element.
+ * @returns The visible box, or null when none of it is on screen.
+ */
+function visibleBox(element: Element): Box | null {
+  let { top, right, bottom, left } = element.getBoundingClientRect();
+  for (
+    let parent = element.parentElement;
+    parent && parent !== document.body;
+    parent = parent.parentElement
+  ) {
+    if (getComputedStyle(parent).overflowY === "visible") continue;
+    const clip = parent.getBoundingClientRect();
+    top = Math.max(top, clip.top);
+    right = Math.min(right, clip.right);
+    bottom = Math.min(bottom, clip.bottom);
+    left = Math.max(left, clip.left);
+  }
+  top = Math.max(top, 0);
+  right = Math.min(right, window.innerWidth);
+  bottom = Math.min(bottom, window.innerHeight);
+  left = Math.max(left, 0);
+  return bottom > top && right > left ? { top, right, bottom, left } : null;
+}
+
 /**
  * Pluralize a count of items.
  *
@@ -202,10 +239,16 @@ export class Badge {
     this.place();
   }
 
-  /** Keep the badge inside the chat box's bottom-right corner. */
+  /**
+   * Keep the badge in the bottom-right corner of the part of the chat box
+   * that's on screen, so a long prompt scrolled inside the box doesn't carry
+   * it out of view.
+   */
   private place(): void {
     if (!this.anchor) return;
-    const box = this.anchor.getBoundingClientRect();
+    const box = visibleBox(this.anchor);
+    this.wrap.style.visibility = box ? "" : "hidden";
+    if (!box) return;
     this.wrap.style.right = `${Math.max(8, window.innerWidth - box.right + 6)}px`;
     this.wrap.style.bottom = `${window.innerHeight - box.bottom + 6}px`;
   }
