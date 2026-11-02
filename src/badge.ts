@@ -57,6 +57,10 @@ const STYLE = `
   [hidden] { display: none !important; }
 `;
 
+/** The badge's size, and its gap from the chat box's edges, in pixels. */
+const DOT_SIZE = 24;
+const INSET = 6;
+
 /** A box in viewport coordinates. */
 interface Box {
   top: number;
@@ -242,14 +246,18 @@ export class Badge {
   /**
    * Keep the badge in the bottom-right corner of the part of the chat box
    * that's on screen, so a long prompt scrolled inside the box doesn't carry
-   * it out of view.
+   * it out of view. A box too short for the corner, such as a one-line chat
+   * box, centers the badge on it instead.
    */
   private place(): void {
     if (!this.anchor) return;
     const box = visibleBox(this.anchor);
     this.wrap.style.visibility = box ? "" : "hidden";
     if (!box) return;
-    this.wrap.style.right = `${Math.max(8, window.innerWidth - box.right + 6)}px`;
-    this.wrap.style.bottom = `${window.innerHeight - box.bottom + 6}px`;
+    const height = box.bottom - box.top;
+    const bottom =
+      height < DOT_SIZE + 2 * INSET ? (height - DOT_SIZE) / 2 : INSET;
+    this.wrap.style.right = `${Math.max(8, window.innerWidth - box.right + INSET)}px`;
+    this.wrap.style.bottom = `${window.innerHeight - box.bottom + bottom}px`;
   }
 }
