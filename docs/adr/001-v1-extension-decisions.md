@@ -25,10 +25,14 @@ The extension uses FogVault through Core's adapter, pinned exactly:
 - `@datafog/fogvault-browser` 0.1.0
 - `@datafog/core-fogvault-browser` 1.0.0
 
-Core, the FogVault Worker and the model run in the extension's side panel, not
-the service worker, which Chrome stops when idle and which can't start Workers.
-A side panel stays open beside the chat, unlike a full tab. Closing it locks
-the vault unless the device is remembered. The adapter allows one prepared change at a time, so the UI discards
+Core, the FogVault Worker and the model run in an offscreen document, not the
+service worker, which Chrome stops when idle and which can't start Workers. The
+offscreen document stays loaded while the side panel is closed, so checking and
+pseudonymization keep working. The side panel is the UI for the vault and
+workspace; it stays open beside the chat, unlike a full tab.
+
+If the device isn't remembered, the vault locks when Chrome closes or after 15
+minutes without use. The adapter allows one prepared change at a time, so the UI discards
 reviews that are no longer needed. Locking goes through the adapter, and the
 extension also clears any plaintext previews and restored text it holds.
 
@@ -44,7 +48,8 @@ extension rather than in FogVault.
 - FogVault unlocks with a password, so the extension stores the password
   wrapped with a non-extractable WebCrypto key in IndexedDB. It is never put in
   `chrome.storage.sync`.
-- The 30 days run from unlock and are not extended by use.
+- The 30 days run from unlock and are not extended by use. Until then, the
+  vault unlocks on its own, including after Chrome restarts.
 - "Forget this device" removes the stored credential. Locking still clears
   everything in memory.
 - Anyone who can use the Chrome profile can open the vault while the device is
@@ -105,7 +110,8 @@ Dismiss or Send anyway.
 
 - ADR 004 needs an amendment for remembered unlock.
 - TTL waits on the Core API; the rest of V1 does not.
-- The extension grows from about 3 MB to about 300 MB if the model is bundled, and the extension page holds Core, FogVault and the model in memory.
+- The extension grows from about 3 MB to about 300 MB if the model is bundled, and the offscreen document holds Core, FogVault and the model in memory
+  while Chrome is open.
 - The README and CHANGELOG no longer promise that the extension never touches
   ChatGPT's send button. Users who leave send blocking off keep that behavior.
 - The V1 acceptance run in #9 covers the vault, restore and conversation flow;
