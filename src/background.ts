@@ -61,4 +61,5 @@ chrome.runtime.onMessage.addListener((request: Request, sender, respond) => {
   return true;
 });
 
-chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+// The toolbar icon opens the side panel; settings are linked from there
+void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
