@@ -12,6 +12,7 @@ import type {
   Request,
   ScanResponse,
 } from "./messages";
+import { mountTab } from "./tab";
 
 /** Idle time after the last keystroke before scanning. */
 const DEBOUNCE_MS = 400;
@@ -194,6 +195,9 @@ new MutationObserver(() => {
   const element = findComposer();
   if (element && element !== composer) bind(element);
 }).observe(document.documentElement, { childList: true, subtree: true });
+
+// The page tab opens the side panel; send right away, within the click
+mountTab(() => void ask({ type: "open-panel" }));
 
 const initial = findComposer();
 if (initial) bind(initial);
