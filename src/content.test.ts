@@ -10,20 +10,22 @@ import type { Request } from "./messages";
 
 type Reply = (request: Request) => Promise<unknown>;
 
+const PAGE = '<form><textarea id="prompt-textarea"></textarea></form>';
+
 /**
  * Load a fresh content script against a page with a chat box.
  *
  * @param reply How the stubbed service worker answers each request.
- * @returns The chat box.
+ * @param page The page's markup; its last textarea is the visible chat box.
+ * @returns The visible chat box.
  */
-async function start(reply: Reply): Promise<HTMLTextAreaElement> {
-  document.body.innerHTML =
-    '<form><textarea id="prompt-textarea"></textarea></form>';
+async function start(reply: Reply, page = PAGE): Promise<HTMLTextAreaElement> {
+  document.body.innerHTML = page;
   Object.assign(globalThis, {
     chrome: { runtime: { sendMessage: vi.fn(reply) } },
   });
   await import("./content");
-  return document.querySelector("textarea")!;
+  return Array.from(document.querySelectorAll("textarea")).at(-1)!;
 }
 
 /**
@@ -126,4 +128,19 @@ test("asks for the side panel when the page tab is clicked", async () => {
   expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
     type: "open-panel",
   });
+});
+
+test("watches the visible chat box, not one a page change left hidden", async () => {
+  const box = await start(
+    async (request) =>
+      request.type === "scan"
+        ? { seq: request.seq, enabled: true, counts: { EMAIL: 1 } }
+        : {},
+    `<div style="display: none">${PAGE}</div>${PAGE}`,
+  );
+  await type(box, "jane@example.com");
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith(
+    expect.objectContaining({ type: "scan", text: "jane@example.com" }),
+  );
+  expect(badge().dot.className).toBe("dot found");
 });
