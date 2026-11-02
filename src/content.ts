@@ -34,6 +34,10 @@ let dismissedText: string | null = null;
 
 const badge = new Badge(redactComposer, dismiss);
 
+// ChatGPT's editor applies some edits itself, such as Backspace over a
+// selection, without an input event; the DOM change still shows them
+const edits = new MutationObserver(() => schedule(DEBOUNCE_MS));
+
 /**
  * Find the chat box.
  *
@@ -41,7 +45,10 @@ const badge = new Badge(redactComposer, dismiss);
  */
 function findComposer(): HTMLElement | null {
   for (const selector of COMPOSER_SELECTORS) {
-    const element = document.querySelector<HTMLElement>(selector);
+    // A page being swapped out can leave its hidden chat box behind
+    const element = Array.from(
+      document.querySelectorAll<HTMLElement>(selector),
+    ).find((candidate) => candidate.checkVisibility());
     if (element) return element;
   }
   return null;
@@ -184,16 +191,24 @@ function bind(element: HTMLElement): void {
   lastScanned = "";
   badge.attach(element);
   element.addEventListener("input", () => schedule(DEBOUNCE_MS));
+  edits.disconnect();
+  edits.observe(element, {
+    characterData: true,
+    childList: true,
+    subtree: true,
+  });
   // Pasted text lands after the event; scan on the next tick, not after a pause
   element.addEventListener("paste", () => schedule(0));
   void ask({ type: "protection", protected: true });
   void scanNow(true);
 }
 
-// ChatGPT re-renders the chat box when switching conversations
+// ChatGPT re-renders the chat box when switching conversations, and moves it
+// between layouts, such as to the middle of a new chat, without resizing it
 new MutationObserver(() => {
   const element = findComposer();
   if (element && element !== composer) bind(element);
+  else badge.reposition();
 }).observe(document.documentElement, { childList: true, subtree: true });
 
 // The page tab opens the side panel; send right away, within the click
