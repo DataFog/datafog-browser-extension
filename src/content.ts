@@ -41,7 +41,10 @@ const badge = new Badge(redactComposer, dismiss);
  */
 function findComposer(): HTMLElement | null {
   for (const selector of COMPOSER_SELECTORS) {
-    const element = document.querySelector<HTMLElement>(selector);
+    // A page being swapped out can leave its hidden chat box behind
+    const element = Array.from(
+      document.querySelectorAll<HTMLElement>(selector),
+    ).find((candidate) => candidate.checkVisibility());
     if (element) return element;
   }
   return null;
