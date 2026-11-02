@@ -11,10 +11,14 @@ import type { Settings } from "./settings";
 export type Request =
   | { type: "scan"; seq: number; text: string }
   | { type: "redact"; text: string }
-  | { type: "protection"; protected: boolean };
+  | { type: "protection"; protected: boolean }
+  | { type: "open-panel" };
 
 /** A content script request that needs Core. */
-export type CoreRequest = Exclude<Request, { type: "protection" }>;
+export type CoreRequest = Exclude<
+  Request,
+  { type: "protection" } | { type: "open-panel" }
+>;
 
 /**
  * A request the service worker forwards to the offscreen document. Offscreen

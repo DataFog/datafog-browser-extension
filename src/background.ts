@@ -37,6 +37,11 @@ async function ensureOffscreen(): Promise<void> {
  * @returns The response to send back.
  */
 async function handle(request: Request, tabId?: number): Promise<unknown> {
+  if (request.type === "open-panel") {
+    // Called before any await, so Chrome still sees the user's click
+    if (tabId !== undefined) await chrome.sidePanel.open({ tabId });
+    return {};
+  }
   if (request.type === "protection") {
     // Toolbar "!" when the chat box can't be found (the page isn't protected)
     await chrome.action.setBadgeText({
