@@ -15,7 +15,7 @@ export type BadgeState =
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "clean" }
-  | { kind: "failed" }
+  | { kind: "failed"; code?: string }
   | { kind: "found"; counts: Record<string, number> };
 
 const STYLE = `
@@ -234,10 +234,15 @@ export class Badge {
         this.panel.hidden = true;
     }
 
-    this.note.textContent =
-      state.kind === "failed"
-        ? "Reload the page to try again."
-        : "Checked on this device by DataFog. Nothing was sent.";
+    if (state.kind === "failed") {
+      // The code alone says what went wrong, without any of the text
+      this.note.textContent = state.code
+        ? `Reload the page to try again. Error code: ${state.code}`
+        : "Reload the page to try again.";
+    } else {
+      this.note.textContent =
+        "Checked on this device by DataFog. Nothing was sent.";
+    }
     this.list.hidden = state.kind !== "found";
     this.actions.hidden = state.kind !== "found";
     this.dot.setAttribute("aria-label", this.dot.title);

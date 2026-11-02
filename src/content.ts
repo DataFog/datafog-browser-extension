@@ -70,18 +70,20 @@ function readText(element: HTMLElement): string {
  * Send a request to the service worker.
  *
  * @param request The request.
- * @returns The response, or null if the extension was reloaded.
+ * @returns The response, or an error code if it failed.
  */
-async function ask<T extends object>(request: Request): Promise<T | null> {
+async function ask<T extends object>(
+  request: Request,
+): Promise<T | ErrorResponse> {
   try {
     const response = await chrome.runtime.sendMessage<
       Request,
       T | ErrorResponse | undefined
     >(request);
-    return response && !("error" in response) ? response : null;
+    return response ?? { error: "no_response" };
   } catch {
     // The extension was reloaded under this page; the old script is orphaned
-    return null;
+    return { error: "extension_reloaded" };
   }
 }
 
@@ -106,8 +108,8 @@ async function scanNow(force = false): Promise<void> {
   badge.show({ kind: "checking" });
   const response = await ask<ScanResponse>({ type: "scan", seq: mine, text });
   if (mine !== seq) return;
-  if (!response) {
-    badge.show({ kind: "failed" });
+  if ("error" in response) {
+    badge.show({ kind: "failed", code: response.error });
     return;
   }
 
@@ -240,8 +242,8 @@ async function redactComposer(): Promise<void> {
   if (!composer) return;
   const text = readText(composer);
   const response = await ask<RedactResponse>({ type: "redact", text });
-  if (!response) {
-    badge.show({ kind: "failed" });
+  if ("error" in response) {
+    badge.show({ kind: "failed", code: response.error });
     return;
   }
 
