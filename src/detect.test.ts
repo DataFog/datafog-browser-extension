@@ -70,6 +70,19 @@ describe("redact", () => {
     );
   });
 
+  test("reports each value's range in the original text", () => {
+    const { edits } = redact(prompt, settings);
+    expect(
+      edits.map((edit) => [
+        prompt.slice(edit.start, edit.end),
+        edit.replacement,
+      ]),
+    ).toEqual([
+      ["jane@example.com", "[EMAIL]"],
+      ["4111 1111 1111 1111", "[CREDIT_CARD]"],
+    ]);
+  });
+
   test("keeps allowlisted values", () => {
     const allowed = { ...settings, allowlist: ["jane@example.com"] };
     expect(redact(prompt, allowed).text).toBe(
