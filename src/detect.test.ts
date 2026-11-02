@@ -83,6 +83,19 @@ describe("redact", () => {
     ]);
   });
 
+  test("covers an email match that runs into the phone number before it", () => {
+    // The email detector reads "555-0123/jane" as the email's local part
+    const text = "Acme Events/Jane Roe/(555)555-0123/jane@example.com";
+    const entities = [...DEFAULT_ENTITIES, "PHONE"];
+
+    expect(redact(text, { ...settings, entities }).text).toBe(
+      "Acme Events/Jane Roe/[EMAIL]",
+    );
+    expect(countFindings(text, { ...settings, entities })).toEqual({
+      EMAIL: 1,
+    });
+  });
+
   test("keeps allowlisted values", () => {
     const allowed = { ...settings, allowlist: ["jane@example.com"] };
     expect(redact(prompt, allowed).text).toBe(
