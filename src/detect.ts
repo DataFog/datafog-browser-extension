@@ -1,5 +1,6 @@
 /**
- * Detection with DataFog Core's WebAssembly build. Runs in the service worker.
+ * Detection with DataFog Core's WebAssembly build. Runs in the offscreen
+ * document.
  */
 
 import {

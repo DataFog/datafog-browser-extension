@@ -1,13 +1,33 @@
 /**
- * Service worker: runs DataFog Core and answers the content script.
+ * Service worker: keeps the offscreen document open and passes the content
+ * script's requests to it. Core runs there, since Chrome stops this worker
+ * when idle.
  */
 
-import { countFindings, ready, redact } from "./detect";
-import { toError, type Request } from "./messages";
+import { toError, type OffscreenRequest, type Request } from "./messages";
 import { loadSettings } from "./settings";
 
-// Start loading Core right away; requests wait on it
-const engine = ready();
+let opening: Promise<void> | undefined;
+
+/**
+ * Open the offscreen document unless it's already open.
+ *
+ * @returns Resolves once the document is ready for messages.
+ */
+async function ensureOffscreen(): Promise<void> {
+  if (await chrome.offscreen.hasDocument()) return;
+  // Concurrent requests share one creation; Chrome allows only one document
+  opening ??= chrome.offscreen
+    .createDocument({
+      url: "offscreen.html",
+      reasons: [chrome.offscreen.Reason.WORKERS],
+      justification: "Runs DataFog Core and the FogVault Worker.",
+    })
+    .finally(() => {
+      opening = undefined;
+    });
+  await opening;
+}
 
 /**
  * Handle one request from a content script.
@@ -26,17 +46,13 @@ async function handle(request: Request, tabId?: number): Promise<unknown> {
     return {};
   }
 
-  await engine;
-  const settings = await loadSettings();
-
-  if (request.type === "scan") {
-    return {
-      seq: request.seq,
-      enabled: settings.enabled,
-      counts: settings.enabled ? countFindings(request.text, settings) : {},
-    };
-  }
-  return { text: redact(request.text, settings) };
+  await ensureOffscreen();
+  const forwarded: OffscreenRequest = {
+    target: "offscreen",
+    request,
+    settings: await loadSettings(),
+  };
+  return chrome.runtime.sendMessage(forwarded);
 }
 
 // Registered synchronously, as Manifest V3 requires

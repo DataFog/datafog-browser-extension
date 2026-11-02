@@ -3,7 +3,7 @@
   "name": "DataFog (prototype)",
   "version": "0.0.1",
   "description": "Prototype: checks prompts typed into ChatGPT for sensitive data, locally, before you send them.",
-  "permissions": ["storage", "sidePanel"],
+  "permissions": ["storage", "sidePanel", "offscreen"],
   "background": {
     "service_worker": "background.js",
     "type": "module"
