@@ -3,7 +3,7 @@
  */
 
 import { countFindings, ready, redact } from "./detect";
-import type { ErrorResponse, Request } from "./messages";
+import { toError, type Request } from "./messages";
 import { loadSettings } from "./settings";
 
 // Start loading Core right away; requests wait on it
@@ -37,20 +37,6 @@ async function handle(request: Request, tabId?: number): Promise<unknown> {
     };
   }
   return { text: redact(request.text, settings) };
-}
-
-/**
- * Reduce a failure to a code, so prompt text never lands in a log.
- *
- * @param error What was thrown.
- * @returns An error response.
- */
-function toError(error: unknown): ErrorResponse {
-  const code =
-    typeof error === "object" && error !== null && "code" in error
-      ? error.code
-      : undefined;
-  return { error: typeof code === "string" ? code : "datafog_failed" };
 }
 
 // Registered synchronously, as Manifest V3 requires

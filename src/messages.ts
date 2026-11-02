@@ -24,3 +24,17 @@ export interface RedactResponse {
 export interface ErrorResponse {
   error: string;
 }
+
+/**
+ * Reduce a failure to a code, so prompt text never lands in a log.
+ *
+ * @param error What was thrown.
+ * @returns An error response.
+ */
+export function toError(error: unknown): ErrorResponse {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? error.code
+      : undefined;
+  return { error: typeof code === "string" ? code : "datafog_failed" };
+}
