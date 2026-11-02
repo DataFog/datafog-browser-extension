@@ -118,3 +118,12 @@ test("shows a failure when Redact errors", async () => {
   expect(badge().dot.className).toBe("dot failed");
   expect(box.value).toBe("jane@example.com");
 });
+
+test("asks for the side panel when the page tab is clicked", async () => {
+  await start(async () => ({}));
+  const tab = document.querySelector("datafog-tab")!.shadowRoot!;
+  tab.querySelector<HTMLButtonElement>("button")!.click();
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: "open-panel",
+  });
+});

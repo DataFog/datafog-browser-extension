@@ -15,11 +15,12 @@ Prototype: a Chrome extension that checks what you type into ChatGPT for sensiti
 - API keys, bearer tokens, credential URIs, credit card numbers, email addresses, JWTs, NPIs, private keys, SSNs, and US routing numbers are checked by default. Phone numbers, dates, ZIP codes, and IP addresses can be turned on in settings, which note what each one may flag by mistake.
 - A settings page to turn checking on or off, choose what to look for, and list exact values to always allow, such as your own work email.
 - The toolbar icon shows `!` when the chat box can't be found, so you know the page isn't being checked.
+- A DataFog tab on the right edge of chatgpt.com opens a DataFog side panel, as does the toolbar icon. The panel has a button to open settings.
 
 ### Security
 
 - Detection runs on your device with [DataFog Core](https://github.com/DataFog/datafog-core) (`@datafog/wasm` 1.0.0). The extension makes no network requests.
-- The only permission requested is `storage`, for settings.
+- Permissions requested: `storage`, for settings; `sidePanel`, for the DataFog panel; and `offscreen`, to keep Core running while the panel is closed.
 - Errors carry codes only, never text from the chat box.
 
 ### Known limitations

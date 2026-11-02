@@ -1,13 +1,33 @@
 /**
- * Service worker: runs DataFog Core and answers the content script.
+ * Service worker: keeps the offscreen document open and passes the content
+ * script's requests to it. Core runs there, since Chrome stops this worker
+ * when idle.
  */
 
-import { countFindings, ready, redact } from "./detect";
-import type { ErrorResponse, Request } from "./messages";
+import { toError, type OffscreenRequest, type Request } from "./messages";
 import { loadSettings } from "./settings";
 
-// Start loading Core right away; requests wait on it
-const engine = ready();
+let opening: Promise<void> | undefined;
+
+/**
+ * Open the offscreen document unless it's already open.
+ *
+ * @returns Resolves once the document is ready for messages.
+ */
+async function ensureOffscreen(): Promise<void> {
+  if (await chrome.offscreen.hasDocument()) return;
+  // Concurrent requests share one creation; Chrome allows only one document
+  opening ??= chrome.offscreen
+    .createDocument({
+      url: "offscreen.html",
+      reasons: [chrome.offscreen.Reason.WORKERS],
+      justification: "Runs DataFog Core and the FogVault Worker.",
+    })
+    .finally(() => {
+      opening = undefined;
+    });
+  await opening;
+}
 
 /**
  * Handle one request from a content script.
@@ -17,6 +37,11 @@ const engine = ready();
  * @returns The response to send back.
  */
 async function handle(request: Request, tabId?: number): Promise<unknown> {
+  if (request.type === "open-panel") {
+    // Called before any await, so Chrome still sees the user's click
+    if (tabId !== undefined) await chrome.sidePanel.open({ tabId });
+    return {};
+  }
   if (request.type === "protection") {
     // Toolbar "!" when the chat box can't be found (the page isn't protected)
     await chrome.action.setBadgeText({
@@ -26,31 +51,13 @@ async function handle(request: Request, tabId?: number): Promise<unknown> {
     return {};
   }
 
-  await engine;
-  const settings = await loadSettings();
-
-  if (request.type === "scan") {
-    return {
-      seq: request.seq,
-      enabled: settings.enabled,
-      counts: settings.enabled ? countFindings(request.text, settings) : {},
-    };
-  }
-  return { text: redact(request.text, settings) };
-}
-
-/**
- * Reduce a failure to a code, so prompt text never lands in a log.
- *
- * @param error What was thrown.
- * @returns An error response.
- */
-function toError(error: unknown): ErrorResponse {
-  const code =
-    typeof error === "object" && error !== null && "code" in error
-      ? error.code
-      : undefined;
-  return { error: typeof code === "string" ? code : "datafog_failed" };
+  await ensureOffscreen();
+  const forwarded: OffscreenRequest = {
+    target: "offscreen",
+    request,
+    settings: await loadSettings(),
+  };
+  return chrome.runtime.sendMessage(forwarded);
 }
 
 // Registered synchronously, as Manifest V3 requires
@@ -61,4 +68,5 @@ chrome.runtime.onMessage.addListener((request: Request, sender, respond) => {
   return true;
 });
 
-chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+// The toolbar icon opens the side panel; settings are linked from there
+void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
