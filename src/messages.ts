@@ -36,8 +36,17 @@ export interface ScanResponse {
   counts: Record<string, number>;
 }
 
+/** One redaction: a range of the original text and the label replacing it. */
+export interface RedactEdit {
+  /** UTF-16 offsets, as JavaScript strings index. */
+  start: number;
+  end: number;
+  replacement: string;
+}
+
 export interface RedactResponse {
   text: string;
+  edits: RedactEdit[];
 }
 
 /** Errors carry a code only, never prompt text. */

@@ -27,7 +27,7 @@ async function handle({
       counts: settings.enabled ? countFindings(request.text, settings) : {},
     };
   }
-  return { text: redact(request.text, settings) };
+  return redact(request.text, settings);
 }
 
 // Content script messages reach every extension page; answer forwarded ones only

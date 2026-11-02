@@ -11,7 +11,7 @@ import { DEFAULT_SETTINGS } from "./settings";
 vi.mock("./detect", () => ({
   ready: vi.fn(async () => {}),
   countFindings: vi.fn(() => ({ EMAIL: 1 })),
-  redact: vi.fn(() => "[EMAIL]"),
+  redact: vi.fn(() => ({ text: "[EMAIL]", edits: [] })),
 }));
 
 type Listener = (
