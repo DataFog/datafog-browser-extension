@@ -11,6 +11,7 @@ import {
   type TransformationConfig,
 } from "@datafog/wasm";
 
+import type { RedactResponse } from "./messages";
 import type { Settings } from "./settings";
 
 /**
@@ -70,13 +71,23 @@ export function countFindings(
  *
  * @param text The prompt.
  * @param settings The current settings.
- * @returns The redacted prompt.
+ * @returns The redacted prompt, and where each label replaced a value.
  */
-export function redact(text: string, settings: Settings): string {
-  if (!text.trim() || settings.entities.length === 0) return text;
+export function redact(text: string, settings: Settings): RedactResponse {
+  if (!text.trim() || settings.entities.length === 0) {
+    return { text, edits: [] };
+  }
 
-  return scanAndTransform(text, {
+  const result = scanAndTransform(text, {
     scan: { entities: settings.entities },
     transform: redactConfig(settings),
-  }).text;
+  });
+  return {
+    text: result.text,
+    edits: result.transformations.map((item) => ({
+      start: item.sourceUtf16Range.start,
+      end: item.sourceUtf16Range.end,
+      replacement: item.replacement,
+    })),
+  };
 }

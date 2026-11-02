@@ -26,8 +26,7 @@ async function sendMessage(request: Request): Promise<unknown> {
       counts: countFindings(request.text, DEFAULT_SETTINGS),
     };
   }
-  if (request.type === "redact")
-    return { text: redact(request.text, DEFAULT_SETTINGS) };
+  if (request.type === "redact") return redact(request.text, DEFAULT_SETTINGS);
   return {};
 }
 

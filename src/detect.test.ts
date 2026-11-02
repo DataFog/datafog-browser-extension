@@ -65,14 +65,14 @@ describe("countFindings", () => {
 
 describe("redact", () => {
   test("replaces each value with its label", () => {
-    expect(redact(prompt, settings)).toBe(
+    expect(redact(prompt, settings).text).toBe(
       "my email is [EMAIL] and card [CREDIT_CARD]",
     );
   });
 
   test("keeps allowlisted values", () => {
     const allowed = { ...settings, allowlist: ["jane@example.com"] };
-    expect(redact(prompt, allowed)).toBe(
+    expect(redact(prompt, allowed).text).toBe(
       "my email is jane@example.com and card [CREDIT_CARD]",
     );
   });
