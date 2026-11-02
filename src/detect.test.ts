@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, test } from "vitest";
 
 import { countFindings, ready, redact } from "./detect";
-import { DEFAULT_ENTITIES, type Settings } from "./settings";
+import { DEFAULT_ENTITIES, OPT_IN_ENTITIES, type Settings } from "./settings";
 
 const settings: Settings = {
   enabled: true,
@@ -101,5 +101,56 @@ describe("redact", () => {
     expect(redact(prompt, allowed).text).toBe(
       "my email is jane@example.com and card [CREDIT_CARD]",
     );
+  });
+});
+
+describe("adjacent values", () => {
+  // One value per type, joined by separators that detectors tend to run past
+  const values = [
+    "jane@example.com",
+    "(555)555-0123",
+    "+1 555 555 0123",
+    "219-09-9999",
+    "4111 1111 1111 1111",
+    "2024-01-15",
+    "Jan 15, 2024",
+    "94105-1234",
+    "192.168.1.10",
+    "2001:db8::1",
+    "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+    "postgres://admin:s3cret@db.example.com:5432/app",
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+    "NPI: 1234567893",
+    "routing number 021000021",
+  ];
+  const separators = [
+    "/",
+    " ",
+    ", ",
+    "|",
+    ":",
+    "-",
+    "",
+    ";",
+    "\n",
+    "_",
+    ".",
+    "=",
+  ];
+  const all = {
+    ...settings,
+    entities: [...DEFAULT_ENTITIES, ...OPT_IN_ENTITIES],
+  };
+
+  test("count and redact without an overlap failure", () => {
+    for (const first of values) {
+      for (const second of values) {
+        for (const separator of separators) {
+          const text = first + separator + second;
+          expect(() => countFindings(text, all), text).not.toThrow();
+          expect(() => redact(text, all), text).not.toThrow();
+        }
+      }
+    }
   });
 });
