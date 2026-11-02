@@ -26,6 +26,7 @@ const sendMessage = vi.fn(
   }),
 );
 const setBadgeText = vi.fn(async () => {});
+const openPanel = vi.fn(async (_options: { tabId: number }) => {});
 
 /**
  * Send a request to the service worker as a content script would.
@@ -59,7 +60,7 @@ beforeEach(async () => {
         },
         sendMessage,
       },
-      sidePanel: { setPanelBehavior: vi.fn(async () => {}) },
+      sidePanel: { open: openPanel, setPanelBehavior: vi.fn(async () => {}) },
       storage: { local: { get: vi.fn(async () => ({})) } },
     },
   });
@@ -96,4 +97,13 @@ test("answers a code when the offscreen document fails", async () => {
   expect(await send({ type: "redact", text: "a@b.co" })).toEqual({
     error: "datafog_failed",
   });
+});
+
+test("opens the side panel for the tab that asked", async () => {
+  const pending = send({ type: "open-panel" });
+
+  // Synchronously, before any await, so the click still counts as a gesture
+  expect(openPanel).toHaveBeenCalledWith({ tabId: 7 });
+  await pending;
+  expect(createDocument).not.toHaveBeenCalled();
 });
