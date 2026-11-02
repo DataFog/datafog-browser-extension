@@ -62,9 +62,12 @@ async function handle(request: Request, tabId?: number): Promise<unknown> {
 
 // Registered synchronously, as Manifest V3 requires
 chrome.runtime.onMessage.addListener((request: Request, sender, respond) => {
-  handle(request, sender.tab?.id).then(respond, (error) =>
-    respond(toError(error)),
-  );
+  handle(request, sender.tab?.id).then(respond, (error) => {
+    const response = toError(error);
+    // The code only: an error's message can quote prompt text
+    console.warn(`DataFog ${request.type} failed: ${response.error}`);
+    respond(response);
+  });
   return true;
 });
 

@@ -34,7 +34,12 @@ async function handle({
 chrome.runtime.onMessage.addListener(
   (message: OffscreenRequest | Request, _sender, respond) => {
     if (!("target" in message) || message.target !== "offscreen") return false;
-    handle(message).then(respond, (error) => respond(toError(error)));
+    handle(message).then(respond, (error) => {
+      const response = toError(error);
+      // The code only: an error's message can quote prompt text
+      console.warn(`DataFog ${message.request.type} failed: ${response.error}`);
+      respond(response);
+    });
     return true;
   },
 );
