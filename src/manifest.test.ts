@@ -10,6 +10,12 @@ describe("manifest", () => {
     expect(manifest.side_panel.default_path).toBe("panel.html");
   });
 
+  it("can open the offscreen document that runs Core", () => {
+    expect(manifest.permissions).toContain("offscreen");
+    expect(build).toContain('"offscreen.html"');
+    expect(build).toContain('"src/offscreen.ts"');
+  });
+
   it("ships the panel page and its script", () => {
     expect(build).toContain('"panel.html"');
     expect(build).toContain('"src/panel.ts"');
