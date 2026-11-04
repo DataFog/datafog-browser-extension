@@ -1,7 +1,7 @@
 /**
- * A small DataFog tab on the right edge of the page that opens the side
- * panel, so the panel is one click away without pinning the extension. Lives
- * in a shadow root, like the badge.
+ * A small DataFog tab on the right edge of the page that opens and closes the
+ * side panel, so the panel is one click away without pinning the extension.
+ * Lives in a shadow root, like the badge.
  */
 
 import { LOGO } from "./logo";
@@ -23,15 +23,15 @@ const STYLE = `
   svg { display: block; }
 `;
 
-const TITLE = "Open DataFog";
+const TITLE = "Open or close DataFog";
 
 /**
  * Add the tab to the page.
  *
- * @param onOpen Called when the tab is clicked.
+ * @param onClick Called when the tab is clicked.
  * @returns Sets the tab's warning, or clears it when called without one.
  */
-export function mountTab(onOpen: () => void): (warning?: string) => void {
+export function mountTab(onClick: () => void): (warning?: string) => void {
   const host = document.createElement("datafog-tab");
   const root = host.attachShadow({ mode: "closed" });
   const style = document.createElement("style");
@@ -41,7 +41,7 @@ export function mountTab(onOpen: () => void): (warning?: string) => void {
   button.title = TITLE;
   button.setAttribute("aria-label", TITLE);
   button.innerHTML = LOGO;
-  button.addEventListener("click", onOpen);
+  button.addEventListener("click", onClick);
   root.append(style, button);
   document.documentElement.append(host);
   return (warning) => {

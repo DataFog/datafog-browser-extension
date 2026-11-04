@@ -285,7 +285,7 @@ test("warns on the page tab until a chat box appears", async () => {
   document.body.innerHTML = PAGE;
   await vi.advanceTimersByTimeAsync(0);
   expect(button.className).toBe("");
-  expect(button.title).toBe("Open DataFog");
+  expect(button.title).toBe("Open or close DataFog");
 });
 
 test("asks for a page reload when the tab is clicked after an update", async () => {
