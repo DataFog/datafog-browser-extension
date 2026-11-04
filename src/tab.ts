@@ -12,7 +12,7 @@ const STYLE = `
     position: fixed; z-index: 2147483646; top: 50%; right: 0;
     transform: translateY(-50%); display: grid; place-items: center;
     padding: 8px 6px 8px 8px; border: 0; border-radius: 10px 0 0 10px;
-    background: #0E0C09; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    background: #1A2226; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
     cursor: pointer; transition: padding-right 0.15s;
   }
   button:hover, button:focus-visible { padding-right: 12px; }

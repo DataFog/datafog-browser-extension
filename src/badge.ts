@@ -34,7 +34,16 @@ const STYLE = `
     display: grid; place-items: center; cursor: pointer; background: none;
   }
   .dot svg { display: block; }
-  .dot.checking svg { animation: pulse 1s ease-in-out infinite; }
+  .dots {
+    display: flex; gap: 2px; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 5px; background: #1A2226;
+  }
+  .dots i {
+    width: 4px; height: 4px; border-radius: 999px; background: #A7B2B1;
+    animation: pulse 1s ease-in-out infinite;
+  }
+  .dots i:nth-child(2) { animation-delay: 150ms; }
+  .dots i:nth-child(3) { animation-delay: 300ms; }
   .dot.found {
     background: #d93025; color: #fff; font-weight: 700; font-size: 12px;
     box-shadow: 0 1px 4px rgba(217, 48, 37, 0.45);
@@ -43,7 +52,10 @@ const STYLE = `
     background: #b06000; color: #fff; font-weight: 700; font-size: 13px;
     box-shadow: 0 1px 4px rgba(176, 96, 0, 0.45);
   }
-  @keyframes pulse { 50% { opacity: 0.4; } }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+  @media (prefers-reduced-motion: reduce) {
+    .dots i { animation: none; }
+  }
   .panel {
     width: 280px; border: 1px solid #d0d0d0; border-radius: 12px;
     background: #fff; color: #1f1f1f; padding: 12px;
@@ -62,6 +74,8 @@ const STYLE = `
   button.primary { background: #1f1f1f; color: #fff; border-color: #1f1f1f; }
   [hidden] { display: none !important; }
 `;
+
+const DOTS = '<span class="dots"><i></i><i></i><i></i></span>';
 
 /** The badge's size, and its gap from the chat box's edges, in pixels. */
 const DOT_SIZE = 24;
@@ -207,8 +221,13 @@ export class Badge {
    * @param state What to show.
    */
   show(state: BadgeState): void {
-    // Keep a red count steady while rechecking, rather than flicker to the logo
-    if (state.kind === "checking" && this.kind === "found") return;
+    // Keep a red count steady while rechecking, rather than flicker to the logo,
+    // and don't bring back a badge the user turned off
+    if (
+      state.kind === "checking" &&
+      (this.kind === "found" || this.kind === "hidden")
+    )
+      return;
     this.kind = state.kind;
     this.wrap.hidden = state.kind === "hidden";
     this.dot.className = `dot ${state.kind}`;
@@ -233,9 +252,13 @@ export class Badge {
       this.title.textContent = title;
       this.listCounts(state.counts ?? {});
     } else {
-      this.dot.innerHTML = LOGO;
-      this.dot.title =
-        state.kind === "clean" ? "DataFog: no sensitive data found" : "DataFog";
+      this.dot.innerHTML = state.kind === "checking" ? DOTS : LOGO;
+      if (state.kind === "checking") this.dot.title = "DataFog is checking";
+      else
+        this.dot.title =
+          state.kind === "clean"
+            ? "DataFog: no sensitive data found"
+            : "DataFog";
       this.title.textContent =
         state.kind === "clean"
           ? "No sensitive data found"
