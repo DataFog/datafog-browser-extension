@@ -10,6 +10,9 @@
 import { LOGO } from "./logo";
 import { LABELS } from "./settings";
 
+const REPORT_URL =
+  "https://github.com/DataFog/datafog-browser-extension/issues";
+
 export type BadgeState =
   | { kind: "hidden" }
   | { kind: "idle" }
@@ -48,6 +51,7 @@ const STYLE = `
   .panel h2 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
   .panel ul { margin: 0 0 8px; padding-left: 18px; }
   .note { margin: 0; color: #666; font-size: 12px; }
+  .report { display: block; margin-top: 8px; color: inherit; font-size: 12px; }
   .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
   button.act {
     border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit;
@@ -116,6 +120,7 @@ export class Badge {
   private readonly title: HTMLHeadingElement;
   private readonly list: HTMLUListElement;
   private readonly note: HTMLParagraphElement;
+  private readonly report: HTMLAnchorElement;
   private readonly actions: HTMLDivElement;
   private anchor: Element | null = null;
   private kind: BadgeState["kind"] = "hidden";
@@ -138,6 +143,7 @@ export class Badge {
           <h2></h2>
           <ul></ul>
           <p class="note"></p>
+          <a class="report" href="${REPORT_URL}" target="_blank" rel="noreferrer" hidden>Report this problem</a>
           <div class="actions">
             <button class="act dismiss" type="button"
               title="Hide this warning. Send with ChatGPT's own button.">Dismiss</button>
@@ -152,6 +158,7 @@ export class Badge {
     this.title = root.querySelector("h2")!;
     this.list = root.querySelector("ul")!;
     this.note = root.querySelector(".note")!;
+    this.report = root.querySelector(".report")!;
     this.actions = root.querySelector(".actions")!;
 
     this.dot.addEventListener("click", () => {
@@ -249,6 +256,9 @@ export class Badge {
       this.note.textContent =
         "Checked on this device by DataFog. Nothing was sent.";
     }
+    // Reloading fixes an update, so there's nothing to report
+    this.report.hidden =
+      state.kind !== "failed" || state.code === "extension_reloaded";
     this.list.hidden = this.list.childElementCount === 0;
     this.actions.hidden = state.kind !== "found";
     this.dot.setAttribute("aria-label", this.dot.title);
