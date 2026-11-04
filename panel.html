@@ -4,13 +4,27 @@
     <meta charset="utf-8" />
     <title>DataFog</title>
     <style>
+      :root {
+        color-scheme: light dark;
+        --background: #fff;
+        --text: #1f1f1f;
+        --muted: #666;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: #1a2226;
+          --text: #eef0ef;
+          --muted: #a7b2b1;
+        }
+      }
       body {
         font:
           14px/1.5 system-ui,
           -apple-system,
           "Segoe UI",
           sans-serif;
-        color: #1f1f1f;
+        background: var(--background);
+        color: var(--text);
         margin: 16px;
       }
       h1 {
@@ -22,7 +36,7 @@
         margin: 20px 0 4px;
       }
       .muted {
-        color: #666;
+        color: var(--muted);
         font-size: 13px;
         margin: 0;
       }
@@ -30,9 +44,9 @@
         margin-top: 24px;
         padding: 6px 12px;
         border-radius: 8px;
-        border: 1px solid #1f1f1f;
-        background: #fff;
-        color: #1f1f1f;
+        border: 1px solid var(--text);
+        background: var(--background);
+        color: var(--text);
         font: inherit;
         cursor: pointer;
       }
