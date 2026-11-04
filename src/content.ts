@@ -31,6 +31,8 @@ let composer: HTMLElement | null = null;
 let timer: number | undefined;
 let seq = 0;
 let lastScanned = "";
+let lastContent = "";
+let unchecked = false;
 let dismissedText: string | null = null;
 let lastCounts: Record<string, number> = {};
 
@@ -69,6 +71,23 @@ function readText(element: HTMLElement): string {
 }
 
 /**
+ * Note a change to the chat box since it was last looked at. Runs on every
+ * keystroke, so it reads textContent, which needs no layout, not innerText.
+ *
+ * @param element The chat box.
+ * @returns The chat box's contents, or null if they haven't changed.
+ */
+function newContent(element: HTMLElement): string | null {
+  const content =
+    element instanceof HTMLTextAreaElement
+      ? element.value
+      : (element.textContent ?? "");
+  if (content === lastContent) return null;
+  lastContent = content;
+  return content;
+}
+
+/**
  * Send a request to the service worker.
  *
  * @param request The request.
@@ -97,8 +116,9 @@ async function ask<T extends object>(
 async function scanNow(force = false): Promise<void> {
   if (!composer) return;
   const text = readText(composer);
-  if (!force && text === lastScanned) return;
+  if (!force && !unchecked && text === lastScanned) return;
   lastScanned = text;
+  unchecked = false;
 
   if (!text.trim()) {
     badge.show({ kind: "idle" });
@@ -134,6 +154,14 @@ async function scanNow(force = false): Promise<void> {
 function schedule(delay: number): void {
   window.clearTimeout(timer);
   timer = window.setTimeout(() => void scanNow(), delay);
+  const content = composer && newContent(composer);
+  if (content === null) return;
+
+  // Text isn't checked until the scan answers, so show that from the keystroke.
+  // Moving seq on drops any answer about the text from before this change
+  seq++;
+  unchecked = true;
+  if (content.trim()) badge.show({ kind: "checking" });
 }
 
 /**
@@ -284,6 +312,7 @@ function dismiss(): void {
 function bind(element: HTMLElement): void {
   composer = element;
   lastScanned = "";
+  newContent(element);
   badge.attach(element);
   warnTab();
   element.addEventListener("input", () => schedule(DEBOUNCE_MS));
