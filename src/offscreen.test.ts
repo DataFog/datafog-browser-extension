@@ -69,6 +69,7 @@ test("counts findings for a forwarded scan", async () => {
     seq: 3,
     enabled: true,
     counts: { EMAIL: 1 },
+    blockSends: false,
   });
 });
 
@@ -77,7 +78,7 @@ test("skips Core when checking is off", async () => {
 
   expect(
     await forward({ type: "scan", seq: 4, text: "a@b.co" }, settings),
-  ).toEqual({ seq: 4, enabled: false, counts: {} });
+  ).toEqual({ seq: 4, enabled: false, counts: {}, blockSends: false });
   expect(countFindings).not.toHaveBeenCalled();
 });
 

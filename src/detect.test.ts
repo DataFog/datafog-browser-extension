@@ -12,6 +12,7 @@ const settings: Settings = {
   enabled: true,
   entities: DEFAULT_ENTITIES,
   allowlist: [],
+  blockSends: false,
 };
 const prompt = "my email is jane@example.com and card 4111 1111 1111 1111";
 

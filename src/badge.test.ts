@@ -48,6 +48,7 @@ function mount(): {
     dismiss: () => {},
     undo: () => {},
     redo: () => {},
+    send: () => {},
   });
   badge.attach(box);
   const wrap = document

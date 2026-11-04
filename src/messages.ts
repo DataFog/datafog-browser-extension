@@ -16,12 +16,13 @@ export type Request =
   | { type: "scan"; seq: number; text: string }
   | { type: "redact"; text: string }
   | { type: "protection"; protected: boolean }
-  | { type: "open-panel" };
+  | { type: "open-panel" }
+  | { type: "block-sends" };
 
 /** A content script request that needs Core. */
 export type CoreRequest = Exclude<
   Request,
-  { type: "protection" } | { type: "open-panel" }
+  { type: "protection" } | { type: "open-panel" } | { type: "block-sends" }
 >;
 
 /**
@@ -38,6 +39,11 @@ export interface ScanResponse {
   seq: number;
   enabled: boolean;
   counts: Record<string, number>;
+  blockSends: boolean;
+}
+
+export interface BlockSendsResponse {
+  blockSends: boolean;
 }
 
 /** One redaction: a range of the original text and the label replacing it. */

@@ -11,6 +11,7 @@ import {
 } from "./settings";
 
 const enabled = document.querySelector<HTMLInputElement>("#enabled")!;
+const blockSends = document.querySelector<HTMLInputElement>("#block-sends")!;
 const allowlist = document.querySelector<HTMLTextAreaElement>("#allowlist")!;
 const status = document.querySelector<HTMLSpanElement>("#status")!;
 
@@ -52,6 +53,7 @@ function renderTypes(types: string[], selected: string[]): void {
 async function render(): Promise<void> {
   const settings = await loadSettings();
   enabled.checked = settings.enabled;
+  blockSends.checked = settings.blockSends;
   allowlist.value = settings.allowlist.join("\n");
   renderTypes([...DEFAULT_ENTITIES, ...OPT_IN_ENTITIES], settings.entities);
 }
@@ -70,6 +72,7 @@ async function save(): Promise<void> {
     enabled: enabled.checked,
     entities,
     allowlist: [...new Set(values)],
+    blockSends: blockSends.checked,
   });
   status.textContent = "Saved";
   window.setTimeout(() => (status.textContent = ""), 1500);

@@ -64,10 +64,13 @@ const STYLE = `
   .panel h2 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
   .panel ul { margin: 0 0 8px; padding-left: 18px; }
   .note { margin: 0; color: #666; font-size: 12px; }
-  .files { margin: 0 0 8px; color: #b06000; font-size: 12px; font-weight: 600; }
+  .files, .paused {
+    margin: 0 0 8px; color: #b06000; font-size: 12px; font-weight: 600;
+  }
   .report { margin: 8px 0 0; color: #666; font-size: 12px; }
   .report a { color: inherit; }
-  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .send { flex-basis: 100%; }
   .dismiss { margin-left: auto; }
   button.act {
     border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit;
@@ -78,7 +81,7 @@ const STYLE = `
   [hidden] { display: none !important; }
 `;
 
-const ACTIONS = ["redact", "dismiss", "undo", "redo"] as const;
+const ACTIONS = ["redact", "dismiss", "undo", "redo", "send"] as const;
 type Action = (typeof ACTIONS)[number];
 
 const DOTS = '<span class="dots"><i></i><i></i><i></i></span>';
@@ -148,6 +151,7 @@ export class Badge {
   private readonly title: HTMLHeadingElement;
   private readonly list: HTMLUListElement;
   private readonly files: HTMLParagraphElement;
+  private readonly paused: HTMLParagraphElement;
   private readonly note: HTMLParagraphElement;
   private readonly report: HTMLParagraphElement;
   private readonly buttons: Record<Action, HTMLButtonElement>;
@@ -173,6 +177,7 @@ export class Badge {
         <button class="dot" type="button"></button>
         <div class="panel" hidden>
           <p class="files" hidden>Attached files aren't protected. DataFog only checks text in the chat box.</p>
+          <p class="paused" hidden></p>
           <h2></h2>
           <ul></ul>
           <p class="note"></p>
@@ -188,6 +193,7 @@ export class Badge {
             <button class="act dismiss" type="button"
               title="Hide this warning. Send with ChatGPT's own button.">Dismiss</button>
             <button class="act primary redact" type="button">Redact</button>
+            <button class="act send" type="button" hidden>Send anyway</button>
           </div>
         </div>
       </div>`;
@@ -198,6 +204,7 @@ export class Badge {
     this.title = root.querySelector("h2")!;
     this.list = root.querySelector("ul")!;
     this.files = root.querySelector(".files")!;
+    this.paused = root.querySelector(".paused")!;
     this.note = root.querySelector(".note")!;
     this.report = root.querySelector(".report")!;
 
@@ -209,12 +216,12 @@ export class Badge {
       dismiss: root.querySelector(".dismiss")!,
       undo: root.querySelector(".undo")!,
       redo: root.querySelector(".redo")!,
+      send: root.querySelector(".send")!,
     };
     for (const action of ACTIONS) {
       this.buttons[action].addEventListener("click", () => {
-        // Redact and Dismiss resolve the warning; Undo and Redo can be repeated
-        if (action === "redact" || action === "dismiss")
-          this.panel.hidden = true;
+        // Undo and Redo can be repeated; the others resolve the warning
+        if (action !== "undo" && action !== "redo") this.panel.hidden = true;
         actions[action]();
       });
     }
@@ -328,6 +335,18 @@ export class Badge {
     this.files.hidden = !attached;
     if (attached) this.panel.hidden = this.kind === "hidden";
     else if (warned) this.panel.hidden = true;
+  }
+
+  /**
+   * Say why a send was held and offer Send anyway, or take that down.
+   *
+   * @param reason Why it was held, or null if it no longer is.
+   */
+  holdSend(reason: string | null): void {
+    this.paused.textContent = reason;
+    this.paused.hidden = reason === null;
+    this.buttons.send.hidden = reason === null;
+    if (reason !== null) this.panel.hidden = false;
   }
 
   /**

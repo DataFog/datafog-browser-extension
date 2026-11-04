@@ -8,12 +8,13 @@
 import { Badge } from "./badge";
 import {
   NO_CHAT_BOX,
+  type BlockSendsResponse,
   type ErrorResponse,
   type RedactResponse,
   type Request,
   type ScanResponse,
 } from "./messages";
-import { watchPage } from "./page";
+import { clickSend, watchPage } from "./page";
 import { mountTab } from "./tab";
 
 /** The last redaction, kept so it can be undone and redone. */
@@ -28,6 +29,13 @@ interface Redaction {
 
 /** Idle time after the last keystroke before scanning. */
 const DEBOUNCE_MS = 400;
+
+/** How long to hold a send for a scan before treating the scan as failed. */
+const HOLD_TIMEOUT_MS = 3000;
+
+/** Why a send was held. */
+const HELD_WARNING = "Sending is paused. Press send again to send anyway.";
+const HELD_FAILURE = "DataFog couldn't check this text, so sending is paused.";
 
 /** How long to look for the chat box before warning it can't be found. */
 const FIND_TIMEOUT_MS = 10_000;
@@ -47,12 +55,21 @@ let unchecked = false;
 let dismissedText: string | null = null;
 let lastCounts: Record<string, number> = {};
 let redaction: Redaction | null = null;
+let blockSends = false;
+let scanning = false;
+let foundText: string | null = null;
+let failedText: string | null = null;
+let warnedText: string | null = null;
+let heldPresses = 0;
+let holdTimer: number | undefined;
+let sending = false;
 
 const badge = new Badge({
   redact: redactComposer,
   dismiss,
   undo: undoRedaction,
   redo: redoRedaction,
+  send: sendAnyway,
 });
 
 // ChatGPT's editor applies some edits itself, such as Backspace over a
@@ -149,16 +166,23 @@ async function scanNow(force = false): Promise<void> {
 
   // Drop answers to older requests: only the latest text counts
   const mine = ++seq;
+  scanning = true;
   badge.show({ kind: "checking" });
   const response = await ask<ScanResponse>({ type: "scan", seq: mine, text });
   if (mine !== seq) return;
+  scanning = false;
   if ("error" in response) {
     badge.show({ kind: "failed", code: response.error });
+    failedText = text;
+    settleHeldSend(text);
     return;
   }
 
+  failedText = null;
+  blockSends = response.blockSends;
   lastCounts = response.counts;
   const found = Object.keys(response.counts).length > 0;
+  foundText = found ? text : null;
   if (!response.enabled) badge.show({ kind: "hidden" });
   // A dismissed warning falls back to the plain logo until the text changes
   else if (text === dismissedText) badge.show({ kind: "idle" });
@@ -166,6 +190,116 @@ async function scanNow(force = false): Promise<void> {
     badge.show(
       found ? { kind: "found", counts: response.counts } : { kind: "clean" },
     );
+  settleHeldSend(text);
+}
+
+/**
+ * Whether text has found values the user hasn't chosen an action for.
+ *
+ * @param text The text.
+ * @returns True if it does.
+ */
+function unresolved(text: string): boolean {
+  return text === foundText && text !== dismissedText;
+}
+
+/**
+ * Decide whether a send can go ahead, holding it if not.
+ *
+ * @param repeat Whether this is a held-down key rather than a new press.
+ * @returns Whether to let the send through.
+ */
+function allowSend(repeat: boolean): boolean {
+  const text = composer ? readText(composer) : "";
+  if (sending || !blockSends || !text.trim()) return sendGoesAhead();
+  if (heldPresses > 0) {
+    if (!repeat) heldPresses++;
+    return false;
+  }
+  if (scanning || unchecked || text !== lastScanned) {
+    holdForScan(text);
+    return false;
+  }
+  if (text === failedText) {
+    badge.holdSend(HELD_FAILURE);
+    return false;
+  }
+  if (!unresolved(text)) return sendGoesAhead();
+  // The second press after a warning counts as Send anyway
+  if (text === warnedText) return repeat ? false : sendGoesAhead();
+  warnSend(text);
+  return false;
+}
+
+/**
+ * Clear what a send leaves behind.
+ *
+ * @returns True, to let the send through.
+ */
+function sendGoesAhead(): boolean {
+  badge.warnFiles(false);
+  badge.holdSend(null);
+  return true;
+}
+
+/**
+ * Warn about found values, holding the send until the next press.
+ *
+ * @param text The text being sent.
+ */
+function warnSend(text: string): void {
+  warnedText = text;
+  badge.holdSend(HELD_WARNING);
+}
+
+/**
+ * Hold a send until its text has been scanned.
+ *
+ * @param text The text being sent.
+ */
+function holdForScan(text: string): void {
+  heldPresses = 1;
+  window.clearTimeout(timer);
+  // Never trap a message behind a scan that doesn't answer
+  holdTimer = window.setTimeout(() => {
+    seq++;
+    scanning = false;
+    failedText = text;
+    badge.show({ kind: "failed", code: "scan_timeout" });
+    settleHeldSend(text);
+  }, HOLD_TIMEOUT_MS);
+  if (!scanning) void scanNow(true);
+}
+
+/**
+ * Finish a send held for a scan, now that the text's result is in.
+ *
+ * @param text The text that was scanned.
+ */
+function settleHeldSend(text: string): void {
+  if (heldPresses === 0) return;
+  const presses = heldPresses;
+  dropHeldSend();
+  if (text === failedText) badge.holdSend(HELD_FAILURE);
+  else if (!unresolved(text) || presses > 1) sendAnyway();
+  else warnSend(text);
+}
+
+/** Forget a send held for a scan. */
+function dropHeldSend(): void {
+  heldPresses = 0;
+  window.clearTimeout(holdTimer);
+}
+
+/** Send what's in the chat box, past the checks. */
+function sendAnyway(): void {
+  if (!composer) return;
+  // Sending can report again, later, so this text has to stay let through
+  warnedText = readText(composer);
+  failedText = null;
+  sending = true;
+  clickSend(composer);
+  sending = false;
 }
 
 /**
@@ -182,7 +316,11 @@ function schedule(delay: number): void {
   // Text isn't checked until the scan answers, so show that from the keystroke.
   // Moving seq on drops any answer about the text from before this change
   seq++;
+  scanning = false;
   unchecked = true;
+  warnedText = null;
+  dropHeldSend();
+  badge.holdSend(null);
   if (content.trim()) badge.show({ kind: "checking" });
 }
 
@@ -333,6 +471,8 @@ function applyEdits(
   }
   // The caller rescans now, so the DOM change needs no scan of its own
   newContent(element);
+  warnedText = null;
+  badge.holdSend(null);
 }
 
 /**
@@ -381,6 +521,7 @@ async function togglePanel(): Promise<void> {
 function dismiss(): void {
   if (!composer) return;
   dismissedText = readText(composer);
+  badge.holdSend(null);
   badge.show({ kind: "idle" });
 }
 
@@ -407,6 +548,9 @@ function bind(element: HTMLElement): void {
   // Pasted text lands after the event; scan on the next tick, not after a pause
   element.addEventListener("paste", () => schedule(0));
   void ask({ type: "protection", protected: true });
+  void ask<BlockSendsResponse>({ type: "block-sends" }).then((response) => {
+    if (!("error" in response)) blockSends = response.blockSends;
+  });
   void scanNow(true);
 }
 
@@ -422,7 +566,7 @@ new MutationObserver(() => {
 const warnTab = mountTab(() => void togglePanel());
 
 watchPage(() => composer, {
-  send: () => badge.warnFiles(false),
+  send: allowSend,
   files: () => badge.warnFiles(true),
 });
 
