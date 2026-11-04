@@ -390,3 +390,137 @@ test("anchors the badge to the form, not the editor inside it", async () => {
   const root = document.querySelector("datafog-badge")!.shadowRoot!;
   expect(root.querySelector<HTMLElement>(".wrap")!.style.bottom).toBe("330px");
 });
+
+/**
+ * Click a button in the badge's panel and let the rescan finish.
+ *
+ * @param name The button's class.
+ */
+async function press(name: string): Promise<void> {
+  panelButton(name).click();
+  await vi.advanceTimersByTimeAsync(400);
+}
+
+/**
+ * Find a button in the badge's panel.
+ *
+ * @param name The button's class.
+ * @returns The button.
+ */
+function panelButton(name: string): HTMLButtonElement {
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  return root.querySelector<HTMLButtonElement>(`.${name}`)!;
+}
+
+/**
+ * Answer scans and redactions as Core would for two emails.
+ *
+ * @param request The request.
+ * @returns The response.
+ */
+async function coreForTwoEmails(request: Request): Promise<unknown> {
+  if (request.type === "scan") {
+    const found = request.text.includes("@");
+    return {
+      seq: request.seq,
+      enabled: true,
+      counts: found ? { EMAIL: 2 } : {},
+    };
+  }
+  if (request.type !== "redact") return {};
+  const edits = ["jane@example.com", "al@example.org"].map((value) => {
+    const at = request.text.indexOf(value);
+    return { start: at, end: at + value.length, replacement: "[EMAIL]" };
+  });
+  return {
+    text: request.text
+      .replace("jane@example.com", "[EMAIL]")
+      .replace("al@example.org", "[EMAIL]"),
+    edits,
+  };
+}
+
+const TWO_EMAILS = "Ask jane@example.com or al@example.org today";
+const REDACTED = "Ask [EMAIL] or [EMAIL] today";
+
+test("undoes and redoes a redaction from the panel", async () => {
+  const box = await start(coreForTwoEmails);
+  await type(box, TWO_EMAILS);
+  expect(panelButton("undo").disabled).toBe(true);
+
+  await press("redact");
+  expect(box.value).toBe(REDACTED);
+  expect(badge().dot.className).toBe("dot clean");
+  expect(panelButton("undo").disabled).toBe(false);
+  expect(panelButton("redo").disabled).toBe(true);
+
+  await press("undo");
+  expect(box.value).toBe(TWO_EMAILS);
+  expect(badge().dot.className).toBe("dot found");
+  expect(panelButton("undo").disabled).toBe(true);
+  expect(panelButton("redo").disabled).toBe(false);
+
+  await press("redo");
+  expect(box.value).toBe(REDACTED);
+  expect(panelButton("undo").disabled).toBe(false);
+});
+
+test("undoes a rich-text redaction with one edit per value", async () => {
+  const exec = stubEditing();
+  await start(
+    coreForTwoEmails,
+    `<form><div id="prompt-textarea" contenteditable="true"><p>${TWO_EMAILS}</p></div></form>`,
+  );
+  const box = document.querySelector<HTMLElement>("#prompt-textarea")!;
+  box.dispatchEvent(new Event("input"));
+  await vi.advanceTimersByTimeAsync(400);
+  await press("redact");
+  exec.mockClear();
+
+  await press("undo");
+
+  expect(box.textContent).toBe(TWO_EMAILS);
+  expect(exec).not.toHaveBeenCalledWith("selectAll");
+});
+
+test("stops offering undo once the text changes", async () => {
+  const box = await start(coreForTwoEmails);
+  await type(box, TWO_EMAILS);
+  await press("redact");
+
+  await type(box, `${REDACTED}!`);
+
+  expect(panelButton("undo").disabled).toBe(true);
+  expect(panelButton("redo").disabled).toBe(true);
+});
+
+test("keeps the panel open through Undo and Redo, until a click elsewhere", async () => {
+  const box = await start(coreForTwoEmails);
+  await type(box, TWO_EMAILS);
+  await press("redact");
+  badge().dot.click();
+  const panel = document
+    .querySelector("datafog-badge")!
+    .shadowRoot!.querySelector<HTMLElement>(".panel")!;
+  expect(panel.hidden).toBe(false);
+
+  await press("undo");
+  expect(panel.hidden).toBe(false);
+  await press("redo");
+  expect(panel.hidden).toBe(false);
+  expect(box.value).toBe(REDACTED);
+
+  document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+  expect(panel.hidden).toBe(true);
+});
+
+test("ignores Undo when the text changed since the last scan", async () => {
+  const box = await start(coreForTwoEmails);
+  await type(box, TWO_EMAILS);
+  await press("redact");
+
+  box.value = `${REDACTED}!`;
+  await press("undo");
+
+  expect(box.value).toBe(`${REDACTED}!`);
+});

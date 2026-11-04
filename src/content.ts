@@ -15,6 +15,16 @@ import {
 } from "./messages";
 import { mountTab } from "./tab";
 
+/** The last redaction, kept so it can be undone and redone. */
+interface Redaction {
+  /** The chat box's text without, and with, the redaction. */
+  before: string;
+  after: string;
+  /** The edits from one text to the other. */
+  redact: RedactResponse;
+  restore: RedactResponse;
+}
+
 /** Idle time after the last keystroke before scanning. */
 const DEBOUNCE_MS = 400;
 
@@ -35,8 +45,14 @@ let lastContent = "";
 let unchecked = false;
 let dismissedText: string | null = null;
 let lastCounts: Record<string, number> = {};
+let redaction: Redaction | null = null;
 
-const badge = new Badge(redactComposer, dismiss);
+const badge = new Badge({
+  redact: redactComposer,
+  dismiss,
+  undo: undoRedaction,
+  redo: redoRedaction,
+});
 
 // ChatGPT's editor applies some edits itself, such as Backspace over a
 // selection, without an input event; the DOM change still shows them
@@ -119,6 +135,11 @@ async function scanNow(force = false): Promise<void> {
   if (!force && !unchecked && text === lastScanned) return;
   lastScanned = text;
   unchecked = false;
+  // Anything typed since means the redaction no longer lines up with the text
+  badge.offer({
+    undo: text === redaction?.after,
+    redo: text === redaction?.before,
+  });
 
   if (!text.trim()) {
     badge.show({ kind: "idle" });
@@ -279,15 +300,73 @@ async function redactComposer(): Promise<void> {
     return;
   }
 
-  // Retype the whole chat box only when the values can't be edited in place
-  if (
-    composer instanceof HTMLTextAreaElement ||
-    !replaceValues(composer, text, response)
-  ) {
-    replaceText(composer, response.text);
-  }
+  applyEdits(composer, text, response);
+  redaction = {
+    before: text,
+    after: readText(composer),
+    redact: response,
+    restore: restoring(text, response),
+  };
   dismissedText = null;
   await scanNow(true);
+}
+
+/**
+ * Change the chat box with edits, retyping it all only when the values can't
+ * be edited in place.
+ *
+ * @param element The chat box.
+ * @param text Its current text.
+ * @param response The new text and the edits that make it.
+ */
+function applyEdits(
+  element: HTMLElement,
+  text: string,
+  response: RedactResponse,
+): void {
+  if (
+    element instanceof HTMLTextAreaElement ||
+    !replaceValues(element, text, response)
+  ) {
+    replaceText(element, response.text);
+  }
+  // The caller rescans now, so the DOM change needs no scan of its own
+  newContent(element);
+}
+
+/**
+ * Work out the edits that take redacted text back to the original.
+ *
+ * @param text The original text.
+ * @param response The redacted text and the edits that made it.
+ * @returns The original text and the edits that restore it.
+ */
+function restoring(text: string, response: RedactResponse): RedactResponse {
+  let shift = 0;
+  const restored = response.edits.map(({ start, end, replacement }) => {
+    const edit = {
+      start: start + shift,
+      end: start + shift + replacement.length,
+      replacement: text.slice(start, end),
+    };
+    shift += replacement.length - (end - start);
+    return edit;
+  });
+  return { text, edits: restored };
+}
+
+/** Put back the values the last redaction replaced. */
+function undoRedaction(): void {
+  if (!composer || readText(composer) !== redaction?.after) return;
+  applyEdits(composer, redaction.after, redaction.restore);
+  void scanNow(true);
+}
+
+/** Redact the same values again. */
+function redoRedaction(): void {
+  if (!composer || readText(composer) !== redaction?.before) return;
+  applyEdits(composer, redaction.before, redaction.redact);
+  void scanNow(true);
 }
 
 /** Open or close the side panel; an orphaned script can only ask for a reload. */
@@ -312,6 +391,7 @@ function dismiss(): void {
 function bind(element: HTMLElement): void {
   composer = element;
   lastScanned = "";
+  redaction = null;
   newContent(element);
   // The form is the outer chat box, and outlasts changes to the editor inside
   badge.attach(element.closest("form") ?? element);
