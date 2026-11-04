@@ -262,6 +262,13 @@ async function redactComposer(): Promise<void> {
   await scanNow(true);
 }
 
+/** Open the side panel; an orphaned script can only ask for a reload. */
+async function openPanel(): Promise<void> {
+  const response = await ask<object>({ type: "open-panel" });
+  if ("error" in response && response.error === "extension_reloaded")
+    badge.show({ kind: "failed", code: response.error });
+}
+
 /** Clear the warning until the text changes. */
 function dismiss(): void {
   if (!composer) return;
@@ -301,7 +308,7 @@ new MutationObserver(() => {
 }).observe(document.documentElement, { childList: true, subtree: true });
 
 // The page tab opens the side panel; send right away, within the click
-const warnTab = mountTab(() => void ask({ type: "open-panel" }));
+const warnTab = mountTab(() => void openPanel());
 
 const initial = findComposer();
 if (initial) bind(initial);
