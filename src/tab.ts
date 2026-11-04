@@ -16,25 +16,37 @@ const STYLE = `
     cursor: pointer; transition: padding-right 0.15s;
   }
   button:hover, button:focus-visible { padding-right: 12px; }
+  button.warning::after {
+    content: ""; position: absolute; top: 4px; left: 4px; width: 8px;
+    height: 8px; border-radius: 999px; background: #b06000;
+  }
   svg { display: block; }
 `;
+
+const TITLE = "Open DataFog";
 
 /**
  * Add the tab to the page.
  *
  * @param onOpen Called when the tab is clicked.
+ * @returns Sets the tab's warning, or clears it when called without one.
  */
-export function mountTab(onOpen: () => void): void {
+export function mountTab(onOpen: () => void): (warning?: string) => void {
   const host = document.createElement("datafog-tab");
   const root = host.attachShadow({ mode: "closed" });
   const style = document.createElement("style");
   style.textContent = STYLE;
   const button = document.createElement("button");
   button.type = "button";
-  button.title = "Open DataFog";
-  button.setAttribute("aria-label", "Open DataFog");
+  button.title = TITLE;
+  button.setAttribute("aria-label", TITLE);
   button.innerHTML = LOGO;
   button.addEventListener("click", onOpen);
   root.append(style, button);
   document.documentElement.append(host);
+  return (warning) => {
+    button.classList.toggle("warning", warning !== undefined);
+    button.title = warning ?? TITLE;
+    button.setAttribute("aria-label", button.title);
+  };
 }

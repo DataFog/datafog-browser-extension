@@ -6,11 +6,12 @@
  */
 
 import { Badge } from "./badge";
-import type {
-  ErrorResponse,
-  RedactResponse,
-  Request,
-  ScanResponse,
+import {
+  NO_CHAT_BOX,
+  type ErrorResponse,
+  type RedactResponse,
+  type Request,
+  type ScanResponse,
 } from "./messages";
 import { mountTab } from "./tab";
 
@@ -277,6 +278,7 @@ function bind(element: HTMLElement): void {
   composer = element;
   lastScanned = "";
   badge.attach(element);
+  warnTab();
   element.addEventListener("input", () => schedule(DEBOUNCE_MS));
   edits.disconnect();
   edits.observe(element, {
@@ -299,11 +301,13 @@ new MutationObserver(() => {
 }).observe(document.documentElement, { childList: true, subtree: true });
 
 // The page tab opens the side panel; send right away, within the click
-mountTab(() => void ask({ type: "open-panel" }));
+const warnTab = mountTab(() => void ask({ type: "open-panel" }));
 
 const initial = findComposer();
 if (initial) bind(initial);
 
 window.setTimeout(() => {
-  if (!composer) void ask({ type: "protection", protected: false });
+  if (composer) return;
+  void ask({ type: "protection", protected: false });
+  warnTab(NO_CHAT_BOX);
 }, FIND_TIMEOUT_MS);
