@@ -123,6 +123,11 @@ test("shows a failure when Redact errors", async () => {
   root.querySelector<HTMLButtonElement>(".redact")!.click();
   await vi.advanceTimersByTimeAsync(0);
   expect(badge().dot.className).toBe("dot failed");
+  expect(badge().title).toBe("DataFog couldn't redact this text");
+  expect(root.querySelector("li")!.textContent).toBe("Email address: 1");
+  expect(root.querySelector(".note")!.textContent).toBe(
+    "Remove these before sending, or reload the page to try again. Error code: review_conflict",
+  );
   expect(box.value).toBe("jane@example.com");
 });
 
