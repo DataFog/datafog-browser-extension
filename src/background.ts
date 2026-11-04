@@ -4,7 +4,12 @@
  * when idle.
  */
 
-import { toError, type OffscreenRequest, type Request } from "./messages";
+import {
+  NO_CHAT_BOX,
+  toError,
+  type OffscreenRequest,
+  type Request,
+} from "./messages";
 import { loadSettings } from "./settings";
 
 let opening: Promise<void> | undefined;
@@ -47,6 +52,10 @@ async function handle(request: Request, tabId?: number): Promise<unknown> {
     await chrome.action.setBadgeText({
       tabId,
       text: request.protected ? "" : "!",
+    });
+    await chrome.action.setTitle({
+      tabId,
+      title: request.protected ? "Open DataFog" : NO_CHAT_BOX,
     });
     return {};
   }

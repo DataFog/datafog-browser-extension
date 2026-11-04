@@ -8,6 +8,10 @@
 
 import type { Settings } from "./settings";
 
+/** Why a page isn't being checked, shown on the toolbar icon and page tab. */
+export const NO_CHAT_BOX =
+  "DataFog can't find the chat box, so this page isn't being checked. Try reloading it.";
+
 export type Request =
   | { type: "scan"; seq: number; text: string }
   | { type: "redact"; text: string }
