@@ -53,9 +53,31 @@ function badge(): { dot: HTMLElement; title: string } {
   };
 }
 
+/** Undoes what each loaded content script hooked into the shared document. */
+const cleanups: (() => void)[] = [];
+
 beforeEach(() => {
   vi.resetModules();
   vi.useFakeTimers();
+  const add = document.addEventListener.bind(document);
+  vi.spyOn(document, "addEventListener").mockImplementation(
+    (name: string, listener: EventListenerOrEventListenerObject, options) => {
+      add(name, listener, options);
+      cleanups.push(() =>
+        document.removeEventListener(name, listener, options),
+      );
+    },
+  );
+  // oxlint-disable-next-line typescript/unbound-method -- called with this below
+  const observe = MutationObserver.prototype.observe;
+  vi.spyOn(MutationObserver.prototype, "observe").mockImplementation(function (
+    this: MutationObserver,
+    target: Node,
+    options?: MutationObserverInit,
+  ) {
+    observe.call(this, target, options);
+    cleanups.push(() => this.disconnect());
+  });
   // The badge's shadow root is closed; open it so the test can see it
   // oxlint-disable-next-line typescript/unbound-method -- called with this below
   const attach = Element.prototype.attachShadow;
@@ -68,6 +90,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanups.splice(0).forEach((cleanup) => cleanup());
   vi.useRealTimers();
   vi.restoreAllMocks();
   document.documentElement.replaceChildren(
@@ -544,4 +567,169 @@ test("warns about an attached file until the message is sent", async () => {
   );
   expect(warning.hidden).toBe(true);
   expect(panel.hidden).toBe(true);
+});
+
+const SEND_PAGE =
+  '<form><textarea id="prompt-textarea"></textarea><button id="go" type="submit"></button></form>';
+
+/**
+ * Load the content script with send blocking on and a stubbed scan result.
+ *
+ * @param scan What each scan answers, or a promise of it.
+ * @returns The chat box and a count of clicks reaching the send button.
+ */
+async function startBlocking(
+  scan: () => object | Promise<object>,
+): Promise<{ box: HTMLTextAreaElement; sent: ReturnType<typeof vi.fn> }> {
+  const box = await start(async (request) => {
+    if (request.type === "block-sends") return { blockSends: true };
+    if (request.type !== "scan") return {};
+    return { seq: request.seq, blockSends: true, ...(await scan()) };
+  }, SEND_PAGE);
+  await vi.advanceTimersByTimeAsync(0);
+  const sent = vi.fn((event: Event) => event.preventDefault());
+  document.querySelector("#go")!.addEventListener("click", sent);
+  return { box, sent };
+}
+
+/**
+ * Press Enter in the chat box.
+ *
+ * @param box The chat box.
+ * @param repeat Whether the key is being held down.
+ * @returns True if the press got through to the page.
+ */
+function pressEnter(box: HTMLElement, repeat = false): boolean {
+  return box.dispatchEvent(
+    Object.assign(new Event("keydown", { bubbles: true, cancelable: true }), {
+      key: "Enter",
+      repeat,
+    }),
+  );
+}
+
+const FOUND = { enabled: true, counts: { EMAIL: 1 } };
+const CLEAN = { enabled: true, counts: {} };
+
+test("lets a send through when blocking is off", async () => {
+  const box = await start(async (request) =>
+    request.type === "scan"
+      ? { seq: request.seq, blockSends: false, ...FOUND }
+      : {},
+  );
+  await type(box, "jane@example.com");
+  expect(pressEnter(box)).toBe(true);
+});
+
+test("holds the first Enter, and a second sends anyway", async () => {
+  const { box } = await startBlocking(() => FOUND);
+  await type(box, "jane@example.com");
+
+  expect(pressEnter(box)).toBe(false);
+  expect(panelButton("send").hidden).toBe(false);
+
+  expect(pressEnter(box)).toBe(true);
+  expect(panelButton("send").hidden).toBe(true);
+});
+
+test("sends anyway on a quick double Enter, before the scan answers", async () => {
+  const { box, sent } = await startBlocking(() => FOUND);
+  box.value = "jane@example.com";
+  box.dispatchEvent(new Event("input"));
+
+  expect(pressEnter(box)).toBe(false);
+  expect(pressEnter(box)).toBe(false);
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(sent).toHaveBeenCalledOnce();
+});
+
+test("doesn't treat a held-down Enter as a second press", async () => {
+  const { box } = await startBlocking(() => FOUND);
+  await type(box, "jane@example.com");
+
+  expect(pressEnter(box)).toBe(false);
+  expect(pressEnter(box, true)).toBe(false);
+});
+
+test("sends after the scan when the text turns out clean", async () => {
+  const { box, sent } = await startBlocking(() => CLEAN);
+  box.value = "hello";
+  box.dispatchEvent(new Event("input"));
+
+  expect(pressEnter(box)).toBe(false);
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(sent).toHaveBeenCalledOnce();
+});
+
+test("warns after the scan when the text has a value", async () => {
+  const { box, sent } = await startBlocking(() => FOUND);
+  box.value = "jane@example.com";
+  box.dispatchEvent(new Event("input"));
+
+  pressEnter(box);
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(sent).not.toHaveBeenCalled();
+  expect(panelButton("send").hidden).toBe(false);
+});
+
+test("sends with the Send anyway button", async () => {
+  const { box, sent } = await startBlocking(() => FOUND);
+  await type(box, "jane@example.com");
+  pressEnter(box);
+
+  panelButton("send").click();
+
+  expect(sent).toHaveBeenCalledOnce();
+  expect(panelButton("send").hidden).toBe(true);
+});
+
+test("lets a send through after Dismiss", async () => {
+  const { box } = await startBlocking(() => FOUND);
+  await type(box, "jane@example.com");
+  pressEnter(box);
+
+  panelButton("dismiss").click();
+
+  expect(pressEnter(box)).toBe(true);
+});
+
+test("warns again once the text changes", async () => {
+  const { box } = await startBlocking(() => FOUND);
+  await type(box, "jane@example.com");
+  pressEnter(box);
+
+  await type(box, "jane@example.org");
+
+  expect(pressEnter(box)).toBe(false);
+});
+
+test("stays held after a failed scan, until Send anyway", async () => {
+  const { box, sent } = await startBlocking(() => ({
+    error: "datafog_failed",
+  }));
+  await type(box, "jane@example.com");
+
+  expect(pressEnter(box)).toBe(false);
+  expect(pressEnter(box)).toBe(false);
+  expect(pressEnter(box)).toBe(false);
+
+  panelButton("send").click();
+  expect(sent).toHaveBeenCalledOnce();
+  expect(pressEnter(box)).toBe(true);
+});
+
+test("offers Send anyway when a scan never answers", async () => {
+  const { box } = await startBlocking(() => new Promise<object>(() => {}));
+  box.value = "hello";
+  box.dispatchEvent(new Event("input"));
+
+  pressEnter(box);
+  expect(panelButton("send").hidden).toBe(true);
+  await vi.advanceTimersByTimeAsync(3000);
+
+  expect(badge().dot.className).toBe("dot failed");
+  expect(panelButton("send").hidden).toBe(false);
 });
