@@ -9,7 +9,7 @@ import { DEFAULT_SETTINGS } from "./settings";
 
 type Listener = (
   request: Request,
-  sender: { tab?: { id?: number } },
+  sender: { tab?: { id?: number; windowId?: number } },
   respond: (response: unknown) => void,
 ) => boolean;
 
@@ -25,6 +25,7 @@ const sendMessage = vi.fn(
     counts: { EMAIL: 1 },
   }),
 );
+let connect: (port: unknown) => void = () => {};
 const setBadgeText = vi.fn(async () => {});
 const setTitle = vi.fn(async () => {});
 const openPanel = vi.fn(async (_options: { tabId: number }) => {});
@@ -37,8 +38,30 @@ const openPanel = vi.fn(async (_options: { tabId: number }) => {});
  */
 function send(request: Request): Promise<unknown> {
   return new Promise((resolve) =>
-    listener(request, { tab: { id: 7 } }, resolve),
+    listener(request, { tab: { id: 7, windowId: 3 } }, resolve),
   );
+}
+
+/**
+ * Connect a side panel, as an open panel would.
+ *
+ * @param windowId The panel's window.
+ * @returns The stubbed port and a way to drop it.
+ */
+function connectPanel(windowId: number): {
+  postMessage: ReturnType<typeof vi.fn>;
+  disconnect: () => void;
+} {
+  const postMessage = vi.fn();
+  const dropped: (() => void)[] = [];
+  connect({
+    name: String(windowId),
+    postMessage,
+    onDisconnect: {
+      addListener: (added: () => void) => dropped.push(added),
+    },
+  });
+  return { postMessage, disconnect: () => dropped.forEach((drop) => drop()) };
 }
 
 beforeEach(async () => {
@@ -54,6 +77,11 @@ beforeEach(async () => {
         hasDocument: vi.fn(async () => open),
       },
       runtime: {
+        onConnect: {
+          addListener: (added: typeof connect) => {
+            connect = added;
+          },
+        },
         onMessage: {
           addListener: (added: Listener) => {
             listener = added;
@@ -110,4 +138,30 @@ test("opens the side panel for the tab that asked", async () => {
   expect(openPanel).toHaveBeenCalledWith({ tabId: 7 });
   await pending;
   expect(createDocument).not.toHaveBeenCalled();
+});
+
+test("closes the side panel when it's already open in that window", async () => {
+  const panel = connectPanel(3);
+
+  await send({ type: "open-panel" });
+
+  expect(panel.postMessage).toHaveBeenCalledWith("close");
+  expect(openPanel).not.toHaveBeenCalled();
+});
+
+test("opens the side panel when only another window has one", async () => {
+  const panel = connectPanel(4);
+
+  await send({ type: "open-panel" });
+
+  expect(panel.postMessage).not.toHaveBeenCalled();
+  expect(openPanel).toHaveBeenCalledWith({ tabId: 7 });
+});
+
+test("opens the side panel again after it closes", async () => {
+  connectPanel(3).disconnect();
+
+  await send({ type: "open-panel" });
+
+  expect(openPanel).toHaveBeenCalledWith({ tabId: 7 });
 });

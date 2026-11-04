@@ -14,6 +14,9 @@ import { loadSettings } from "./settings";
 
 let opening: Promise<void> | undefined;
 
+/** Each open side panel's connection, by window. */
+const panels = new Map<number, chrome.runtime.Port>();
+
 /**
  * Open the offscreen document unless it's already open.
  *
@@ -38,13 +41,20 @@ async function ensureOffscreen(): Promise<void> {
  * Handle one request from a content script.
  *
  * @param request The request.
- * @param tabId The sending tab, if any.
+ * @param tab The sending tab, if any.
  * @returns The response to send back.
  */
-async function handle(request: Request, tabId?: number): Promise<unknown> {
+async function handle(
+  request: Request,
+  tab?: chrome.tabs.Tab,
+): Promise<unknown> {
+  const tabId = tab?.id;
   if (request.type === "open-panel") {
+    const panel = tab && panels.get(tab.windowId);
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a port, not a window
+    if (panel) panel.postMessage("close");
     // Called before any await, so Chrome still sees the user's click
-    if (tabId !== undefined) await chrome.sidePanel.open({ tabId });
+    else if (tabId !== undefined) await chrome.sidePanel.open({ tabId });
     return {};
   }
   if (request.type === "protection") {
@@ -71,13 +81,20 @@ async function handle(request: Request, tabId?: number): Promise<unknown> {
 
 // Registered synchronously, as Manifest V3 requires
 chrome.runtime.onMessage.addListener((request: Request, sender, respond) => {
-  handle(request, sender.tab?.id).then(respond, (error) => {
+  handle(request, sender.tab).then(respond, (error) => {
     const response = toError(error);
     // The code only: an error's message can quote prompt text
     console.warn(`DataFog ${request.type} failed: ${response.error}`);
     respond(response);
   });
   return true;
+});
+
+// A panel connects when it opens, naming its window, and drops when it closes
+chrome.runtime.onConnect.addListener((port) => {
+  const windowId = Number(port.name);
+  panels.set(windowId, port);
+  port.onDisconnect.addListener(() => panels.delete(windowId));
 });
 
 // The toolbar icon opens the side panel; settings are linked from there
