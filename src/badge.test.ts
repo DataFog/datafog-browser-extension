@@ -43,10 +43,12 @@ function mount(): {
     '<div style="overflow-y: auto"><div contenteditable="true"></div></div>';
   const scroller = document.querySelector<HTMLElement>("div")!;
   const box = document.querySelector<HTMLElement>("[contenteditable]")!;
-  const badge = new Badge(
-    () => {},
-    () => {},
-  );
+  const badge = new Badge({
+    redact: () => {},
+    dismiss: () => {},
+    undo: () => {},
+    redo: () => {},
+  });
   badge.attach(box);
   const wrap = document
     .querySelector("datafog-badge")!

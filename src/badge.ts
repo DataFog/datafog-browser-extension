@@ -66,14 +66,19 @@ const STYLE = `
   .note { margin: 0; color: #666; font-size: 12px; }
   .report { margin: 8px 0 0; color: #666; font-size: 12px; }
   .report a { color: inherit; }
-  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  .actions { display: flex; gap: 8px; margin-top: 12px; }
+  .dismiss { margin-left: auto; }
   button.act {
-    border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit;
+    border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit;
     border: 1px solid #d0d0d0; background: #fff; color: #1f1f1f;
   }
   button.primary { background: #1f1f1f; color: #fff; border-color: #1f1f1f; }
+  button.act:disabled { opacity: 0.4; cursor: default; }
   [hidden] { display: none !important; }
 `;
+
+const ACTIONS = ["redact", "dismiss", "undo", "redo"] as const;
+type Action = (typeof ACTIONS)[number];
 
 const DOTS = '<span class="dots"><i></i><i></i><i></i></span>';
 
@@ -143,7 +148,11 @@ export class Badge {
   private readonly list: HTMLUListElement;
   private readonly note: HTMLParagraphElement;
   private readonly report: HTMLParagraphElement;
-  private readonly actions: HTMLDivElement;
+  private readonly buttons: Record<Action, HTMLButtonElement>;
+  private history: { undo: boolean; redo: boolean } = {
+    undo: false,
+    redo: false,
+  };
   private anchor: Element | null = null;
   private kind: BadgeState["kind"] = "hidden";
   private resize = new ResizeObserver(() => this.reposition());
@@ -152,10 +161,9 @@ export class Badge {
   /**
    * Build the badge and wire its buttons.
    *
-   * @param onRedact Called when the user chooses Redact.
-   * @param onDismiss Called when the user chooses Dismiss.
+   * @param actions What to do for each button.
    */
-  constructor(onRedact: () => void, onDismiss: () => void) {
+  constructor(actions: Record<Action, () => void>) {
     const root = this.host.attachShadow({ mode: "closed" });
     root.innerHTML = `
       <style>${STYLE}</style>
@@ -170,6 +178,10 @@ export class Badge {
             or email <a href="mailto:${HELP_EMAIL}">${HELP_EMAIL}</a>
           </p>
           <div class="actions">
+            <button class="act undo" type="button"
+              title="Put back the values DataFog redacted.">Undo</button>
+            <button class="act redo" type="button"
+              title="Redact the same values again.">Redo</button>
             <button class="act dismiss" type="button"
               title="Hide this warning. Send with ChatGPT's own button.">Dismiss</button>
             <button class="act primary redact" type="button">Redact</button>
@@ -184,20 +196,24 @@ export class Badge {
     this.list = root.querySelector("ul")!;
     this.note = root.querySelector(".note")!;
     this.report = root.querySelector(".report")!;
-    this.actions = root.querySelector(".actions")!;
 
     this.dot.addEventListener("click", () => {
       if (this.kind !== "checking") this.panel.hidden = !this.panel.hidden;
     });
-    // Either action resolves the warning, so the panel closes with it
-    root.querySelector(".redact")!.addEventListener("click", () => {
-      this.panel.hidden = true;
-      onRedact();
-    });
-    root.querySelector(".dismiss")!.addEventListener("click", () => {
-      this.panel.hidden = true;
-      onDismiss();
-    });
+    this.buttons = {
+      redact: root.querySelector(".redact")!,
+      dismiss: root.querySelector(".dismiss")!,
+      undo: root.querySelector(".undo")!,
+      redo: root.querySelector(".redo")!,
+    };
+    for (const action of ACTIONS) {
+      this.buttons[action].addEventListener("click", () => {
+        // Redact and Dismiss resolve the warning; Undo and Redo can be repeated
+        if (action === "redact" || action === "dismiss")
+          this.panel.hidden = true;
+        actions[action]();
+      });
+    }
 
     // Close the panel on a click anywhere else, as Grammarly does
     document.addEventListener("pointerdown", (event) => {
@@ -228,10 +244,10 @@ export class Badge {
    */
   show(state: BadgeState): void {
     // Keep a red count steady while rechecking, rather than flicker to the logo,
-    // and don't bring back a badge the user turned off
+    // an open panel steady too, and don't bring back a badge the user turned off
     if (
       state.kind === "checking" &&
-      (this.kind === "found" || this.kind === "hidden")
+      (this.kind === "found" || this.kind === "hidden" || !this.panel.hidden)
     )
       return;
     this.kind = state.kind;
@@ -270,9 +286,7 @@ export class Badge {
           ? "No sensitive data found"
           : "DataFog is checking this chat box";
       this.list.replaceChildren();
-      // Nothing flagged, nothing to act on; a stale panel shouldn't linger
-      if (state.kind !== "clean" && state.kind !== "idle")
-        this.panel.hidden = true;
+      if (state.kind === "hidden") this.panel.hidden = true;
     }
 
     if (state.kind === "failed" && state.code === "extension_reloaded") {
@@ -294,9 +308,28 @@ export class Badge {
     this.report.hidden =
       state.kind !== "failed" || state.code === "extension_reloaded";
     this.list.hidden = this.list.childElementCount === 0;
-    this.actions.hidden = state.kind !== "found";
+    this.showActions();
     this.dot.setAttribute("aria-label", this.dot.title);
     this.place();
+  }
+
+  /**
+   * Set which of Undo and Redo the panel offers.
+   *
+   * @param history Whether each is available.
+   */
+  offer(history: { undo: boolean; redo: boolean }): void {
+    this.history = history;
+    this.showActions();
+  }
+
+  /** Keep Undo and Redo in place, greyed out when unavailable. */
+  private showActions(): void {
+    const found = this.kind === "found";
+    this.buttons.redact.hidden = !found;
+    this.buttons.dismiss.hidden = !found;
+    this.buttons.undo.disabled = !this.history.undo;
+    this.buttons.redo.disabled = !this.history.redo;
   }
 
   /**
