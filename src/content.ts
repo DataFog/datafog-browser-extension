@@ -313,7 +313,8 @@ function bind(element: HTMLElement): void {
   composer = element;
   lastScanned = "";
   newContent(element);
-  badge.attach(element);
+  // The form is the outer chat box, and outlasts changes to the editor inside
+  badge.attach(element.closest("form") ?? element);
   warnTab();
   element.addEventListener("input", () => schedule(DEBOUNCE_MS));
   edits.disconnect();

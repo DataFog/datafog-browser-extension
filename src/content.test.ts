@@ -381,3 +381,12 @@ test("stays hidden while typing when checking is off", async () => {
   box.dispatchEvent(new Event("input"));
   expect(badge().dot.className).toBe("dot hidden");
 });
+
+test("anchors the badge to the form, not the editor inside it", async () => {
+  vi.spyOn(HTMLFormElement.prototype, "getBoundingClientRect").mockReturnValue(
+    DOMRect.fromRect({ x: 100, y: 400, width: 800, height: 52 }),
+  );
+  await start(async () => ({}));
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  expect(root.querySelector<HTMLElement>(".wrap")!.style.bottom).toBe("330px");
+});
