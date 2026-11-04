@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { Request } from "./messages";
+import { NO_CHAT_BOX, type Request } from "./messages";
 
 type Reply = (request: Request) => Promise<unknown>;
 
@@ -97,7 +97,7 @@ test("shows a failure, not checking, when the scan errors", async () => {
   expect(badge().title).toBe("DataFog couldn't check this text");
 });
 
-test("shows a failure when the extension was reloaded", async () => {
+test("asks for a page reload when the extension was updated", async () => {
   const box = await start(async (request) => {
     if (request.type === "scan")
       throw new Error("Extension context invalidated");
@@ -105,6 +105,11 @@ test("shows a failure when the extension was reloaded", async () => {
   });
   await type(box, "jane@example.com");
   expect(badge().dot.className).toBe("dot failed");
+  expect(badge().title).toBe("DataFog was updated");
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  expect(root.querySelector(".note")!.textContent).toBe(
+    "Reload this page to keep checking this chat box.",
+  );
 });
 
 test("shows a failure when Redact errors", async () => {
@@ -118,6 +123,11 @@ test("shows a failure when Redact errors", async () => {
   root.querySelector<HTMLButtonElement>(".redact")!.click();
   await vi.advanceTimersByTimeAsync(0);
   expect(badge().dot.className).toBe("dot failed");
+  expect(badge().title).toBe("DataFog couldn't redact this text");
+  expect(root.querySelector("li")!.textContent).toBe("Email address: 1");
+  expect(root.querySelector(".note")!.textContent).toBe(
+    "Remove these before sending, or reload the page to try again. Error code: review_conflict",
+  );
   expect(box.value).toBe("jane@example.com");
 });
 
@@ -244,4 +254,48 @@ test("shows the failure code, so it can be reported", async () => {
   expect(root.querySelector(".note")!.textContent).toBe(
     "Reload the page to try again. Error code: review_conflict",
   );
+});
+
+test("offers ways to report a failure, but not an update", async () => {
+  let code = "review_conflict";
+  const box = await start(async (request) =>
+    request.type === "scan" ? { error: code } : {},
+  );
+  await type(box, "jane@example.com");
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  const report = root.querySelector<HTMLElement>(".report")!;
+  const [issues, email] = report.querySelectorAll("a");
+  expect(report.hidden).toBe(false);
+  expect(issues.href).toContain("datafog-browser-extension/issues");
+  expect(email.href).toBe("mailto:help@datafog.ai");
+
+  code = "extension_reloaded";
+  await type(box, "jane@example.org");
+  expect(report.hidden).toBe(true);
+});
+
+test("warns on the page tab until a chat box appears", async () => {
+  await start(async () => ({}), "<main></main>");
+  await vi.advanceTimersByTimeAsync(10_000);
+  const tab = document.querySelector("datafog-tab")!.shadowRoot!;
+  const button = tab.querySelector("button")!;
+  expect(button.className).toBe("warning");
+  expect(button.title).toBe(NO_CHAT_BOX);
+
+  document.body.innerHTML = PAGE;
+  await vi.advanceTimersByTimeAsync(0);
+  expect(button.className).toBe("");
+  expect(button.title).toBe("Open DataFog");
+});
+
+test("asks for a page reload when the tab is clicked after an update", async () => {
+  await start(async (request) => {
+    if (request.type === "open-panel")
+      throw new Error("Extension context invalidated");
+    return {};
+  });
+  const tab = document.querySelector("datafog-tab")!.shadowRoot!;
+  tab.querySelector<HTMLButtonElement>("button")!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(badge().title).toBe("DataFog was updated");
 });

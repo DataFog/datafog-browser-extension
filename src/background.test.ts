@@ -4,7 +4,7 @@
 
 import { beforeEach, expect, test, vi } from "vitest";
 
-import type { OffscreenRequest, Request } from "./messages";
+import { NO_CHAT_BOX, type OffscreenRequest, type Request } from "./messages";
 import { DEFAULT_SETTINGS } from "./settings";
 
 type Listener = (
@@ -26,6 +26,7 @@ const sendMessage = vi.fn(
   }),
 );
 const setBadgeText = vi.fn(async () => {});
+const setTitle = vi.fn(async () => {});
 const openPanel = vi.fn(async (_options: { tabId: number }) => {});
 
 /**
@@ -46,7 +47,7 @@ beforeEach(async () => {
   open = false;
   Object.assign(globalThis, {
     chrome: {
-      action: { setBadgeText },
+      action: { setBadgeText, setTitle },
       offscreen: {
         Reason: { WORKERS: "WORKERS" },
         createDocument,
@@ -85,6 +86,7 @@ test("sets the toolbar badge itself", async () => {
   await send({ type: "protection", protected: false });
 
   expect(setBadgeText).toHaveBeenCalledWith({ tabId: 7, text: "!" });
+  expect(setTitle).toHaveBeenCalledWith({ tabId: 7, title: NO_CHAT_BOX });
   expect(createDocument).not.toHaveBeenCalled();
   expect(sendMessage).not.toHaveBeenCalled();
 });

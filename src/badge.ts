@@ -10,12 +10,16 @@
 import { LOGO } from "./logo";
 import { LABELS } from "./settings";
 
+const REPORT_URL =
+  "https://github.com/DataFog/datafog-browser-extension/issues";
+const HELP_EMAIL = "help@datafog.ai";
+
 export type BadgeState =
   | { kind: "hidden" }
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "clean" }
-  | { kind: "failed"; code?: string }
+  | { kind: "failed"; code?: string; counts?: Record<string, number> }
   | { kind: "found"; counts: Record<string, number> };
 
 const STYLE = `
@@ -48,6 +52,8 @@ const STYLE = `
   .panel h2 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
   .panel ul { margin: 0 0 8px; padding-left: 18px; }
   .note { margin: 0; color: #666; font-size: 12px; }
+  .report { margin: 8px 0 0; color: #666; font-size: 12px; }
+  .report a { color: inherit; }
   .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
   button.act {
     border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit;
@@ -116,6 +122,7 @@ export class Badge {
   private readonly title: HTMLHeadingElement;
   private readonly list: HTMLUListElement;
   private readonly note: HTMLParagraphElement;
+  private readonly report: HTMLParagraphElement;
   private readonly actions: HTMLDivElement;
   private anchor: Element | null = null;
   private kind: BadgeState["kind"] = "hidden";
@@ -138,6 +145,10 @@ export class Badge {
           <h2></h2>
           <ul></ul>
           <p class="note"></p>
+          <p class="report" hidden>
+            <a href="${REPORT_URL}" target="_blank" rel="noreferrer">Report this problem</a>
+            or email <a href="mailto:${HELP_EMAIL}">${HELP_EMAIL}</a>
+          </p>
           <div class="actions">
             <button class="act dismiss" type="button"
               title="Hide this warning. Send with ChatGPT's own button.">Dismiss</button>
@@ -152,6 +163,7 @@ export class Badge {
     this.title = root.querySelector("h2")!;
     this.list = root.querySelector("ul")!;
     this.note = root.querySelector(".note")!;
+    this.report = root.querySelector(".report")!;
     this.actions = root.querySelector(".actions")!;
 
     this.dot.addEventListener("click", () => {
@@ -202,24 +214,24 @@ export class Badge {
     this.dot.className = `dot ${state.kind}`;
 
     if (state.kind === "found") {
-      const entries = Object.entries(state.counts);
-      const total = entries.reduce((sum, [, count]) => sum + count, 0);
+      const total = Object.values(state.counts).reduce(
+        (sum, count) => sum + count,
+        0,
+      );
       this.dot.textContent = total > 99 ? "99+" : String(total);
       this.dot.title = `DataFog: ${items(total)} found. Click to review.`;
       this.title.textContent = `${items(total)} you may not want to share`;
-      this.list.replaceChildren(
-        ...entries.map(([type, count]) => {
-          const item = document.createElement("li");
-          item.textContent = `${LABELS[type] ?? type}: ${count}`;
-          return item;
-        }),
-      );
+      this.listCounts(state.counts);
     } else if (state.kind === "failed") {
       // Say so rather than look like a check still running
+      const updated = state.code === "extension_reloaded";
+      const title = updated
+        ? "DataFog was updated"
+        : `DataFog couldn't ${state.counts ? "redact" : "check"} this text`;
       this.dot.textContent = "!";
-      this.dot.title = "DataFog couldn't check this text. Click for details.";
-      this.title.textContent = "DataFog couldn't check this text";
-      this.list.replaceChildren();
+      this.dot.title = `${title}. Click for details.`;
+      this.title.textContent = title;
+      this.listCounts(state.counts ?? {});
     } else {
       this.dot.innerHTML = LOGO;
       this.dot.title =
@@ -234,19 +246,43 @@ export class Badge {
         this.panel.hidden = true;
     }
 
-    if (state.kind === "failed") {
+    if (state.kind === "failed" && state.code === "extension_reloaded") {
+      this.note.textContent =
+        "Reload this page to keep checking this chat box.";
+    } else if (state.kind === "failed") {
       // The code alone says what went wrong, without any of the text
-      this.note.textContent = state.code
-        ? `Reload the page to try again. Error code: ${state.code}`
+      const action = state.counts
+        ? "Remove these before sending, or reload the page to try again."
         : "Reload the page to try again.";
+      this.note.textContent = state.code
+        ? `${action} Error code: ${state.code}`
+        : action;
     } else {
       this.note.textContent =
         "Checked on this device by DataFog. Nothing was sent.";
     }
-    this.list.hidden = state.kind !== "found";
+    // Reloading fixes an update, so there's nothing to report
+    this.report.hidden =
+      state.kind !== "failed" || state.code === "extension_reloaded";
+    this.list.hidden = this.list.childElementCount === 0;
     this.actions.hidden = state.kind !== "found";
     this.dot.setAttribute("aria-label", this.dot.title);
     this.place();
+  }
+
+  /**
+   * List what was found, by type.
+   *
+   * @param counts How many of each type.
+   */
+  private listCounts(counts: Record<string, number>): void {
+    this.list.replaceChildren(
+      ...Object.entries(counts).map(([type, count]) => {
+        const item = document.createElement("li");
+        item.textContent = `${LABELS[type] ?? type}: ${count}`;
+        return item;
+      }),
+    );
   }
 
   /**
