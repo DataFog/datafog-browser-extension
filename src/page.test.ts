@@ -5,9 +5,9 @@
 
 import { beforeAll, beforeEach, expect, test, vi } from "vitest";
 
-import { watchPage } from "./page";
+import { clickSend, watchPage } from "./page";
 
-const send = vi.fn();
+const send = vi.fn((_repeat: boolean) => true);
 const files = vi.fn();
 
 /**
@@ -17,14 +17,15 @@ const files = vi.fn();
  * @param target Where the event starts.
  * @param type The event's type.
  * @param fields The extra fields.
+ * @returns False if the event was stopped.
  */
 function fire(
   target: EventTarget,
   type: string,
   fields: Record<string, unknown> = {},
-): void {
-  target.dispatchEvent(
-    Object.assign(new Event(type, { bubbles: true }), fields),
+): boolean {
+  return target.dispatchEvent(
+    Object.assign(new Event(type, { bubbles: true, cancelable: true }), fields),
   );
 }
 
@@ -95,4 +96,27 @@ test("counts a dropped file, but not dragged text", () => {
 
   fire(document.body, "drop", { dataTransfer: { types: ["Files"] } });
   expect(files).toHaveBeenCalledOnce();
+});
+
+test("stops a send when told to, ahead of the page's handlers", () => {
+  send.mockReturnValueOnce(false);
+  const page = vi.fn();
+  const box = document.querySelector("textarea")!;
+  box.addEventListener("keydown", page);
+
+  expect(fire(box, "keydown", { key: "Enter" })).toBe(false);
+  expect(page).not.toHaveBeenCalled();
+});
+
+test("reports a held-down Enter as a repeat", () => {
+  const box = document.querySelector("textarea")!;
+  fire(box, "keydown", { key: "Enter", repeat: true });
+  expect(send).toHaveBeenCalledWith(true);
+});
+
+test("clicks the chat form's send button", () => {
+  const click = vi.fn();
+  document.querySelector("#go")!.addEventListener("click", click);
+  clickSend(document.querySelector("textarea")!);
+  expect(click).toHaveBeenCalledOnce();
 });
