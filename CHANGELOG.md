@@ -16,7 +16,7 @@ Prototype: a Chrome extension that checks what you type into ChatGPT for sensiti
 - A settings page to turn checking on or off, choose what to look for, and list exact values to always allow, such as your own work email.
 - The extension uses the new DataFog logo in the badge and page tab, and for its toolbar, extensions page and store icons.
 - The toolbar icon shows `!`, and the page tab shows an orange dot, when the chat box can't be found, so you know the page isn't being checked. Both explain why on hover.
-- A DataFog tab on the right edge of chatgpt.com opens a DataFog side panel, as does the toolbar icon. The panel has a button to open settings.
+- A DataFog tab on the right edge of chatgpt.com opens and closes a DataFog side panel, and the toolbar icon opens it too. The panel follows your browser's light or dark theme, and has a button to open settings.
 
 ### Security
 
