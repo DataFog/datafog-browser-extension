@@ -5,6 +5,7 @@
 
 import { countFindings, ready, redact } from "./detect";
 import { toError, type OffscreenRequest, type Request } from "./messages";
+import { blockingSends } from "./settings";
 
 // Start loading Core right away; requests wait on it
 const engine = ready();
@@ -25,6 +26,7 @@ async function handle({
       seq: request.seq,
       enabled: settings.enabled,
       counts: settings.enabled ? countFindings(request.text, settings) : {},
+      blockSends: blockingSends(settings),
     };
   }
   return redact(request.text, settings);

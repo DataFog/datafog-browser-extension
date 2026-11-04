@@ -43,12 +43,15 @@ export interface Settings {
   enabled: boolean;
   entities: string[];
   allowlist: string[];
+  /** Hold a send until the user has chosen what to do about found values. */
+  blockSends: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   enabled: true,
   entities: DEFAULT_ENTITIES,
   allowlist: [],
+  blockSends: false,
 };
 
 /**
@@ -61,6 +64,16 @@ export async function loadSettings(): Promise<Settings> {
     settings?: Partial<Settings>;
   }>("settings");
   return { ...DEFAULT_SETTINGS, ...stored.settings };
+}
+
+/**
+ * Whether sends are held: there's nothing to check them against otherwise.
+ *
+ * @param settings The current settings.
+ * @returns True if a send with found values should be held.
+ */
+export function blockingSends(settings: Settings): boolean {
+  return settings.enabled && settings.blockSends;
 }
 
 /**

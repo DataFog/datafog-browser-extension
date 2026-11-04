@@ -10,7 +10,7 @@ import {
   type OffscreenRequest,
   type Request,
 } from "./messages";
-import { loadSettings } from "./settings";
+import { blockingSends, loadSettings } from "./settings";
 
 let opening: Promise<void> | undefined;
 
@@ -68,6 +68,10 @@ async function handle(
       title: request.protected ? "Open DataFog" : NO_CHAT_BOX,
     });
     return {};
+  }
+
+  if (request.type === "block-sends") {
+    return { blockSends: blockingSends(await loadSettings()) };
   }
 
   await ensureOffscreen();
