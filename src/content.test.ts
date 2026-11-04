@@ -299,3 +299,85 @@ test("asks for a page reload when the tab is clicked after an update", async () 
   await vi.advanceTimersByTimeAsync(0);
   expect(badge().title).toBe("DataFog was updated");
 });
+
+test("shows pulsing dots until the scan answers", async () => {
+  const answers: (() => void)[] = [];
+  const box = await start((request) =>
+    request.type === "scan"
+      ? new Promise((resolve) => {
+          answers.push(() =>
+            resolve({ seq: request.seq, enabled: true, counts: {} }),
+          );
+        })
+      : Promise.resolve({}),
+  );
+  await type(box, "jane@example.com");
+  expect(badge().dot.className).toBe("dot checking");
+  expect(badge().dot.querySelectorAll(".dots i")).toHaveLength(3);
+
+  answers.forEach((answer) => answer());
+  await vi.advanceTimersByTimeAsync(0);
+  expect(badge().dot.querySelector(".dots")).toBeNull();
+});
+
+test("shows the dots from the keystroke, before the scan starts", async () => {
+  const box = await start(async (request) =>
+    request.type === "scan"
+      ? { seq: request.seq, enabled: true, counts: {} }
+      : {},
+  );
+  await type(box, "hello");
+  expect(badge().dot.className).toBe("dot clean");
+
+  box.value = "hello there";
+  box.dispatchEvent(new Event("input"));
+  expect(badge().dot.className).toBe("dot checking");
+  await vi.advanceTimersByTimeAsync(400);
+  expect(badge().dot.className).toBe("dot clean");
+});
+
+test("settles when the text changes back before the scan", async () => {
+  const box = await start(async (request) =>
+    request.type === "scan"
+      ? { seq: request.seq, enabled: true, counts: {} }
+      : {},
+  );
+  await type(box, "hello");
+  box.value = "hello!";
+  box.dispatchEvent(new Event("input"));
+  box.value = "hello";
+  box.dispatchEvent(new Event("input"));
+  await vi.advanceTimersByTimeAsync(400);
+  expect(badge().dot.className).toBe("dot clean");
+});
+
+test("ignores an answer about text that has since changed", async () => {
+  const answers: (() => void)[] = [];
+  const box = await start((request) =>
+    request.type === "scan"
+      ? new Promise((resolve) => {
+          answers.push(() =>
+            resolve({ seq: request.seq, enabled: true, counts: {} }),
+          );
+        })
+      : Promise.resolve({}),
+  );
+  await type(box, "hello");
+  box.value = "hello there";
+  box.dispatchEvent(new Event("input"));
+  answers[0]();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(badge().dot.className).toBe("dot checking");
+});
+
+test("stays hidden while typing when checking is off", async () => {
+  const box = await start(async (request) =>
+    request.type === "scan"
+      ? { seq: request.seq, enabled: false, counts: {} }
+      : {},
+  );
+  await type(box, "hello");
+  box.value = "hello there";
+  box.dispatchEvent(new Event("input"));
+  expect(badge().dot.className).toBe("dot hidden");
+});
