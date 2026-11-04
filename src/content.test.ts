@@ -256,16 +256,18 @@ test("shows the failure code, so it can be reported", async () => {
   );
 });
 
-test("links a failure to the issue tracker, but not an update", async () => {
+test("offers ways to report a failure, but not an update", async () => {
   let code = "review_conflict";
   const box = await start(async (request) =>
     request.type === "scan" ? { error: code } : {},
   );
   await type(box, "jane@example.com");
   const root = document.querySelector("datafog-badge")!.shadowRoot!;
-  const report = root.querySelector<HTMLAnchorElement>(".report")!;
+  const report = root.querySelector<HTMLElement>(".report")!;
+  const [issues, email] = report.querySelectorAll("a");
   expect(report.hidden).toBe(false);
-  expect(report.href).toContain("datafog-browser-extension/issues");
+  expect(issues.href).toContain("datafog-browser-extension/issues");
+  expect(email.href).toBe("mailto:help@datafog.ai");
 
   code = "extension_reloaded";
   await type(box, "jane@example.org");
