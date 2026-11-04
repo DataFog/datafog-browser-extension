@@ -13,6 +13,7 @@ import {
   type Request,
   type ScanResponse,
 } from "./messages";
+import { watchPage } from "./page";
 import { mountTab } from "./tab";
 
 /** The last redaction, kept so it can be undone and redone. */
@@ -419,6 +420,11 @@ new MutationObserver(() => {
 
 // The page tab opens or closes the side panel; send right away, within the click
 const warnTab = mountTab(() => void togglePanel());
+
+watchPage(() => composer, {
+  send: () => badge.warnFiles(false),
+  files: () => badge.warnFiles(true),
+});
 
 const initial = findComposer();
 if (initial) bind(initial);

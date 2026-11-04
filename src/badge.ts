@@ -64,6 +64,7 @@ const STYLE = `
   .panel h2 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
   .panel ul { margin: 0 0 8px; padding-left: 18px; }
   .note { margin: 0; color: #666; font-size: 12px; }
+  .files { margin: 0 0 8px; color: #b06000; font-size: 12px; font-weight: 600; }
   .report { margin: 8px 0 0; color: #666; font-size: 12px; }
   .report a { color: inherit; }
   .actions { display: flex; gap: 8px; margin-top: 12px; }
@@ -146,6 +147,7 @@ export class Badge {
   private readonly panel: HTMLDivElement;
   private readonly title: HTMLHeadingElement;
   private readonly list: HTMLUListElement;
+  private readonly files: HTMLParagraphElement;
   private readonly note: HTMLParagraphElement;
   private readonly report: HTMLParagraphElement;
   private readonly buttons: Record<Action, HTMLButtonElement>;
@@ -170,6 +172,7 @@ export class Badge {
       <div class="wrap" hidden>
         <button class="dot" type="button"></button>
         <div class="panel" hidden>
+          <p class="files" hidden>Attached files aren't protected. DataFog only checks text in the chat box.</p>
           <h2></h2>
           <ul></ul>
           <p class="note"></p>
@@ -194,6 +197,7 @@ export class Badge {
     this.panel = root.querySelector(".panel")!;
     this.title = root.querySelector("h2")!;
     this.list = root.querySelector("ul")!;
+    this.files = root.querySelector(".files")!;
     this.note = root.querySelector(".note")!;
     this.report = root.querySelector(".report")!;
 
@@ -311,6 +315,19 @@ export class Badge {
     this.showActions();
     this.dot.setAttribute("aria-label", this.dot.title);
     this.place();
+  }
+
+  /**
+   * Warn that attached files aren't protected, opening the panel to say so,
+   * or take the warning down.
+   *
+   * @param attached Whether files are attached.
+   */
+  warnFiles(attached: boolean): void {
+    const warned = !this.files.hidden;
+    this.files.hidden = !attached;
+    if (attached) this.panel.hidden = this.kind === "hidden";
+    else if (warned) this.panel.hidden = true;
   }
 
   /**

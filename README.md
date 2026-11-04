@@ -27,6 +27,7 @@ Click the DataFog tab on the right edge of chatgpt.com, or the toolbar icon, to 
 - `src/background.ts` opens an offscreen document and passes the content script's requests to it, with the current settings.
 - `src/offscreen.ts` runs Core and answers with counts by type. It stays loaded while the side panel is closed, unlike the service worker, which Chrome stops when idle. Counts come from Core's `transform`, so a value two detectors match counts once.
 - `src/panel.ts` runs the side panel, which will hold the vault, workspace and restore views.
+- `src/page.ts` watches the page for sends and attached files.
 - `src/badge.ts` draws the badge in a shadow root, isolated from the page. `src/tab.ts` draws the page tab the same way.
 - Redact edits the chat box through `execCommand`, so ChatGPT's editor keeps the change.
 - Prompt text stays inside the extension. There are no network requests.

@@ -524,3 +524,24 @@ test("ignores Undo when the text changed since the last scan", async () => {
 
   expect(box.value).toBe(`${REDACTED}!`);
 });
+
+test("warns about an attached file until the message is sent", async () => {
+  const box = await start(async () => ({}));
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  const warning = root.querySelector<HTMLElement>(".files")!;
+  const panel = root.querySelector<HTMLElement>(".panel")!;
+  expect(warning.hidden).toBe(true);
+
+  const input = document.createElement("input");
+  input.type = "file";
+  box.after(input);
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  expect(warning.hidden).toBe(false);
+  expect(panel.hidden).toBe(false);
+
+  box.dispatchEvent(
+    Object.assign(new Event("keydown", { bubbles: true }), { key: "Enter" }),
+  );
+  expect(warning.hidden).toBe(true);
+  expect(panel.hidden).toBe(true);
+});
