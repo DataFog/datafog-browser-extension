@@ -285,3 +285,15 @@ test("warns on the page tab until a chat box appears", async () => {
   expect(button.className).toBe("");
   expect(button.title).toBe("Open DataFog");
 });
+
+test("asks for a page reload when the tab is clicked after an update", async () => {
+  await start(async (request) => {
+    if (request.type === "open-panel")
+      throw new Error("Extension context invalidated");
+    return {};
+  });
+  const tab = document.querySelector("datafog-tab")!.shadowRoot!;
+  tab.querySelector<HTMLButtonElement>("button")!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(badge().title).toBe("DataFog was updated");
+});
