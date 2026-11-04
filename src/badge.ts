@@ -12,6 +12,7 @@ import { LABELS } from "./settings";
 
 const REPORT_URL =
   "https://github.com/DataFog/datafog-browser-extension/issues";
+const HELP_EMAIL = "help@datafog.ai";
 
 export type BadgeState =
   | { kind: "hidden" }
@@ -51,7 +52,8 @@ const STYLE = `
   .panel h2 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
   .panel ul { margin: 0 0 8px; padding-left: 18px; }
   .note { margin: 0; color: #666; font-size: 12px; }
-  .report { display: block; margin-top: 8px; color: inherit; font-size: 12px; }
+  .report { margin: 8px 0 0; color: #666; font-size: 12px; }
+  .report a { color: inherit; }
   .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
   button.act {
     border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit;
@@ -120,7 +122,7 @@ export class Badge {
   private readonly title: HTMLHeadingElement;
   private readonly list: HTMLUListElement;
   private readonly note: HTMLParagraphElement;
-  private readonly report: HTMLAnchorElement;
+  private readonly report: HTMLParagraphElement;
   private readonly actions: HTMLDivElement;
   private anchor: Element | null = null;
   private kind: BadgeState["kind"] = "hidden";
@@ -143,7 +145,10 @@ export class Badge {
           <h2></h2>
           <ul></ul>
           <p class="note"></p>
-          <a class="report" href="${REPORT_URL}" target="_blank" rel="noreferrer" hidden>Report this problem</a>
+          <p class="report" hidden>
+            <a href="${REPORT_URL}" target="_blank" rel="noreferrer">Report this problem</a>
+            or email <a href="mailto:${HELP_EMAIL}">${HELP_EMAIL}</a>
+          </p>
           <div class="actions">
             <button class="act dismiss" type="button"
               title="Hide this warning. Send with ChatGPT's own button.">Dismiss</button>
