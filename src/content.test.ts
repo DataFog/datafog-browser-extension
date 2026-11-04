@@ -255,3 +255,19 @@ test("shows the failure code, so it can be reported", async () => {
     "Reload the page to try again. Error code: review_conflict",
   );
 });
+
+test("links a failure to the issue tracker, but not an update", async () => {
+  let code = "review_conflict";
+  const box = await start(async (request) =>
+    request.type === "scan" ? { error: code } : {},
+  );
+  await type(box, "jane@example.com");
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  const report = root.querySelector<HTMLAnchorElement>(".report")!;
+  expect(report.hidden).toBe(false);
+  expect(report.href).toContain("datafog-browser-extension/issues");
+
+  code = "extension_reloaded";
+  await type(box, "jane@example.org");
+  expect(report.hidden).toBe(true);
+});
