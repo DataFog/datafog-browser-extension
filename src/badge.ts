@@ -216,9 +216,13 @@ export class Badge {
       );
     } else if (state.kind === "failed") {
       // Say so rather than look like a check still running
+      const updated = state.code === "extension_reloaded";
+      const title = updated
+        ? "DataFog was updated"
+        : "DataFog couldn't check this text";
       this.dot.textContent = "!";
-      this.dot.title = "DataFog couldn't check this text. Click for details.";
-      this.title.textContent = "DataFog couldn't check this text";
+      this.dot.title = `${title}. Click for details.`;
+      this.title.textContent = title;
       this.list.replaceChildren();
     } else {
       this.dot.innerHTML = LOGO;
@@ -234,7 +238,10 @@ export class Badge {
         this.panel.hidden = true;
     }
 
-    if (state.kind === "failed") {
+    if (state.kind === "failed" && state.code === "extension_reloaded") {
+      this.note.textContent =
+        "Reload this page to keep checking this chat box.";
+    } else if (state.kind === "failed") {
       // The code alone says what went wrong, without any of the text
       this.note.textContent = state.code
         ? `Reload the page to try again. Error code: ${state.code}`
