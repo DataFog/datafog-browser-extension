@@ -15,17 +15,18 @@ const wasm = "node_modules/@datafog/wasm/dist/datafog_wasm_bg.wasm";
  * Empty an output folder and copy in the wasm and static files.
  *
  * @param out The output folder.
- * @param files Static files to copy alongside the bundles.
+ * @param files Static files and folders to copy alongside the bundles.
  */
 function prepare(out, files) {
   rmSync(out, { recursive: true, force: true });
   mkdirSync(`${out}/dist`, { recursive: true });
   // @datafog/wasm loads ./dist/datafog_wasm_bg.wasm relative to the bundle
   cpSync(wasm, `${out}/dist/datafog_wasm_bg.wasm`);
-  for (const file of files) cpSync(file, `${out}/${file}`);
+  for (const file of files) cpSync(file, `${out}/${file}`, { recursive: true });
 }
 
 prepare("dist", [
+  "icons",
   "manifest.json",
   "offscreen.html",
   "options.html",
