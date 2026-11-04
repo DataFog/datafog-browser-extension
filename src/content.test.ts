@@ -97,7 +97,7 @@ test("shows a failure, not checking, when the scan errors", async () => {
   expect(badge().title).toBe("DataFog couldn't check this text");
 });
 
-test("shows a failure when the extension was reloaded", async () => {
+test("asks for a page reload when the extension was updated", async () => {
   const box = await start(async (request) => {
     if (request.type === "scan")
       throw new Error("Extension context invalidated");
@@ -105,6 +105,11 @@ test("shows a failure when the extension was reloaded", async () => {
   });
   await type(box, "jane@example.com");
   expect(badge().dot.className).toBe("dot failed");
+  expect(badge().title).toBe("DataFog was updated");
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  expect(root.querySelector(".note")!.textContent).toBe(
+    "Reload this page to keep checking this chat box.",
+  );
 });
 
 test("shows a failure when Redact errors", async () => {
