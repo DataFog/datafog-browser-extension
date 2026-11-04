@@ -1,7 +1,7 @@
 /**
  * The inline badge in the chat box, and its expandable panel.
  *
- * Like Grammarly's: a small DataFog logo in the chat box's bottom-right corner
+ * Like Grammarly's: a small DataFog logo just outside the chat box
  * that turns into a red count when something sensitive is found. Lives in a
  * shadow root so ChatGPT's styles can't reach it and its styles can't leak
  * into the page. Shows types and counts only, never values.
@@ -77,9 +77,15 @@ const STYLE = `
 
 const DOTS = '<span class="dots"><i></i><i></i><i></i></span>';
 
-/** The badge's size, and its gap from the chat box's edges, in pixels. */
+/** The badge's size, and its gap from the chat box, in pixels. */
 const DOT_SIZE = 24;
-const INSET = 6;
+const GAP = 8;
+
+/** Lines the badge up with a one-line chat box's center, or the send button. */
+const BOTTOM_INSET = 14;
+
+/** Room needed beside the chat box, clear of the page tab, in pixels. */
+const SIDE_ROOM = 72;
 
 /** A box in viewport coordinates. */
 interface Box {
@@ -205,7 +211,7 @@ export class Badge {
   /**
    * Follow a (possibly new) chat box.
    *
-   * @param anchor The chat box element.
+   * @param anchor The element to sit beside.
    */
   attach(anchor: Element): void {
     if (anchor === this.anchor) return;
@@ -321,20 +327,25 @@ export class Badge {
   }
 
   /**
-   * Keep the badge in the bottom-right corner of the part of the chat box
-   * that's on screen, so a long prompt scrolled inside the box doesn't carry
-   * it out of view. A box too short for the corner, such as a one-line chat
-   * box, centers the badge on it instead.
+   * Keep the badge just outside the chat box: beside its bottom-right corner,
+   * or above that corner when there's no room beside it.
    */
   private place(): void {
     if (!this.anchor) return;
     const box = visibleBox(this.anchor);
     this.wrap.style.visibility = box ? "" : "hidden";
     if (!box) return;
-    const height = box.bottom - box.top;
-    const bottom =
-      height < DOT_SIZE + 2 * INSET ? (height - DOT_SIZE) / 2 : INSET;
-    this.wrap.style.right = `${Math.max(8, window.innerWidth - box.right + INSET)}px`;
-    this.wrap.style.bottom = `${window.innerHeight - box.bottom + bottom}px`;
+    const fromRight = window.innerWidth - box.right;
+    const fromBottom = window.innerHeight - box.bottom;
+    const beside = fromRight >= SIDE_ROOM;
+    this.wrap.style.right = `${beside ? fromRight - GAP - DOT_SIZE : fromRight + GAP}px`;
+    this.wrap.style.bottom = `${
+      beside
+        ? fromBottom + BOTTOM_INSET
+        : Math.min(
+            window.innerHeight - box.top + GAP,
+            window.innerHeight - DOT_SIZE - GAP,
+          )
+    }px`;
   }
 }

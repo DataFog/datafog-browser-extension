@@ -74,28 +74,39 @@ afterEach(() => {
   );
 });
 
-test("stays in view when a long prompt scrolls inside the chat box", async () => {
-  const { badge, box, scroller, wrap } = mount();
-  setBox(scroller, { top: 300, right: 900, bottom: 500, left: 100 });
-  setBox(box, { top: 100, right: 900, bottom: 2000, left: 100 });
-
-  badge.reposition();
-  await new Promise(requestAnimationFrame);
-
-  expect(wrap.style.bottom).toBe("274px");
-  expect(wrap.style.right).toBe("130px");
-  expect(wrap.style.visibility).toBe("");
-});
-
-test("centers on a one-line chat box", async () => {
+test("sits beside the chat box when there's room", async () => {
   const { badge, box, scroller, wrap } = mount();
   setBox(scroller, { top: 0, right: 1024, bottom: 768, left: 0 });
-  setBox(box, { top: 400, right: 900, bottom: 424, left: 100 });
+  setBox(box, { top: 400, right: 900, bottom: 452, left: 100 });
 
   badge.reposition();
   await new Promise(requestAnimationFrame);
 
-  expect(wrap.style.bottom).toBe("344px");
+  expect(wrap.style.right).toBe("92px");
+  expect(wrap.style.bottom).toBe("330px");
+});
+
+test("sits above the chat box when there's no room beside it", async () => {
+  const { badge, box, scroller, wrap } = mount();
+  setBox(scroller, { top: 0, right: 1024, bottom: 768, left: 0 });
+  setBox(box, { top: 400, right: 1012, bottom: 452, left: 100 });
+
+  badge.reposition();
+  await new Promise(requestAnimationFrame);
+
+  expect(wrap.style.right).toBe("20px");
+  expect(wrap.style.bottom).toBe("376px");
+});
+
+test("stays on screen when the chat box fills the page", async () => {
+  const { badge, box, scroller, wrap } = mount();
+  setBox(scroller, { top: 0, right: 1024, bottom: 768, left: 0 });
+  setBox(box, { top: 0, right: 1012, bottom: 768, left: 100 });
+
+  badge.reposition();
+  await new Promise(requestAnimationFrame);
+
+  expect(wrap.style.bottom).toBe("736px");
 });
 
 test("hides when the chat box is off screen", async () => {
