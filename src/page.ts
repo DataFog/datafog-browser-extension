@@ -8,8 +8,11 @@ const SEND_BUTTONS =
   'button[type="submit"], [data-testid="send-button"], #composer-submit-button';
 
 export interface PageEvents {
-  /** The user asked to send; one send can report more than once. */
-  send: () => void;
+  /**
+   * The user asked to send; one send can report more than once. A key held
+   * down reports as a repeat. Returning false stops the send.
+   */
+  send: (repeat: boolean) => boolean;
   /** The user attached a file. */
   files: () => void;
 }
@@ -32,28 +35,36 @@ export function watchPage(
     );
   };
 
+  const ask = (event: Event, repeat = false): void => {
+    if (events.send(repeat)) return;
+    // Ahead of ChatGPT's handlers, so they never see the send
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  };
+
   document.addEventListener(
     "keydown",
     (event) => {
       const newline = event.shiftKey || event.isComposing;
       if (event.key === "Enter" && !newline && inForm(event.target))
-        events.send();
+        ask(event, event.repeat);
     },
     true,
   );
   document.addEventListener(
     "click",
-    ({ target }) => {
+    (event) => {
+      const { target } = event;
       const button =
         target instanceof Element ? target.closest(SEND_BUTTONS) : null;
-      if (button && inForm(button)) events.send();
+      if (button && inForm(button)) ask(event);
     },
     true,
   );
   document.addEventListener(
     "submit",
-    ({ target }) => {
-      if (inForm(target)) events.send();
+    (event) => {
+      if (inForm(event.target)) ask(event);
     },
     true,
   );
@@ -81,4 +92,18 @@ export function watchPage(
     },
     true,
   );
+}
+
+/**
+ * Send what's in the chat box, as if the user had pressed the send button.
+ *
+ * @param composer The chat box.
+ */
+export function clickSend(composer: HTMLElement): void {
+  const form = composer.closest("form");
+  const button = form?.querySelector<HTMLButtonElement>(
+    `:is(${SEND_BUTTONS}):not(:disabled)`,
+  );
+  if (button) button.click();
+  else form?.requestSubmit();
 }
