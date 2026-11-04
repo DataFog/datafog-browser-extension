@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import type { Request } from "./messages";
+import { NO_CHAT_BOX, type Request } from "./messages";
 
 type Reply = (request: Request) => Promise<unknown>;
 
@@ -270,4 +270,18 @@ test("links a failure to the issue tracker, but not an update", async () => {
   code = "extension_reloaded";
   await type(box, "jane@example.org");
   expect(report.hidden).toBe(true);
+});
+
+test("warns on the page tab until a chat box appears", async () => {
+  await start(async () => ({}), "<main></main>");
+  await vi.advanceTimersByTimeAsync(10_000);
+  const tab = document.querySelector("datafog-tab")!.shadowRoot!;
+  const button = tab.querySelector("button")!;
+  expect(button.className).toBe("warning");
+  expect(button.title).toBe(NO_CHAT_BOX);
+
+  document.body.innerHTML = PAGE;
+  await vi.advanceTimersByTimeAsync(0);
+  expect(button.className).toBe("");
+  expect(button.title).toBe("Open DataFog");
 });
