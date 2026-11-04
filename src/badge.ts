@@ -15,7 +15,7 @@ export type BadgeState =
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "clean" }
-  | { kind: "failed"; code?: string }
+  | { kind: "failed"; code?: string; counts?: Record<string, number> }
   | { kind: "found"; counts: Record<string, number> };
 
 const STYLE = `
@@ -202,28 +202,24 @@ export class Badge {
     this.dot.className = `dot ${state.kind}`;
 
     if (state.kind === "found") {
-      const entries = Object.entries(state.counts);
-      const total = entries.reduce((sum, [, count]) => sum + count, 0);
+      const total = Object.values(state.counts).reduce(
+        (sum, count) => sum + count,
+        0,
+      );
       this.dot.textContent = total > 99 ? "99+" : String(total);
       this.dot.title = `DataFog: ${items(total)} found. Click to review.`;
       this.title.textContent = `${items(total)} you may not want to share`;
-      this.list.replaceChildren(
-        ...entries.map(([type, count]) => {
-          const item = document.createElement("li");
-          item.textContent = `${LABELS[type] ?? type}: ${count}`;
-          return item;
-        }),
-      );
+      this.listCounts(state.counts);
     } else if (state.kind === "failed") {
       // Say so rather than look like a check still running
       const updated = state.code === "extension_reloaded";
       const title = updated
         ? "DataFog was updated"
-        : "DataFog couldn't check this text";
+        : `DataFog couldn't ${state.counts ? "redact" : "check"} this text`;
       this.dot.textContent = "!";
       this.dot.title = `${title}. Click for details.`;
       this.title.textContent = title;
-      this.list.replaceChildren();
+      this.listCounts(state.counts ?? {});
     } else {
       this.dot.innerHTML = LOGO;
       this.dot.title =
@@ -243,17 +239,35 @@ export class Badge {
         "Reload this page to keep checking this chat box.";
     } else if (state.kind === "failed") {
       // The code alone says what went wrong, without any of the text
-      this.note.textContent = state.code
-        ? `Reload the page to try again. Error code: ${state.code}`
+      const action = state.counts
+        ? "Remove these before sending, or reload the page to try again."
         : "Reload the page to try again.";
+      this.note.textContent = state.code
+        ? `${action} Error code: ${state.code}`
+        : action;
     } else {
       this.note.textContent =
         "Checked on this device by DataFog. Nothing was sent.";
     }
-    this.list.hidden = state.kind !== "found";
+    this.list.hidden = this.list.childElementCount === 0;
     this.actions.hidden = state.kind !== "found";
     this.dot.setAttribute("aria-label", this.dot.title);
     this.place();
+  }
+
+  /**
+   * List what was found, by type.
+   *
+   * @param counts How many of each type.
+   */
+  private listCounts(counts: Record<string, number>): void {
+    this.list.replaceChildren(
+      ...Object.entries(counts).map(([type, count]) => {
+        const item = document.createElement("li");
+        item.textContent = `${LABELS[type] ?? type}: ${count}`;
+        return item;
+      }),
+    );
   }
 
   /**

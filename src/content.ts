@@ -31,6 +31,7 @@ let timer: number | undefined;
 let seq = 0;
 let lastScanned = "";
 let dismissedText: string | null = null;
+let lastCounts: Record<string, number> = {};
 
 const badge = new Badge(redactComposer, dismiss);
 
@@ -113,6 +114,7 @@ async function scanNow(force = false): Promise<void> {
     return;
   }
 
+  lastCounts = response.counts;
   const found = Object.keys(response.counts).length > 0;
   if (!response.enabled) badge.show({ kind: "hidden" });
   // A dismissed warning falls back to the plain logo until the text changes
@@ -243,7 +245,8 @@ async function redactComposer(): Promise<void> {
   const text = readText(composer);
   const response = await ask<RedactResponse>({ type: "redact", text });
   if ("error" in response) {
-    badge.show({ kind: "failed", code: response.error });
+    // The values are still there, so keep showing what they are
+    badge.show({ kind: "failed", code: response.error, counts: lastCounts });
     return;
   }
 
