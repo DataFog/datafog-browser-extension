@@ -15,7 +15,9 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@datafog/wasm": "1.0.0"
+    "@datafog/core-fogvault-browser": "1.1.0-rc.1",
+    "@datafog/fogvault-browser": "0.1.0",
+    "@datafog/wasm": "1.1.0-rc.1"
   },
   "devDependencies": {
     "@types/chrome": "0.3.6",
