@@ -15,6 +15,8 @@ const MIN_PASSWORD = 8;
 
 /** What each error code means, for codes a user can act on. */
 const EXPLAINED: Record<string, string> = {
+  // FogVault's code for a password that doesn't open the vault
+  Authentication: "That password isn't right.",
   chat_box_changed:
     "The chat box changed after this review was prepared. Choose Pseudonymize again.",
   nothing_found: "There's nothing to pseudonymize in the chat box.",

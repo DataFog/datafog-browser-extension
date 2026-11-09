@@ -200,6 +200,17 @@ test("unlocks with the password, and says when that fails", async () => {
   );
 });
 
+test("says plainly when the password is wrong", async () => {
+  await start((request) =>
+    request.type === "vault-unlock" ? { error: "Authentication" } : LOCKED,
+  );
+
+  fill("#unlock-password", "wrong password");
+  await submit("#unlock");
+
+  expect($("#vault-error").textContent).toBe("That password isn't right.");
+});
+
 test("lists each value and its marker, as text", async () => {
   await start(() => ({
     ...LOCKED,
