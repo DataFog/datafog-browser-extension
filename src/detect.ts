@@ -9,6 +9,7 @@ import {
   scanAndTransform,
   transform,
   type TransformationConfig,
+  type WorkspaceFinding,
 } from "@datafog/wasm";
 
 import type { RedactResponse } from "./messages";
@@ -90,4 +91,30 @@ export function redact(text: string, settings: Settings): RedactResponse {
       replacement: item.replacement,
     })),
   };
+}
+
+/**
+ * Find the values Pseudonymize replaces: the same ones Redact would, after
+ * the allowlist and with each value matched by two detectors once.
+ *
+ * @param text The prompt.
+ * @param settings The current settings.
+ * @returns Findings for a workspace review.
+ */
+export function workspaceFindings(
+  text: string,
+  settings: Settings,
+): WorkspaceFinding[] {
+  if (!text.trim() || settings.entities.length === 0) return [];
+
+  const found = scan(text, { entities: settings.entities });
+  const { transformations } = transform(text, found, redactConfig(settings));
+  return transformations.map((item) => ({
+    entityType: item.entityType,
+    matchedText: text.slice(
+      item.sourceUtf16Range.start,
+      item.sourceUtf16Range.end,
+    ),
+    range: { unit: "utf8_bytes", ...item.sourceByteRange },
+  }));
 }
