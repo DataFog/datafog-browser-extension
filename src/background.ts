@@ -18,6 +18,7 @@ import {
   type TabRequest,
   type VaultRequest,
   type VaultRouting,
+  type VaultStatus,
 } from "./messages";
 import { blockingSends, loadSettings } from "./settings";
 
@@ -153,6 +154,11 @@ async function approveReview(): Promise<unknown> {
  */
 async function handlePanel(request: PanelRequest): Promise<unknown> {
   if (request.type === "review-approve") return approveReview();
+  if (request.type === "vault-reset") {
+    const status = await forwardVault<VaultStatus>(request);
+    await chrome.storage.local.remove("vault");
+    return status;
+  }
   if (request.type !== "vault-create") return forwardVault(request);
   const created = await forwardVault<CreatedVault>(request);
   await chrome.storage.local.set({ vault: created.routing });
@@ -179,6 +185,7 @@ const PANEL_REQUESTS = new Set<string>([
   "vault-create",
   "vault-unlock",
   "vault-lock",
+  "vault-reset",
   "review-approve",
   "review-cancel",
 ]);

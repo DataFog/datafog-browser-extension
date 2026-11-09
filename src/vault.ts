@@ -34,7 +34,7 @@ export const IDLE_LOCK_MS = 15 * 60_000;
 /** The parts of FogVault the host uses. */
 export type Vault = Pick<
   FogVault,
-  "create" | "open" | "unlock" | "lock" | "reconcileLatest"
+  "create" | "open" | "unlock" | "lock" | "close" | "reconcileLatest"
 >;
 
 /** The parts of Core's adapter the host uses. */
@@ -56,6 +56,8 @@ export interface VaultDeps<V extends Vault> {
   openOwner: (vault: V, route: Route) => Promise<Owner>;
   findings: (text: string, settings: Settings) => WorkspaceFinding[];
   randomId: () => Uint8Array;
+  /** Delete the vault's database. */
+  deleteStore: (name: string) => Promise<void>;
   /** Tell an open side panel to show the new status. */
   notify: () => void;
 }
@@ -246,6 +248,38 @@ export class VaultHost<V extends Vault = Vault> {
     if (owner && !owner.closed) await owner.lock();
     else await this.vault?.lock();
     return this.status(routing);
+  }
+
+  /**
+   * Delete the vault and everything in it, once the password checks out.
+   * The vault is locked first, so a wrong password leaves it locked.
+   *
+   * @param password The password.
+   * @param routing Where the workspace lives.
+   * @returns The status, with no vault.
+   */
+  async reset(
+    password: string,
+    routing: VaultRouting | null,
+  ): Promise<VaultStatus> {
+    if (!routing) throw failure("no_vault");
+    await this.lock(routing);
+    const vault = this.vault ?? this.deps.newVault();
+    this.vault = vault;
+    if (!this.opened) {
+      await vault.open(VAULT_NAME);
+      this.opened = true;
+    }
+    await vault.unlock(password);
+    // Closing stops FogVault's Worker, releasing the database to delete
+    await vault.close();
+    this.vault = null;
+    this.opened = false;
+    this.unsettled = null;
+    this.error = null;
+    await this.deps.deleteStore(VAULT_NAME);
+    this.deps.notify();
+    return this.status(null);
   }
 
   /**

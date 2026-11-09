@@ -38,6 +38,7 @@ export type PanelRequest =
   | { type: "vault-create"; password: string }
   | { type: "vault-unlock"; password: string }
   | { type: "vault-lock" }
+  | { type: "vault-reset"; password: string }
   | { type: "review-approve" }
   | { type: "review-cancel" };
 

@@ -46,6 +46,7 @@ const tabMessage = vi.fn(
   async (_tabId: number, _request: TabRequest): Promise<unknown> => ({}),
 );
 const setStorage = vi.fn(async (_items: object) => {});
+const removeStorage = vi.fn(async (_keys: string) => {});
 let stored: object;
 
 const PANEL: Sender = {
@@ -119,7 +120,11 @@ beforeEach(async () => {
       },
       sidePanel: { open: openPanel, setPanelBehavior: vi.fn(async () => {}) },
       storage: {
-        local: { get: vi.fn(async () => stored), set: setStorage },
+        local: {
+          get: vi.fn(async () => stored),
+          set: setStorage,
+          remove: removeStorage,
+        },
       },
       tabs: { sendMessage: tabMessage },
     },
@@ -239,6 +244,24 @@ test("stores a new vault's routing, and passes on its recovery key", async () =>
     await send({ type: "vault-create", password: "correct horse" }, PANEL),
   ).toEqual({ status: { state: "unlocked" }, recoveryKey: "S2V5" });
   expect(setStorage).toHaveBeenCalledWith({ vault: ROUTING });
+});
+
+test("forgets the vault's routing once it's reset", async () => {
+  sendMessage.mockResolvedValueOnce({ state: "none" });
+
+  expect(
+    await send({ type: "vault-reset", password: "correct horse" }, PANEL),
+  ).toEqual({ state: "none" });
+  expect(removeStorage).toHaveBeenCalledWith("vault");
+});
+
+test("keeps the routing when a reset fails", async () => {
+  sendMessage.mockResolvedValueOnce({ error: "Authentication" });
+
+  expect(await send({ type: "vault-reset", password: "wrong" }, PANEL)).toEqual(
+    { error: "Authentication" },
+  );
+  expect(removeStorage).not.toHaveBeenCalled();
 });
 
 test("opens the side panel for Pseudonymize, within the click", async () => {

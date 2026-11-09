@@ -50,6 +50,14 @@ const host = new VaultHost({
     }),
   findings: workspaceFindings,
   randomId,
+  deleteStore: (name) =>
+    new Promise((resolve, reject) => {
+      const request = indexedDB.deleteDatabase(name);
+      request.addEventListener("success", () => resolve());
+      request.addEventListener("error", () =>
+        reject(Object.assign(new Error(), { code: "reset_failed" })),
+      );
+    }),
   notify: () => {
     const notice: PanelNotice = { target: "panel", type: "vault-changed" };
     // No panel open means no one to tell
@@ -87,6 +95,8 @@ async function handle({
       return host.unlock(request.password, routing);
     case "vault-lock":
       return host.lock(routing);
+    case "vault-reset":
+      return host.reset(request.password, routing);
     case "pseudonymize":
       await host.pseudonymize(request.text, request.tabId, settings);
       return host.status(routing);

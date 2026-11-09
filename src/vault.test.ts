@@ -31,6 +31,7 @@ let workspace: Workspace;
 let owner: FakeOwner;
 let vault: Vault;
 let notify: ReturnType<typeof vi.fn<() => void>>;
+let deleteStore: ReturnType<typeof vi.fn<(name: string) => Promise<void>>>;
 let host: VaultHost;
 let recoveryKey: Uint8Array;
 
@@ -118,12 +119,14 @@ beforeEach(() => {
       return { unlocked: true as const, receipt: RECEIPT };
     }),
     lock: vi.fn(async () => ({ locked: true as const })),
+    close: vi.fn(async () => ({ closed: true as const })),
     reconcileLatest: vi.fn(async () => ({
       reconciled: true as const,
       receipt: RECEIPT,
     })),
   };
   notify = vi.fn<() => void>();
+  deleteStore = vi.fn(async () => {});
   host = new VaultHost({
     newVault: () => vault,
     createOwner: async (_vault, route) => {
@@ -137,6 +140,7 @@ beforeEach(() => {
     },
     findings: workspaceFindings,
     randomId: () => randomBytes(16),
+    deleteStore,
     notify,
   });
 });
@@ -293,4 +297,25 @@ test("locks after a lost save, and settles it at the next unlock", async () => {
 
   await host.unlock("correct horse", routing);
   expect(vi.mocked(vault.reconcileLatest)).toHaveBeenCalledWith(requestId);
+});
+
+test("resets the vault only with the right password", async () => {
+  const routing = await create();
+  await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
+
+  await expect(host.reset("wrong", routing)).rejects.toMatchObject({
+    code: "Integrity",
+  });
+  expect(deleteStore).not.toHaveBeenCalled();
+  expect(host.status(routing)).toMatchObject({
+    state: "locked",
+    review: null,
+  });
+
+  const status = await host.reset("correct horse", routing);
+
+  expect(vi.mocked(vault.close)).toHaveBeenCalled();
+  expect(deleteStore).toHaveBeenCalledWith("datafog");
+  expect(status.state).toBe("none");
+  expect(owner.closed).toBe(true);
 });
