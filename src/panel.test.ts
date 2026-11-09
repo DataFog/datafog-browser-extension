@@ -59,7 +59,9 @@ function $(selector: string): HTMLElement {
  * @param value The password.
  */
 function fill(selector: string, value: string): void {
-  document.querySelector<HTMLInputElement>(selector)!.value = value;
+  const field = document.querySelector<HTMLInputElement>(selector)!;
+  field.value = value;
+  field.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 /**
@@ -126,25 +128,49 @@ test("closes when told to, and reconnects when the worker stops", async () => {
 test("offers to create a vault when there isn't one", async () => {
   await start(() => ({ ...LOCKED, state: "none" }));
 
+  expect($("#vault-state").textContent).toBe("(Not set up)");
   expect($("#create").hidden).toBe(false);
   expect($("#unlock").hidden).toBe(true);
   expect($("#review").hidden).toBe(true);
 });
 
-test("checks the new password before creating the vault", async () => {
+test("shows each password rule as it's met", async () => {
   await start(() => ({ ...LOCKED, state: "none" }));
+  const submitButton =
+    document.querySelector<HTMLButtonElement>("#create-submit")!;
+
+  expect($("#rule-length").className).toBe("");
+  expect(submitButton.disabled).toBe(true);
 
   fill("#create-password", "short");
-  fill("#create-confirm", "short");
-  await submit("#create");
-  expect($("#vault-error").textContent).toContain("at least 8 characters");
+  expect($("#rule-length").className).toBe("unmet");
 
   fill("#create-password", "correct horse");
   fill("#create-confirm", "correct house");
+  expect($("#rule-length").className).toBe("met");
+  expect($("#rule-match").className).toBe("unmet");
   await submit("#create");
-  expect($("#vault-error").textContent).toBe("The passwords don't match.");
   expect(sendMessage).not.toHaveBeenCalledWith(
     expect.objectContaining({ type: "vault-create" }),
+  );
+
+  fill("#create-confirm", "correct horse");
+  expect($("#rule-match").className).toBe("met");
+  expect(submitButton.disabled).toBe(false);
+});
+
+test("hides what the vault does behind the info button", async () => {
+  await start(() => LOCKED);
+  const toggle = $("#vault-info-toggle");
+
+  expect($("#vault-state").textContent).toBe("(Locked)");
+  expect($("#vault-info").hidden).toBe(true);
+
+  toggle.click();
+  expect($("#vault-info").hidden).toBe(false);
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  expect($("#vault-info a").getAttribute("href")).toBe(
+    "https://docs.datafog.ai",
   );
 });
 

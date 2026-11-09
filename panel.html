@@ -12,6 +12,7 @@
         --line: #d0d0d0;
         --field: #f5f5f5;
         --error: #c5221f;
+        --ok: #1e7b34;
       }
       @media (prefers-color-scheme: dark) {
         :root {
@@ -21,6 +22,7 @@
           --line: #3a4549;
           --field: #232d31;
           --error: #f28b82;
+          --ok: #81c995;
         }
       }
       body {
@@ -121,6 +123,72 @@
         font-family: ui-monospace, monospace;
         font-size: 12px;
       }
+      .heading {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 20px 0 4px;
+      }
+      .heading h2 {
+        margin: 0;
+      }
+      .state {
+        color: var(--muted);
+        font-weight: 400;
+      }
+      button.icon {
+        display: grid;
+        place-items: center;
+        padding: 2px;
+        border: 0;
+        border-radius: 999px;
+        background: none;
+        color: var(--muted);
+        align-self: center;
+      }
+      button.icon:hover,
+      button.icon[aria-expanded="true"] {
+        color: var(--text);
+      }
+      .info {
+        padding: 8px;
+        border-radius: 8px;
+        background: var(--field);
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .info p {
+        margin: 0 0 4px;
+      }
+      .info a {
+        color: var(--text);
+      }
+      ul.rules {
+        margin: 0;
+        font-size: 13px;
+      }
+      ul.rules li {
+        padding: 0;
+        border: 0;
+        color: var(--muted);
+      }
+      ul.rules li::before {
+        display: inline-block;
+        width: 1.25em;
+        content: "○";
+      }
+      ul.rules li.met {
+        color: var(--ok);
+      }
+      ul.rules li.met::before {
+        content: "✓";
+      }
+      ul.rules li.unmet {
+        color: var(--error);
+      }
+      ul.rules li.unmet::before {
+        content: "✗";
+      }
       [hidden] {
         display: none !important;
       }
@@ -144,18 +212,45 @@
     </section>
 
     <section id="vault">
-      <h2>Vault</h2>
-      <p class="muted" id="vault-note"></p>
+      <div class="heading">
+        <h2>Vault <span class="state" id="vault-state"></span></h2>
+        <button
+          class="icon"
+          id="vault-info-toggle"
+          type="button"
+          aria-label="About the vault"
+          aria-controls="vault-info"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" />
+            <path
+              d="M8 7v4.5M8 4.5v.5"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+      <div class="info" id="vault-info" hidden>
+        <p>
+          Pseudonymize swaps each value for a marker such as [[EMAIL_7KQ4ZM]],
+          and keeps the original encrypted in this vault, on this device. The
+          vault locks after 15 minutes without use, or when Chrome closes.
+        </p>
+        <a href="https://docs.datafog.ai" target="_blank" rel="noreferrer"
+          >Learn more</a
+        >
+      </div>
 
-      <form id="create" hidden>
+      <form id="create" novalidate hidden>
         <label>
           Password
           <input
             id="create-password"
             type="password"
             autocomplete="new-password"
-            minlength="8"
-            required
           />
         </label>
         <label>
@@ -164,11 +259,15 @@
             id="create-confirm"
             type="password"
             autocomplete="new-password"
-            minlength="8"
-            required
           />
         </label>
-        <button class="primary" type="submit">Create vault</button>
+        <ul class="rules" aria-live="polite">
+          <li id="rule-length">At least 8 characters</li>
+          <li id="rule-match">Passwords match</li>
+        </ul>
+        <button class="primary" id="create-submit" type="submit" disabled>
+          Create vault
+        </button>
       </form>
 
       <div class="row" id="recovery" hidden>
@@ -186,14 +285,13 @@
         </div>
       </div>
 
-      <form id="unlock" hidden>
+      <form id="unlock" novalidate hidden>
         <label>
           Password
           <input
             id="unlock-password"
             type="password"
             autocomplete="current-password"
-            required
           />
         </label>
         <button class="primary" type="submit">Unlock</button>

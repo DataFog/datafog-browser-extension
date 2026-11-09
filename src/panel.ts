@@ -21,8 +21,13 @@ const EXPLAINED: Record<string, string> = {
     "The chat box changed after this review was prepared. Choose Pseudonymize again.",
   nothing_found: "There's nothing to pseudonymize in the chat box.",
   no_review: "This review is gone. Choose Pseudonymize again.",
-  passwords_differ: "The passwords don't match.",
-  password_short: `Use a password of at least ${MIN_PASSWORD} characters.`,
+};
+
+/** The vault's state, as shown beside its heading. */
+const STATE_LABELS: Record<VaultStatus["state"], string> = {
+  none: "(Not set up)",
+  locked: "(Locked)",
+  unlocked: "(Unlocked)",
 };
 
 const view = {
@@ -32,10 +37,15 @@ const view = {
   reviewButtons: document.querySelector<HTMLDivElement>("#review-buttons")!,
   reviewError: document.querySelector<HTMLParagraphElement>("#review-error")!,
   approve: document.querySelector<HTMLButtonElement>("#approve")!,
-  vaultNote: document.querySelector<HTMLParagraphElement>("#vault-note")!,
+  vaultState: document.querySelector<HTMLSpanElement>("#vault-state")!,
+  infoToggle: document.querySelector<HTMLButtonElement>("#vault-info-toggle")!,
+  info: document.querySelector<HTMLDivElement>("#vault-info")!,
   create: document.querySelector<HTMLFormElement>("#create")!,
   createPassword: document.querySelector<HTMLInputElement>("#create-password")!,
   createConfirm: document.querySelector<HTMLInputElement>("#create-confirm")!,
+  createSubmit: document.querySelector<HTMLButtonElement>("#create-submit")!,
+  ruleLength: document.querySelector<HTMLLIElement>("#rule-length")!,
+  ruleMatch: document.querySelector<HTMLLIElement>("#rule-match")!,
   recovery: document.querySelector<HTMLDivElement>("#recovery")!,
   recoveryKey: document.querySelector<HTMLElement>("#recovery-key")!,
   unlock: document.querySelector<HTMLFormElement>("#unlock")!,
@@ -97,14 +107,35 @@ function renderVault(state: VaultStatus["state"]): void {
   view.recoveryKey.textContent = recoveryKey ?? "";
   view.unlock.hidden = state !== "locked";
   view.unlocked.hidden = state !== "unlocked" || recoveryKey !== null;
-  if (state === "none")
-    view.vaultNote.textContent =
-      "Create a vault to pseudonymize: DataFog swaps each value for a marker such as [[EMAIL_7KQ4ZM]] and keeps the original, encrypted, on this device.";
-  else if (state === "locked")
-    view.vaultNote.textContent = "Locked. Enter your password to unlock.";
-  else
-    view.vaultNote.textContent =
-      "Unlocked. It locks after 15 minutes without use, or when Chrome closes.";
+  view.vaultState.textContent = STATE_LABELS[state];
+}
+
+/**
+ * Mark a password rule as met or not, once the user has typed something.
+ *
+ * @param rule The rule's list item.
+ * @param met Whether it's met.
+ * @param typed Whether the user has typed a password yet.
+ */
+function markRule(rule: HTMLLIElement, met: boolean, typed: boolean): void {
+  rule.classList.toggle("met", typed && met);
+  rule.classList.toggle("unmet", typed && !met);
+}
+
+/**
+ * Check the new password against the rules, showing each as it's met.
+ *
+ * @returns Whether the password meets every rule.
+ */
+function checkPassword(): boolean {
+  const password = view.createPassword.value;
+  const confirm = view.createConfirm.value;
+  const long = password.length >= MIN_PASSWORD;
+  const match = password === confirm;
+  markRule(view.ruleLength, long, password !== "");
+  markRule(view.ruleMatch, match, confirm !== "");
+  view.createSubmit.disabled = !(long && match);
+  return long && match;
 }
 
 /**
@@ -202,22 +233,18 @@ async function create(password: string): Promise<void> {
 
 view.create.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!checkPassword()) return;
   const password = view.createPassword.value;
-  if (password.length < MIN_PASSWORD) {
-    showError(view.vaultError, "password_short");
-    return;
-  }
-  if (password !== view.createConfirm.value) {
-    showError(view.vaultError, "passwords_differ");
-    return;
-  }
   view.create.reset();
+  checkPassword();
   void create(password);
 });
+view.create.addEventListener("input", () => void checkPassword());
 
 view.unlock.addEventListener("submit", (event) => {
   event.preventDefault();
   const password = view.unlockPassword.value;
+  if (password === "") return;
   view.unlock.reset();
   void act({ type: "vault-unlock", password }, view.vaultError);
 });
@@ -240,6 +267,10 @@ document
     "click",
     () => void act({ type: "review-cancel" }, view.reviewError),
   );
+view.infoToggle.addEventListener("click", () => {
+  view.info.hidden = !view.info.hidden;
+  view.infoToggle.setAttribute("aria-expanded", String(!view.info.hidden));
+});
 document.querySelector("#copy-key")!.addEventListener("click", () => {
   if (recoveryKey) void navigator.clipboard.writeText(recoveryKey);
 });
