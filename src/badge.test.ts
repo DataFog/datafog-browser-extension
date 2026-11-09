@@ -45,6 +45,7 @@ function mount(): {
   const box = document.querySelector<HTMLElement>("[contenteditable]")!;
   const badge = new Badge({
     redact: () => {},
+    pseudonymize: () => {},
     dismiss: () => {},
     undo: () => {},
     redo: () => {},

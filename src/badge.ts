@@ -19,7 +19,13 @@ export type BadgeState =
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "clean" }
-  | { kind: "failed"; code?: string; counts?: Record<string, number> }
+  | {
+      kind: "failed";
+      code?: string;
+      counts?: Record<string, number>;
+      /** What failed, when it was an action on found values. */
+      action?: "redact" | "pseudonymize";
+    }
   | { kind: "found"; counts: Record<string, number> };
 
 const STYLE = `
@@ -81,7 +87,14 @@ const STYLE = `
   [hidden] { display: none !important; }
 `;
 
-const ACTIONS = ["redact", "dismiss", "undo", "redo", "send"] as const;
+const ACTIONS = [
+  "redact",
+  "pseudonymize",
+  "dismiss",
+  "undo",
+  "redo",
+  "send",
+] as const;
 type Action = (typeof ACTIONS)[number];
 
 const DOTS = '<span class="dots"><i></i><i></i><i></i></span>';
@@ -187,11 +200,13 @@ export class Badge {
           </p>
           <div class="actions">
             <button class="act undo" type="button"
-              title="Put back the values DataFog redacted.">Undo</button>
+              title="Put back the values DataFog replaced.">Undo</button>
             <button class="act redo" type="button"
-              title="Redact the same values again.">Redo</button>
+              title="Replace the same values again.">Redo</button>
             <button class="act dismiss" type="button"
               title="Hide this warning. Send with ChatGPT's own button.">Dismiss</button>
+            <button class="act pseudonymize" type="button"
+              title="Replace each value with a marker, keeping the original in your vault so it can be restored.">Pseudonymize</button>
             <button class="act primary redact" type="button">Redact</button>
             <button class="act send" type="button" hidden>Send anyway</button>
           </div>
@@ -213,6 +228,7 @@ export class Badge {
     });
     this.buttons = {
       redact: root.querySelector(".redact")!,
+      pseudonymize: root.querySelector(".pseudonymize")!,
       dismiss: root.querySelector(".dismiss")!,
       undo: root.querySelector(".undo")!,
       redo: root.querySelector(".redo")!,
@@ -277,9 +293,10 @@ export class Badge {
     } else if (state.kind === "failed") {
       // Say so rather than look like a check still running
       const updated = state.code === "extension_reloaded";
+      const action = state.action ?? (state.counts ? "redact" : "check");
       const title = updated
         ? "DataFog was updated"
-        : `DataFog couldn't ${state.counts ? "redact" : "check"} this text`;
+        : `DataFog couldn't ${action} this text`;
       this.dot.textContent = "!";
       this.dot.title = `${title}. Click for details.`;
       this.title.textContent = title;
@@ -363,6 +380,7 @@ export class Badge {
   private showActions(): void {
     const found = this.kind === "found";
     this.buttons.redact.hidden = !found;
+    this.buttons.pseudonymize.hidden = !found;
     this.buttons.dismiss.hidden = !found;
     this.buttons.undo.disabled = !this.history.undo;
     this.buttons.redo.disabled = !this.history.redo;

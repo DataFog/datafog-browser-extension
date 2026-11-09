@@ -6,9 +6,23 @@
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { NO_CHAT_BOX, type Request } from "./messages";
+import {
+  NO_CHAT_BOX,
+  type RedactResponse,
+  type Request,
+  type TabRequest,
+} from "./messages";
 
 type Reply = (request: Request) => Promise<unknown>;
+
+type TabListener = (
+  request: TabRequest,
+  sender: object,
+  respond: (response: unknown) => void,
+) => boolean;
+
+/** The content script's listener for the service worker's requests. */
+let tabListener: TabListener;
 
 const PAGE = '<form><textarea id="prompt-textarea"></textarea></form>';
 
@@ -22,7 +36,14 @@ const PAGE = '<form><textarea id="prompt-textarea"></textarea></form>';
 async function start(reply: Reply, page = PAGE): Promise<HTMLTextAreaElement> {
   document.body.innerHTML = page;
   Object.assign(globalThis, {
-    chrome: { runtime: { sendMessage: vi.fn(reply) } },
+    chrome: {
+      runtime: {
+        sendMessage: vi.fn(reply),
+        onMessage: {
+          addListener: (added: TabListener) => (tabListener = added),
+        },
+      },
+    },
   });
   await import("./content");
   return Array.from(document.querySelectorAll("textarea")).at(-1)!;
@@ -515,6 +536,106 @@ test("stops offering undo once the text changes", async () => {
 
   expect(panelButton("undo").disabled).toBe(true);
   expect(panelButton("redo").disabled).toBe(true);
+});
+
+/**
+ * Send a request from the service worker to the content script.
+ *
+ * @param request The request.
+ * @returns The content script's response.
+ */
+function fromWorker(request: TabRequest): Promise<unknown> {
+  return new Promise((resolve) => tabListener(request, {}, resolve));
+}
+
+const MARKED = "Ask [[EMAIL_7KQ4ZM]] or [[EMAIL_N3PX2D]] today";
+
+/**
+ * The edits an approved review makes to the two emails.
+ *
+ * @returns The marked text and its edits.
+ */
+function markers(): RedactResponse {
+  const values = [
+    ["jane@example.com", "[[EMAIL_7KQ4ZM]]"],
+    ["al@example.org", "[[EMAIL_N3PX2D]]"],
+  ];
+  return {
+    text: MARKED,
+    edits: values.map(([value, replacement]) => {
+      const at = TWO_EMAILS.indexOf(value);
+      return { start: at, end: at + value.length, replacement };
+    }),
+  };
+}
+
+test("asks for a review in the side panel when Pseudonymize is clicked", async () => {
+  const box = await start(coreForTwoEmails);
+  await type(box, TWO_EMAILS);
+
+  await press("pseudonymize");
+
+  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+    type: "pseudonymize",
+    text: TWO_EMAILS,
+  });
+  expect(box.value).toBe(TWO_EMAILS);
+});
+
+test("shows a failure when Pseudonymize can't be asked for", async () => {
+  const box = await start(async (request) =>
+    request.type === "pseudonymize"
+      ? { error: "no_response" }
+      : coreForTwoEmails(request),
+  );
+  await type(box, TWO_EMAILS);
+
+  await press("pseudonymize");
+
+  expect(badge().dot.className).toBe("dot failed");
+  expect(badge().title).toBe("DataFog couldn't pseudonymize this text");
+});
+
+test("tells the service worker what's in the chat box", async () => {
+  const box = await start(coreForTwoEmails);
+  await type(box, TWO_EMAILS);
+
+  expect(await fromWorker({ type: "chat-text" })).toEqual({
+    text: TWO_EMAILS,
+  });
+});
+
+test("puts approved markers in the chat box, and can undo them", async () => {
+  const box = await start(coreForTwoEmails);
+  await type(box, TWO_EMAILS);
+
+  expect(
+    await fromWorker({
+      type: "apply-pseudonyms",
+      before: TWO_EMAILS,
+      response: markers(),
+    }),
+  ).toEqual({});
+  await vi.advanceTimersByTimeAsync(400);
+  expect(box.value).toBe(MARKED);
+  expect(badge().dot.className).toBe("dot clean");
+
+  await press("undo");
+  expect(box.value).toBe(TWO_EMAILS);
+});
+
+test("leaves the chat box alone when it changed since the review", async () => {
+  const box = await start(coreForTwoEmails);
+  await type(box, `${TWO_EMAILS}!`);
+
+  expect(
+    await fromWorker({
+      type: "apply-pseudonyms",
+      before: TWO_EMAILS,
+      response: markers(),
+    }),
+  ).toEqual({ error: "chat_box_changed" });
+  expect(box.value).toBe(`${TWO_EMAILS}!`);
 });
 
 test("keeps the panel open through Undo and Redo, until a click elsewhere", async () => {
