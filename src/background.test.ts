@@ -4,12 +4,25 @@
 
 import { beforeEach, expect, test, vi } from "vitest";
 
-import { NO_CHAT_BOX, type OffscreenRequest, type Request } from "./messages";
+import {
+  NO_CHAT_BOX,
+  type OffscreenRequest,
+  type PanelRequest,
+  type Request,
+  type TabRequest,
+} from "./messages";
 import { DEFAULT_SETTINGS } from "./settings";
 
+/** Who a message came from, as Chrome reports it. */
+interface Sender {
+  tab?: { id?: number; windowId?: number };
+  id?: string;
+  url?: string;
+}
+
 type Listener = (
-  request: Request,
-  sender: { tab?: { id?: number; windowId?: number } },
+  request: Request | PanelRequest,
+  sender: Sender,
   respond: (response: unknown) => void,
 ) => boolean;
 
@@ -29,6 +42,18 @@ let connect: (port: unknown) => void = () => {};
 const setBadgeText = vi.fn(async () => {});
 const setTitle = vi.fn(async () => {});
 const openPanel = vi.fn(async (_options: { tabId: number }) => {});
+const tabMessage = vi.fn(
+  async (_tabId: number, _request: TabRequest): Promise<unknown> => ({}),
+);
+const setStorage = vi.fn(async (_items: object) => {});
+const removeStorage = vi.fn(async (_keys: string) => {});
+let stored: object;
+
+const PANEL: Sender = {
+  id: "datafog",
+  url: "chrome-extension://datafog/panel.html",
+};
+const ROUTING = { recordId: "cmVj", namespace: "bnM=" };
 
 /**
  * Send a request to the service worker as a content script would.
@@ -36,10 +61,11 @@ const openPanel = vi.fn(async (_options: { tabId: number }) => {});
  * @param request The request.
  * @returns The service worker's response.
  */
-function send(request: Request): Promise<unknown> {
-  return new Promise((resolve) =>
-    listener(request, { tab: { id: 7, windowId: 3 } }, resolve),
-  );
+function send(
+  request: Request | PanelRequest,
+  sender: Sender = { tab: { id: 7, windowId: 3 } },
+): Promise<unknown> {
+  return new Promise((resolve) => listener(request, sender, resolve));
 }
 
 /**
@@ -68,6 +94,7 @@ beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
   open = false;
+  stored = {};
   Object.assign(globalThis, {
     chrome: {
       action: { setBadgeText, setTitle },
@@ -88,9 +115,18 @@ beforeEach(async () => {
           },
         },
         sendMessage,
+        id: "datafog",
+        getURL: (path: string) => `chrome-extension://datafog/${path}`,
       },
       sidePanel: { open: openPanel, setPanelBehavior: vi.fn(async () => {}) },
-      storage: { local: { get: vi.fn(async () => ({})) } },
+      storage: {
+        local: {
+          get: vi.fn(async () => stored),
+          set: setStorage,
+          remove: removeStorage,
+        },
+      },
+      tabs: { sendMessage: tabMessage },
     },
   });
   await import("./background");
@@ -164,4 +200,143 @@ test("opens the side panel again after it closes", async () => {
   await send({ type: "open-panel" });
 
   expect(openPanel).toHaveBeenCalledWith({ tabId: 7 });
+});
+
+test("refuses vault requests from a web page", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+  expect(await send({ type: "vault-unlock", password: "pw" })).toEqual({
+    error: "not_allowed",
+  });
+  expect(
+    await send(
+      { type: "vault-status" },
+      { id: "datafog", url: "https://chatgpt.com/" },
+    ),
+  ).toEqual({ error: "not_allowed" });
+  expect(sendMessage).not.toHaveBeenCalled();
+  warn.mockRestore();
+});
+
+test("forwards the side panel's requests with the vault's routing", async () => {
+  stored = { vault: ROUTING };
+  sendMessage.mockResolvedValueOnce({ state: "locked" });
+
+  expect(await send({ type: "vault-status" }, PANEL)).toEqual({
+    state: "locked",
+  });
+  expect(sendMessage).toHaveBeenCalledWith({
+    target: "offscreen",
+    request: { type: "vault-status" },
+    settings: DEFAULT_SETTINGS,
+    routing: ROUTING,
+  });
+});
+
+test("stores a new vault's routing, and passes on its recovery key", async () => {
+  sendMessage.mockResolvedValueOnce({
+    status: { state: "unlocked" },
+    recoveryKey: "S2V5",
+    routing: ROUTING,
+  });
+
+  expect(
+    await send({ type: "vault-create", password: "correct horse" }, PANEL),
+  ).toEqual({ status: { state: "unlocked" }, recoveryKey: "S2V5" });
+  expect(setStorage).toHaveBeenCalledWith({ vault: ROUTING });
+});
+
+test("forgets the vault's routing once it's reset", async () => {
+  sendMessage.mockResolvedValueOnce({ state: "none" });
+
+  expect(
+    await send({ type: "vault-reset", password: "correct horse" }, PANEL),
+  ).toEqual({ state: "none" });
+  expect(removeStorage).toHaveBeenCalledWith("vault");
+});
+
+test("keeps the routing when a reset fails", async () => {
+  sendMessage.mockResolvedValueOnce({ error: "Authentication" });
+
+  expect(await send({ type: "vault-reset", password: "wrong" }, PANEL)).toEqual(
+    { error: "Authentication" },
+  );
+  expect(removeStorage).not.toHaveBeenCalled();
+});
+
+test("opens the side panel for Pseudonymize, within the click", async () => {
+  sendMessage.mockResolvedValueOnce({ state: "locked", waiting: true });
+
+  const pending = send({ type: "pseudonymize", text: "a@b.co" });
+
+  expect(openPanel).toHaveBeenCalledWith({ tabId: 7 });
+  await pending;
+  expect(sendMessage).toHaveBeenCalledWith(
+    expect.objectContaining({
+      request: { type: "pseudonymize", text: "a@b.co", tabId: 7 },
+    }),
+  );
+});
+
+test("keeps an open side panel open for Pseudonymize", async () => {
+  const panel = connectPanel(3);
+  sendMessage.mockResolvedValueOnce({ state: "unlocked" });
+
+  await send({ type: "pseudonymize", text: "a@b.co" });
+
+  expect(openPanel).not.toHaveBeenCalled();
+  expect(panel.postMessage).not.toHaveBeenCalled();
+});
+
+/**
+ * Answer the offscreen document's vault requests during an approval.
+ *
+ * @param message The forwarded request.
+ * @returns Its response.
+ */
+async function offscreenForApproval(
+  message: OffscreenRequest,
+): Promise<unknown> {
+  switch (message.request.type) {
+    case "review-source":
+      return { source: { tabId: 7, text: "a@b.co" } };
+    case "review-approve":
+      return {
+        tabId: 7,
+        text: "a@b.co",
+        response: { text: "[[EMAIL_7KQ4ZM]]", edits: [] },
+      };
+    default:
+      return { state: "unlocked" };
+  }
+}
+
+test("saves an approved review and has the tab apply it", async () => {
+  sendMessage.mockImplementation(offscreenForApproval);
+  tabMessage.mockImplementation(async (_tabId, request) =>
+    request.type === "chat-text" ? { text: "a@b.co" } : {},
+  );
+
+  expect(await send({ type: "review-approve" }, PANEL)).toEqual({
+    state: "unlocked",
+  });
+  expect(tabMessage).toHaveBeenLastCalledWith(7, {
+    type: "apply-pseudonyms",
+    before: "a@b.co",
+    response: { text: "[[EMAIL_7KQ4ZM]]", edits: [] },
+  });
+});
+
+test("drops the review when the chat box changed since", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  sendMessage.mockImplementation(offscreenForApproval);
+  tabMessage.mockResolvedValue({ text: "a@b.co and more" });
+
+  expect(await send({ type: "review-approve" }, PANEL)).toEqual({
+    error: "chat_box_changed",
+  });
+  const sent = sendMessage.mock.calls.map(([message]) => message.request.type);
+  expect(sent).toContain("review-cancel");
+  expect(sent).not.toContain("review-approve");
+  warn.mockRestore();
 });

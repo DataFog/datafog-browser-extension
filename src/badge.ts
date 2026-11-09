@@ -19,7 +19,13 @@ export type BadgeState =
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "clean" }
-  | { kind: "failed"; code?: string; counts?: Record<string, number> }
+  | {
+      kind: "failed";
+      code?: string;
+      counts?: Record<string, number>;
+      /** What failed, when it was an action on found values. */
+      action?: "redact" | "pseudonymize";
+    }
   | { kind: "found"; counts: Record<string, number> };
 
 const STYLE = `
@@ -69,19 +75,34 @@ const STYLE = `
   }
   .report { margin: 8px 0 0; color: #666; font-size: 12px; }
   .report a { color: inherit; }
-  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .history { display: flex; gap: 4px; margin-top: 8px; }
+  .actions {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    margin-top: 12px;
+  }
+  .resolve { display: flex; gap: 8px; margin-left: auto; }
   .send { flex-basis: 100%; }
-  .dismiss { margin-left: auto; }
   button.act {
     border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit;
     border: 1px solid #d0d0d0; background: #fff; color: #1f1f1f;
   }
-  button.primary { background: #1f1f1f; color: #fff; border-color: #1f1f1f; }
+  button.small { padding: 2px 8px; font-size: 12px; border-radius: 6px; }
+  button.primary {
+    background: #1f1f1f; color: #fff; border-color: #1f1f1f;
+    padding: 7px 12px; font-weight: 600;
+  }
   button.act:disabled { opacity: 0.4; cursor: default; }
   [hidden] { display: none !important; }
 `;
 
-const ACTIONS = ["redact", "dismiss", "undo", "redo", "send"] as const;
+const ACTIONS = [
+  "redact",
+  "pseudonymize",
+  "dismiss",
+  "undo",
+  "redo",
+  "send",
+] as const;
 type Action = (typeof ACTIONS)[number];
 
 const DOTS = '<span class="dots"><i></i><i></i><i></i></span>';
@@ -155,6 +176,7 @@ export class Badge {
   private readonly note: HTMLParagraphElement;
   private readonly report: HTMLParagraphElement;
   private readonly buttons: Record<Action, HTMLButtonElement>;
+  private readonly actions: HTMLDivElement;
   private history: { undo: boolean; redo: boolean } = {
     undo: false,
     redo: false,
@@ -185,14 +207,21 @@ export class Badge {
             <a href="${REPORT_URL}" target="_blank" rel="noreferrer">Report this problem</a>
             or email <a href="mailto:${HELP_EMAIL}">${HELP_EMAIL}</a>
           </p>
+          <div class="history">
+            <button class="act small undo" type="button"
+              title="Put back the values DataFog replaced.">Undo</button>
+            <button class="act small redo" type="button"
+              title="Replace the same values again.">Redo</button>
+          </div>
           <div class="actions">
-            <button class="act undo" type="button"
-              title="Put back the values DataFog redacted.">Undo</button>
-            <button class="act redo" type="button"
-              title="Redact the same values again.">Redo</button>
             <button class="act dismiss" type="button"
               title="Hide this warning. Send with ChatGPT's own button.">Dismiss</button>
-            <button class="act primary redact" type="button">Redact</button>
+            <div class="resolve">
+              <button class="act primary pseudonymize" type="button"
+                title="Replace each value with a marker, keeping the original in your vault so it can be restored.">Pseudonymize</button>
+              <button class="act primary redact" type="button"
+                title="Replace each value with its type, such as [EMAIL].">Redact</button>
+            </div>
             <button class="act send" type="button" hidden>Send anyway</button>
           </div>
         </div>
@@ -207,12 +236,14 @@ export class Badge {
     this.paused = root.querySelector(".paused")!;
     this.note = root.querySelector(".note")!;
     this.report = root.querySelector(".report")!;
+    this.actions = root.querySelector(".actions")!;
 
     this.dot.addEventListener("click", () => {
       if (this.kind !== "checking") this.panel.hidden = !this.panel.hidden;
     });
     this.buttons = {
       redact: root.querySelector(".redact")!,
+      pseudonymize: root.querySelector(".pseudonymize")!,
       dismiss: root.querySelector(".dismiss")!,
       undo: root.querySelector(".undo")!,
       redo: root.querySelector(".redo")!,
@@ -277,9 +308,10 @@ export class Badge {
     } else if (state.kind === "failed") {
       // Say so rather than look like a check still running
       const updated = state.code === "extension_reloaded";
+      const action = state.action ?? (state.counts ? "redact" : "check");
       const title = updated
         ? "DataFog was updated"
-        : `DataFog couldn't ${state.counts ? "redact" : "check"} this text`;
+        : `DataFog couldn't ${action} this text`;
       this.dot.textContent = "!";
       this.dot.title = `${title}. Click for details.`;
       this.title.textContent = title;
@@ -346,6 +378,7 @@ export class Badge {
     this.paused.textContent = reason;
     this.paused.hidden = reason === null;
     this.buttons.send.hidden = reason === null;
+    this.showActions();
     if (reason !== null) this.panel.hidden = false;
   }
 
@@ -363,7 +396,9 @@ export class Badge {
   private showActions(): void {
     const found = this.kind === "found";
     this.buttons.redact.hidden = !found;
+    this.buttons.pseudonymize.hidden = !found;
     this.buttons.dismiss.hidden = !found;
+    this.actions.hidden = !found && this.buttons.send.hidden;
     this.buttons.undo.disabled = !this.history.undo;
     this.buttons.redo.disabled = !this.history.redo;
   }

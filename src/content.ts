@@ -1,8 +1,9 @@
 /**
  * Content script on chatgpt.com: watches the chat box as the user types.
  *
- * Redact edits the chat box; Dismiss hides the warning, and the user sends with
- * ChatGPT's own button.
+ * Redact and Pseudonymize edit the chat box; Dismiss hides the warning, and the
+ * user sends with ChatGPT's own button. Pseudonymize is reviewed in the side
+ * panel, and its markers come back from the service worker once approved.
  */
 
 import { Badge } from "./badge";
@@ -13,11 +14,12 @@ import {
   type RedactResponse,
   type Request,
   type ScanResponse,
+  type TabRequest,
 } from "./messages";
 import { clickSend, watchPage } from "./page";
 import { mountTab } from "./tab";
 
-/** The last redaction, kept so it can be undone and redone. */
+/** The last redaction or pseudonymization, kept so it can be undone and redone. */
 interface Redaction {
   /** The chat box's text without, and with, the redaction. */
   before: string;
@@ -66,6 +68,7 @@ let sending = false;
 
 const badge = new Badge({
   redact: redactComposer,
+  pseudonymize: pseudonymizeComposer,
   dismiss,
   undo: undoRedaction,
   redo: redoRedaction,
@@ -439,15 +442,65 @@ async function redactComposer(): Promise<void> {
     return;
   }
 
-  applyEdits(composer, text, response);
+  await replaceFound(composer, text, response);
+}
+
+/**
+ * Replace found values in the chat box, keeping the change for Undo.
+ *
+ * @param element The chat box.
+ * @param text Its current text.
+ * @param response The new text and the edits that make it.
+ */
+async function replaceFound(
+  element: HTMLElement,
+  text: string,
+  response: RedactResponse,
+): Promise<void> {
+  applyEdits(element, text, response);
   redaction = {
     before: text,
-    after: readText(composer),
+    after: readText(element),
     redact: response,
     restore: restoring(text, response),
   };
   dismissedText = null;
   await scanNow(true);
+}
+
+/** Ask for the chat box's values to be reviewed in the side panel. */
+async function pseudonymizeComposer(): Promise<void> {
+  if (!composer) return;
+  const response = await ask<object>({
+    type: "pseudonymize",
+    text: readText(composer),
+  });
+  if ("error" in response) {
+    badge.show({
+      kind: "failed",
+      code: response.error,
+      counts: lastCounts,
+      action: "pseudonymize",
+    });
+  }
+}
+
+/**
+ * Answer the service worker: the chat box's text, or markers to put in it.
+ *
+ * @param request The request.
+ * @returns The response.
+ */
+async function answer(request: TabRequest): Promise<object> {
+  if (request.type === "chat-text") {
+    return { text: composer ? readText(composer) : null };
+  }
+  // Approved in the side panel for this text; anything since wins
+  if (!composer || readText(composer) !== request.before) {
+    return { error: "chat_box_changed" };
+  }
+  await replaceFound(composer, request.before, request.response);
+  return {};
 }
 
 /**
@@ -561,6 +614,13 @@ new MutationObserver(() => {
   if (element && element !== composer) bind(element);
   else badge.reposition();
 }).observe(document.documentElement, { childList: true, subtree: true });
+
+chrome.runtime.onMessage.addListener(
+  (request: TabRequest, _sender, respond) => {
+    void answer(request).then(respond);
+    return true;
+  },
+);
 
 // The page tab opens or closes the side panel; send right away, within the click
 const warnTab = mountTab(() => void togglePanel());

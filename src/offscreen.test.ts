@@ -12,6 +12,7 @@ vi.mock("./detect", () => ({
   ready: vi.fn(async () => {}),
   countFindings: vi.fn(() => ({ EMAIL: 1 })),
   redact: vi.fn(() => ({ text: "[EMAIL]", edits: [] })),
+  workspaceFindings: vi.fn(() => []),
 }));
 
 type Listener = (

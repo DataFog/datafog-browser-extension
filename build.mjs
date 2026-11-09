@@ -10,6 +10,8 @@ import { cpSync, mkdirSync, rmSync } from "node:fs";
 
 const watch = process.argv.includes("--watch");
 const wasm = "node_modules/@datafog/wasm/dist/datafog_wasm_bg.wasm";
+// FogVault runs in its own module Worker, loaded from these files unbundled
+const fogvault = "node_modules/@datafog/fogvault-browser/dist";
 
 /**
  * Empty an output folder and copy in the wasm and static files.
@@ -32,6 +34,8 @@ prepare("dist", [
   "options.html",
   "panel.html",
 ]);
+// Its licenses, under third-party/, ship with it
+cpSync(fogvault, "dist/fogvault", { recursive: true });
 prepare("harness", ["harness.html"]);
 
 const common = { bundle: true, target: "chrome120", logLevel: "info" };

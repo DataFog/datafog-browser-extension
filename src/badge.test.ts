@@ -45,6 +45,7 @@ function mount(): {
   const box = document.querySelector<HTMLElement>("[contenteditable]")!;
   const badge = new Badge({
     redact: () => {},
+    pseudonymize: () => {},
     dismiss: () => {},
     undo: () => {},
     redo: () => {},
@@ -121,4 +122,20 @@ test("hides when the chat box is off screen", async () => {
   await new Promise(requestAnimationFrame);
 
   expect(wrap.style.visibility).toBe("hidden");
+});
+
+test("shows Dismiss, Pseudonymize and Redact only when values are found", () => {
+  const { badge, wrap } = mount();
+  const actions = wrap.querySelector<HTMLElement>(".actions")!;
+
+  badge.show({ kind: "clean" });
+  expect(actions.hidden).toBe(true);
+
+  badge.show({ kind: "found", counts: { EMAIL: 1 } });
+  expect(actions.hidden).toBe(false);
+  const resolve = actions.querySelector(".resolve")!;
+  expect(Array.from(resolve.children, (button) => button.textContent)).toEqual([
+    "Pseudonymize",
+    "Redact",
+  ]);
 });
