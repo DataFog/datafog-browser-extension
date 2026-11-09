@@ -17,7 +17,8 @@ import type { WorkspaceFinding } from "@datafog/wasm";
 import type {
   CreatedVault,
   Pseudonymized,
-  Restored,
+  RestoredValue,
+  RestoredWithValues,
   RedactEdit,
   ReviewItem,
   ReviewSource,
@@ -288,18 +289,26 @@ export class VaultHost<V extends Vault = Vault> {
    * vault can't restore, such as ones it never issued, are left as they are.
    *
    * @param text Text with markers, such as an answer.
-   * @returns The restored text, and how many markers were and weren't.
+   * @returns The restored text, how many markers were and weren't, and each
+   *   restored marker's value.
    */
-  restore(text: string): Restored {
+  restore(text: string): RestoredWithValues {
     const owner = this.owner;
     if (!owner || owner.closed) throw failure("vault_locked");
     this.touch();
+    const values: RestoredValue[] = [];
+    for (const marker of new Set(text.match(/\[\[[A-Z0-9_]+\]\]/g))) {
+      const original = owner.restoreReport(marker).text;
+      if (original !== null && original !== marker)
+        values.push({ marker, original });
+    }
     const report = owner.restoreReport(text);
     if (report.text !== null)
       return {
         text: report.text,
         restored: report.restoredMarkers,
         unrestored: 0,
+        values,
       };
     // Core restores all or nothing, so restore the text between the problems
     let restored = 0;
@@ -321,7 +330,12 @@ export class VaultHost<V extends Vault = Vault> {
       restored += part.text === null ? 0 : part.restoredMarkers;
       at = utf16Range.end;
     }
-    return { text: parts.join(""), restored, unrestored: issues.length };
+    return {
+      text: parts.join(""),
+      restored,
+      unrestored: issues.length,
+      values,
+    };
   }
 
   /**

@@ -14,7 +14,8 @@ import {
   type PanelRequest,
   type Pseudonymized,
   type Request,
-  type Restored,
+  type RestoredInPage,
+  type RestoredWithValues,
   type ReviewSource,
   type TabRequest,
   type VaultRequest,
@@ -121,18 +122,29 @@ async function askTab<T>(tabId: number, request: TabRequest): Promise<T> {
 }
 
 /**
- * Restore the markers in the latest answer of the chat in a window's active
- * tab.
+ * The active tab in a window.
  *
- * @param windowId The side panel's window.
- * @returns The restored answer.
+ * @param windowId The window.
+ * @returns The tab's id.
  */
-async function restoreLatest(windowId: number): Promise<Restored> {
+async function activeTab(windowId: number): Promise<number> {
   const [tab] = await chrome.tabs.query({ active: true, windowId });
   if (tab?.id === undefined) throw coded("no_chat");
+  return tab.id;
+}
+
+/**
+ * Restore the markers in the latest answer of the chat in a window's active
+ * tab, and show the original values in place in that answer.
+ *
+ * @param windowId The side panel's window.
+ * @returns The restored answer, and how many values show in the page.
+ */
+async function restoreLatest(windowId: number): Promise<RestoredInPage> {
+  const tabId = await activeTab(windowId);
   let answer: string | null;
   try {
-    ({ text: answer } = await askTab<{ text: string | null }>(tab.id, {
+    ({ text: answer } = await askTab<{ text: string | null }>(tabId, {
       type: "latest-answer",
     }));
   } catch {
@@ -140,7 +152,39 @@ async function restoreLatest(windowId: number): Promise<Restored> {
     throw coded("no_chat");
   }
   if (answer === null) throw coded("no_answer");
-  return forwardVault<Restored>({ type: "restore", text: answer });
+  const { values, ...restored } = await forwardVault<RestoredWithValues>({
+    type: "restore",
+    text: answer,
+  });
+  const { shown } = await askTab<{ shown: number }>(tabId, {
+    type: "show-originals",
+    values,
+  });
+  return { ...restored, shown };
+}
+
+/**
+ * Put the markers back in a window's active tab.
+ *
+ * @param windowId The side panel's window.
+ * @returns Nothing of note.
+ */
+async function hideInTab(windowId: number): Promise<object> {
+  await askTab(await activeTab(windowId), { type: "hide-originals" }).catch(
+    () => {},
+  );
+  return {};
+}
+
+/** Once the vault locks, put the markers back in every tab. */
+async function hideIfLocked(): Promise<void> {
+  const { state } = await forwardVault<VaultStatus>({ type: "vault-status" });
+  if (state === "unlocked") return;
+  for (const { id } of await chrome.tabs.query({})) {
+    // Tabs without DataFog's content script don't answer
+    if (id !== undefined)
+      await askTab(id, { type: "hide-originals" }).catch(() => {});
+  }
 }
 
 /**
@@ -179,6 +223,7 @@ async function approveReview(): Promise<unknown> {
 async function handlePanel(request: PanelRequest): Promise<unknown> {
   if (request.type === "review-approve") return approveReview();
   if (request.type === "restore-latest") return restoreLatest(request.windowId);
+  if (request.type === "hide-originals") return hideInTab(request.windowId);
   if (request.type === "vault-reset") {
     const status = await forwardVault<VaultStatus>(request);
     await chrome.storage.local.remove("vault");
@@ -214,6 +259,7 @@ const PANEL_REQUESTS = new Set<string>([
   "review-approve",
   "review-cancel",
   "restore-latest",
+  "hide-originals",
 ]);
 
 /**
@@ -287,6 +333,9 @@ chrome.runtime.onMessage.addListener(
     sender,
     respond,
   ) => {
+    // The vault's notices to the side panel also say when it locked
+    if ("target" in request && request.target === "panel")
+      void hideIfLocked().catch(() => {});
     // Messages for the offscreen document or the side panel aren't for us
     if ("target" in request) return false;
     let pending: Promise<unknown>;

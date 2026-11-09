@@ -905,3 +905,24 @@ test("reads the latest answer from ChatGPT's response containers", async () => {
     text: "Write to [[EMAIL_7KQ4ZM]]",
   });
 });
+
+test("shows the original values in the latest answer, and hides them", async () => {
+  await start(
+    async () => ({}),
+    `<main>
+      <div data-dil-response><p>Old [[EMAIL_7KQ4ZM]]</p></div>
+      <div data-dil-response><p>Write to [[EMAIL_7KQ4ZM]]</p></div>
+    </main>${PAGE}`,
+  );
+  const [older, latest] = document.querySelectorAll("[data-dil-response]");
+  const values = [{ marker: "[[EMAIL_7KQ4ZM]]", original: "jane@example.com" }];
+
+  expect(await fromWorker({ type: "show-originals", values })).toEqual({
+    shown: 1,
+  });
+  expect(latest.querySelector("datafog-original")).not.toBeNull();
+  expect(older.querySelector("datafog-original")).toBeNull();
+
+  await fromWorker({ type: "hide-originals" });
+  expect(latest.textContent).toBe("Write to [[EMAIL_7KQ4ZM]]");
+});

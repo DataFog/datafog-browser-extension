@@ -328,10 +328,15 @@ test("restores the markers it issued", async () => {
 
   const restored = host.restore(`Sure: ${response.text}`);
 
+  const [first, second] = response.edits.map((edit) => edit.replacement);
   expect(restored).toEqual({
     text: `Sure: ${TEXT}`,
     restored: 2,
     unrestored: 0,
+    values: [
+      { marker: first, original: "jane@example.com" },
+      { marker: second, original: "al@example.org" },
+    ],
   });
   expect(host.status(routing).state).toBe("unlocked");
 });
@@ -350,6 +355,7 @@ test("leaves markers it can't restore as they are", async () => {
     text: "jane@example.com and [[EMAIL_ZZZZZZ]] and jane@example.com",
     restored: 2,
     unrestored: 1,
+    values: [{ marker: first.replacement, original: "jane@example.com" }],
   });
 });
 

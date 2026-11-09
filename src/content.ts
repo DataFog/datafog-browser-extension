@@ -16,6 +16,7 @@ import {
   type ScanResponse,
   type TabRequest,
 } from "./messages";
+import { hideOriginals, MARKER, showOriginals } from "./originals";
 import { clickSend, watchPage } from "./page";
 import { mountTab } from "./tab";
 
@@ -493,16 +494,13 @@ const ANSWER_SELECTORS = [
   ".markdown",
 ];
 
-/** A marker such as [[EMAIL_7KQ4ZM]]. */
-const MARKER = /\[\[[A-Z0-9_]+\]\]/;
-
 /**
- * The text of the last element on the page with a marker in it, outside the
- * chat box: a fallback for when ChatGPT's answers can't be found by name.
+ * The last element on the page with a marker in it, outside the chat box: a
+ * fallback for when ChatGPT's answers can't be found by name.
  *
- * @returns Its text, or null if no marker is on the page.
+ * @returns The element, or null if no marker is on the page.
  */
-function lastMarkedText(): string | null {
+function lastMarkedBlock(): Element | null {
   const box = composer?.closest("form") ?? composer;
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   let found: Element | null = null;
@@ -513,22 +511,33 @@ function lastMarkedText(): string | null {
     if (MARKER.test(node.textContent ?? "")) found = parent;
   }
   // The answer's whole text block, not only the run with the marker
-  const block = found?.closest("article, li, p, pre, div") ?? found;
-  return block?.textContent?.trim() || null;
+  return found?.closest("article, li, p, pre, div") ?? found;
 }
 
 /**
- * The text of the chat's latest answer.
+ * The chat's latest answer.
  *
- * @returns Its text, or null if there's no answer yet.
+ * @returns Its element, or null if there's no answer yet.
  */
-function latestAnswer(): string | null {
+function latestAnswer(): HTMLElement | null {
   for (const selector of ANSWER_SELECTORS) {
     const answers = document.querySelectorAll<HTMLElement>(selector);
-    const text = answers.item(answers.length - 1)?.innerText.trim();
-    if (text) return text;
+    const last = answers.item(answers.length - 1);
+    if (last?.innerText.trim()) return last;
   }
-  return lastMarkedText();
+  const block = lastMarkedBlock();
+  return block instanceof HTMLElement ? block : null;
+}
+
+/**
+ * An answer's text, without the runs of blank lines tables leave.
+ *
+ * @param element The answer's element.
+ * @returns Its text, or null if it has none.
+ */
+function answerText(element: HTMLElement | null): string | null {
+  const text = element?.innerText.replaceAll(/\n{3,}/g, "\n\n").trim();
+  return text ? text : null;
 }
 
 /**
@@ -542,7 +551,16 @@ async function answer(request: TabRequest): Promise<object> {
   if (request.type === "chat-text") {
     return { text: composer ? readText(composer) : null };
   }
-  if (request.type === "latest-answer") return { text: latestAnswer() };
+  if (request.type === "latest-answer")
+    return { text: answerText(latestAnswer()) };
+  if (request.type === "show-originals") {
+    const latest = latestAnswer();
+    return { shown: latest ? showOriginals(latest, request.values) : 0 };
+  }
+  if (request.type === "hide-originals") {
+    hideOriginals();
+    return {};
+  }
   // Approved in the side panel for this text; anything since wins
   if (!composer || readText(composer) !== request.before) {
     return { error: "chat_box_changed" };
