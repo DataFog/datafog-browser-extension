@@ -433,3 +433,18 @@ test("offers Restore only while unlocked, and clears it on lock", async () => {
   ).toBe(true);
   expect($("#restored").hidden).toBe(true);
 });
+
+test("says when none of the answer's markers could be restored", async () => {
+  await start((request) =>
+    request.type === "restore-latest"
+      ? { text: "[[EMAIL_ZZZZZZ]]", restored: 0, unrestored: 2, shown: 0 }
+      : { ...LOCKED, state: "unlocked" },
+  );
+
+  $("#restore-latest").click();
+  await settle();
+
+  expect($("#restored-summary").textContent).toBe(
+    "None of the 2 markers in this answer could be restored.",
+  );
+});

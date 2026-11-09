@@ -25,6 +25,7 @@ const EXPLAINED: Record<string, string> = {
   no_chat: "Open a ChatGPT chat in this tab to restore its latest answer.",
   no_answer: "There's no answer in this chat yet.",
   vault_locked: "Unlock your vault to restore.",
+  no_markers: "There are no markers in ChatGPT's latest answer.",
 };
 
 /** The lock's body, shared by both icons. */
@@ -248,14 +249,15 @@ function showRestored(restored: RestoredInPage | null): void {
   view.restored.hidden = restored === null;
   restoredText = restored?.text ?? "";
   if (!restored) return;
-  const where =
-    restored.shown > 0
-      ? `Showing ${restored.shown} original value${restored.shown === 1 ? "" : "s"} in ChatGPT's answer.`
-      : `Restored ${markers(restored.restored)}, but couldn't show them in the page. Copy the restored answer instead.`;
   const left = restored.unrestored
     ? ` ${markers(restored.unrestored)} couldn't be restored and stayed as is.`
     : "";
-  view.restoredSummary.textContent = `${where}${left}`;
+  let summary = `Showing ${restored.shown} original value${restored.shown === 1 ? "" : "s"} in ChatGPT's answer.${left}`;
+  if (restored.restored === 0)
+    summary = `None of the ${markers(restored.unrestored)} in this answer could be restored.`;
+  else if (restored.shown === 0)
+    summary = `Restored ${markers(restored.restored)}, but couldn't show them in the page. Copy the restored answer instead.${left}`;
+  view.restoredSummary.textContent = summary;
 }
 
 /** Put the markers back in this window's chat. */

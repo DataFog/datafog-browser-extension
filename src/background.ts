@@ -156,6 +156,7 @@ async function restoreLatest(windowId: number): Promise<RestoredInPage> {
     type: "restore",
     text: answer,
   });
+  if (restored.restored + restored.unrestored === 0) throw coded("no_markers");
   const { shown } = await askTab<{ shown: number }>(tabId, {
     type: "show-originals",
     values,

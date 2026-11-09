@@ -926,3 +926,19 @@ test("shows the original values in the latest answer, and hides them", async () 
   await fromWorker({ type: "hide-originals" });
   expect(latest.textContent).toBe("Write to [[EMAIL_7KQ4ZM]]");
 });
+
+test("reads the markers under shown values, so Restore works again", async () => {
+  await start(
+    async () => ({}),
+    `<main><div data-dil-response><p>Write to [[EMAIL_7KQ4ZM]]</p></div></main>${PAGE}`,
+  );
+  const values = [{ marker: "[[EMAIL_7KQ4ZM]]", original: "jane@example.com" }];
+  await fromWorker({ type: "show-originals", values });
+
+  expect(await fromWorker({ type: "latest-answer" })).toEqual({
+    text: "Write to [[EMAIL_7KQ4ZM]]",
+  });
+  expect(await fromWorker({ type: "show-originals", values })).toEqual({
+    shown: 1,
+  });
+});

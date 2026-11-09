@@ -551,8 +551,11 @@ async function answer(request: TabRequest): Promise<object> {
   if (request.type === "chat-text") {
     return { text: composer ? readText(composer) : null };
   }
-  if (request.type === "latest-answer")
+  if (request.type === "latest-answer") {
+    // Shown values aren't in the page's text; read the markers under them
+    hideOriginals();
     return { text: answerText(latestAnswer()) };
+  }
   if (request.type === "show-originals") {
     const latest = latestAnswer();
     return { shown: latest ? showOriginals(latest, request.values) : 0 };

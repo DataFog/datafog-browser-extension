@@ -406,3 +406,21 @@ test("hides the values in every tab once the vault locks", async () => {
   );
   expect(tabMessage).toHaveBeenCalledWith(7, { type: "hide-originals" });
 });
+
+test("says when the latest answer has no markers", async () => {
+  tabMessage.mockResolvedValueOnce({ text: "Nothing to restore" });
+  sendMessage.mockResolvedValueOnce({
+    text: "Nothing to restore",
+    restored: 0,
+    unrestored: 0,
+    values: [],
+  });
+
+  expect(await send({ type: "restore-latest", windowId: 3 }, PANEL)).toEqual({
+    error: "no_markers",
+  });
+  expect(tabMessage).not.toHaveBeenCalledWith(
+    7,
+    expect.objectContaining({ type: "show-originals" }),
+  );
+});
