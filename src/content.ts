@@ -485,17 +485,49 @@ async function pseudonymizeComposer(): Promise<void> {
   }
 }
 
+/** Where ChatGPT has kept its answers, newest last; it changes without notice. */
+const ANSWER_SELECTORS = [
+  '[data-message-author-role="assistant"]',
+  'article[data-turn="assistant"]',
+  ".markdown",
+];
+
+/** A marker such as [[EMAIL_7KQ4ZM]]. */
+const MARKER = /\[\[[A-Z0-9_]+\]\]/;
+
+/**
+ * The text of the last element on the page with a marker in it, outside the
+ * chat box: a fallback for when ChatGPT's answers can't be found by name.
+ *
+ * @returns Its text, or null if no marker is on the page.
+ */
+function lastMarkedText(): string | null {
+  const box = composer?.closest("form") ?? composer;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let found: Element | null = null;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const parent = node.parentElement;
+    if (!parent || box?.contains(parent) || parent.closest("datafog-badge"))
+      continue;
+    if (MARKER.test(node.textContent ?? "")) found = parent;
+  }
+  // The answer's whole text block, not only the run with the marker
+  const block = found?.closest("article, li, p, pre, div") ?? found;
+  return block?.textContent?.trim() || null;
+}
+
 /**
  * The text of the chat's latest answer.
  *
  * @returns Its text, or null if there's no answer yet.
  */
 function latestAnswer(): string | null {
-  const answers = document.querySelectorAll<HTMLElement>(
-    '[data-message-author-role="assistant"]',
-  );
-  const text = answers.item(answers.length - 1)?.innerText.trim();
-  return text ? text : null;
+  for (const selector of ANSWER_SELECTORS) {
+    const answers = document.querySelectorAll<HTMLElement>(selector);
+    const text = answers.item(answers.length - 1)?.innerText.trim();
+    if (text) return text;
+  }
+  return lastMarkedText();
 }
 
 /**

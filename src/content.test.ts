@@ -874,3 +874,18 @@ test("says when there's no answer yet", async () => {
 
   expect(await fromWorker({ type: "latest-answer" })).toEqual({ text: null });
 });
+
+test("falls back to the last text with a marker, outside the chat box", async () => {
+  const box = await start(
+    async () => ({}),
+    `<main>
+      <section><p>Earlier: [[EMAIL_N3PX2D]]</p></section>
+      <section><p>Write to [[EMAIL_7KQ4ZM]] today</p></section>
+    </main>${PAGE}`,
+  );
+  box.value = "Draft for [[EMAIL_ZZZZZZ]]";
+
+  expect(await fromWorker({ type: "latest-answer" })).toEqual({
+    text: "Write to [[EMAIL_7KQ4ZM]] today",
+  });
+});
