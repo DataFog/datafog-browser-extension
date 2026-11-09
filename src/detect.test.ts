@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, test } from "vitest";
 
-import { countFindings, ready, redact } from "./detect";
+import { countFindings, ready, redact, workspaceFindings } from "./detect";
 import { DEFAULT_ENTITIES, type Settings } from "./settings";
 
 const settings: Settings = {
@@ -89,5 +89,25 @@ describe("redact", () => {
     expect(redact(prompt, allowed).text).toBe(
       "my email is jane@example.com and card [CREDIT_CARD]",
     );
+  });
+});
+
+describe("workspaceFindings", () => {
+  test("gives each value once, with its UTF-8 byte range", () => {
+    const text = "café jane@example.com";
+    expect(workspaceFindings(text, settings)).toEqual([
+      {
+        entityType: "EMAIL",
+        matchedText: "jane@example.com",
+        range: { unit: "utf8_bytes", start: 6, end: 22 },
+      },
+    ]);
+  });
+
+  test("leaves out allowlisted values", () => {
+    const allowed = { ...settings, allowlist: ["jane@example.com"] };
+    expect(
+      workspaceFindings(prompt, allowed).map((item) => item.entityType),
+    ).toEqual(["CREDIT_CARD"]);
   });
 });
