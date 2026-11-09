@@ -9,12 +9,18 @@
         --background: #fff;
         --text: #1f1f1f;
         --muted: #666;
+        --line: #d0d0d0;
+        --field: #f5f5f5;
+        --error: #c5221f;
       }
       @media (prefers-color-scheme: dark) {
         :root {
           --background: #1a2226;
           --text: #eef0ef;
           --muted: #a7b2b1;
+          --line: #3a4549;
+          --field: #232d31;
+          --error: #f28b82;
         }
       }
       body {
@@ -40,8 +46,38 @@
         font-size: 13px;
         margin: 0;
       }
+      .error {
+        color: var(--error);
+        font-size: 13px;
+        margin: 8px 0 0;
+      }
+      form,
+      .row {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        font-size: 13px;
+      }
+      input {
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--field);
+        color: var(--text);
+        font: inherit;
+      }
       button {
-        margin-top: 24px;
         padding: 6px 12px;
         border-radius: 8px;
         border: 1px solid var(--text);
@@ -49,6 +85,44 @@
         color: var(--text);
         font: inherit;
         cursor: pointer;
+        align-self: flex-start;
+      }
+      button.primary {
+        background: var(--text);
+        color: var(--background);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #settings {
+        margin-top: 24px;
+      }
+      code {
+        display: block;
+        padding: 8px;
+        border-radius: 8px;
+        background: var(--field);
+        font-size: 12px;
+        word-break: break-all;
+        user-select: all;
+      }
+      ul {
+        margin: 8px 0;
+        padding: 0;
+        list-style: none;
+      }
+      li {
+        padding: 4px 0;
+        border-bottom: 1px solid var(--line);
+        overflow-wrap: anywhere;
+      }
+      li .marker {
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+      }
+      [hidden] {
+        display: none !important;
       }
     </style>
   </head>
@@ -56,9 +130,80 @@
     <h1>DataFog</h1>
     <p class="muted">Checks run on this device; nothing is sent anywhere.</p>
 
+    <section id="review" hidden>
+      <h2>Pseudonymize</h2>
+      <p class="muted" id="review-note"></p>
+      <ul id="review-items"></ul>
+      <div class="buttons" id="review-buttons">
+        <button id="approve" class="primary" type="button">
+          Replace in chat box
+        </button>
+        <button id="cancel" type="button">Cancel</button>
+      </div>
+      <p class="error" id="review-error" hidden></p>
+    </section>
+
     <section id="vault">
       <h2>Vault</h2>
-      <p class="muted">Coming soon.</p>
+      <p class="muted" id="vault-note"></p>
+
+      <form id="create" hidden>
+        <label>
+          Password
+          <input
+            id="create-password"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            required
+          />
+        </label>
+        <label>
+          Confirm password
+          <input
+            id="create-confirm"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            required
+          />
+        </label>
+        <button class="primary" type="submit">Create vault</button>
+      </form>
+
+      <div class="row" id="recovery" hidden>
+        <p class="muted">
+          Your recovery key. Save it somewhere safe, such as a password manager.
+          You'll need it to get back into your vault if you forget your
+          password, and DataFog can't show it again.
+        </p>
+        <code id="recovery-key"></code>
+        <div class="buttons">
+          <button id="copy-key" type="button">Copy</button>
+          <button id="saved-key" class="primary" type="button">
+            I saved it
+          </button>
+        </div>
+      </div>
+
+      <form id="unlock" hidden>
+        <label>
+          Password
+          <input
+            id="unlock-password"
+            type="password"
+            autocomplete="current-password"
+            required
+          />
+        </label>
+        <button class="primary" type="submit">Unlock</button>
+      </form>
+
+      <div class="row" id="unlocked" hidden>
+        <button id="lock" type="button">Lock</button>
+      </div>
+
+      <p class="error" id="vault-error" hidden></p>
     </section>
 
     <section id="workspace">
