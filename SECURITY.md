@@ -14,7 +14,8 @@ Please don't open a public issue or pull request for a vulnerability, and don't 
 - Those values appearing in a console log, an error message, or anywhere a page script can read them beyond what the user typed.
 - Settings or allowlist values stored outside `chrome.storage.local`, or readable by a website.
 - The extension running on, or requesting access to, sites and permissions beyond those in its manifest.
-- Redact leaving a detected value in the chat box.
+- Redact or Pseudonymize leaving a detected value in the chat box.
+- The vault password, the recovery key, or original values behind markers reaching a web page, a log, or storage outside the encrypted vault.
 
 ## Out of scope
 

@@ -1,8 +1,10 @@
 # DataFog browser extension (prototype)
 
-Checks what you type into ChatGPT for sensitive data, on your device, using [DataFog Core](https://github.com/DataFog/datafog-core)'s WebAssembly build (`@datafog/wasm`). A badge beside the chat box shows what was found; click it to **Redact** the values or **Dismiss** the warning.
+Checks what you type into ChatGPT for sensitive data, on your device, using [DataFog Core](https://github.com/DataFog/datafog-core)'s WebAssembly build (`@datafog/wasm`). A badge beside the chat box shows what was found; click it to **Redact** the values, **Pseudonymize** them, or **Dismiss** the warning.
 
-Prototype only: ChatGPT only, Core's default types, no file uploads, no pseudonymization.
+Pseudonymize replaces each value with a marker such as `[[EMAIL_7KQ4ZM]]` and keeps the original in an encrypted vault on your device, so the same value always gets the same marker. You review the values and markers in the side panel before anything changes.
+
+Prototype only: ChatGPT only, Core's default types, no file uploads, and markers can't be restored in answers yet.
 
 ## Build
 
@@ -26,7 +28,8 @@ Click the DataFog tab on the right edge of chatgpt.com, or the toolbar icon, to 
 - `src/content.ts` watches the chat box. It scans 400 ms after you stop typing, and right away on paste. Stale results are dropped.
 - `src/background.ts` opens an offscreen document and passes the content script's requests to it, with the current settings.
 - `src/offscreen.ts` runs Core and answers with counts by type. It stays loaded while the side panel is closed, unlike the service worker, which Chrome stops when idle. Counts come from Core's `transform`, so a value two detectors match counts once.
-- `src/panel.ts` runs the side panel, which will hold the vault, workspace and restore views.
+- `src/vault.ts`, in the offscreen document, keeps the vault: [FogVault](https://github.com/DataFog/fogvault) encrypts the workspace in IndexedDB, and Core's adapter (`@datafog/core-fogvault-browser`) owns the workspace that maps values to markers. It saves an approved review before the chat box changes, and locks after 15 minutes without use.
+- `src/panel.ts` runs the side panel: creating, unlocking and locking the vault, and reviewing Pseudonymize. Only extension pages can send it vault requests; the password and original values never reach the chat site.
 - `src/page.ts` watches the page for sends and attached files.
 - `src/badge.ts` draws the badge in a shadow root, isolated from the page. `src/tab.ts` draws the page tab the same way.
 - Redact edits the chat box through `execCommand`, so ChatGPT's editor keeps the change.
