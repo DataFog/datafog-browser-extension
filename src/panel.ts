@@ -23,11 +23,20 @@ const EXPLAINED: Record<string, string> = {
   no_review: "This review is gone. Choose Pseudonymize again.",
 };
 
-/** The vault's state, as shown beside its heading. */
-const STATE_LABELS: Record<VaultStatus["state"], string> = {
-  none: "(Not set up)",
-  locked: "(Locked)",
-  unlocked: "(Unlocked)",
+/** The lock's body, shared by both icons. */
+const LOCK_BODY =
+  '<rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" />';
+
+/** An icon for each state of a vault that exists, with its name. */
+const STATE_ICONS: Record<"locked" | "unlocked", [string, string]> = {
+  locked: [
+    "Locked",
+    `${LOCK_BODY}<path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.5" />`,
+  ],
+  unlocked: [
+    "Unlocked",
+    `${LOCK_BODY}<path d="M5 7V5a3 3 0 0 1 5.8-1.1" fill="none" stroke="currentColor" stroke-width="1.5" />`,
+  ],
 };
 
 const view = {
@@ -44,6 +53,9 @@ const view = {
   createPassword: document.querySelector<HTMLInputElement>("#create-password")!,
   createConfirm: document.querySelector<HTMLInputElement>("#create-confirm")!,
   createSubmit: document.querySelector<HTMLButtonElement>("#create-submit")!,
+  resetOpen: document.querySelector<HTMLButtonElement>("#reset-open")!,
+  reset: document.querySelector<HTMLFormElement>("#reset")!,
+  resetPassword: document.querySelector<HTMLInputElement>("#reset-password")!,
   ruleLength: document.querySelector<HTMLLIElement>("#rule-length")!,
   ruleMatch: document.querySelector<HTMLLIElement>("#rule-match")!,
   recovery: document.querySelector<HTMLDivElement>("#recovery")!,
@@ -56,6 +68,12 @@ const view = {
 
 /** Kept only until the user says they saved it. */
 let recoveryKey: string | null = null;
+
+/** Whether the reset form is open. */
+let resetting = false;
+
+/** The last state shown, to redraw after opening or closing the reset form. */
+let shown: VaultStatus["state"] = "none";
 
 /**
  * Say what an error code means.
@@ -105,9 +123,33 @@ function renderVault(state: VaultStatus["state"]): void {
   view.create.hidden = state !== "none" || recoveryKey !== null;
   view.recovery.hidden = recoveryKey === null;
   view.recoveryKey.textContent = recoveryKey ?? "";
-  view.unlock.hidden = state !== "locked";
-  view.unlocked.hidden = state !== "unlocked" || recoveryKey !== null;
-  view.vaultState.textContent = STATE_LABELS[state];
+  view.unlock.hidden = state !== "locked" || resetting;
+  view.unlocked.hidden =
+    state !== "unlocked" || recoveryKey !== null || resetting;
+  view.resetOpen.hidden = state === "none" || recoveryKey !== null || resetting;
+  view.reset.hidden = state === "none" || !resetting;
+  view.vaultState.hidden = state === "none";
+  if (state !== "none") {
+    const [label, paths] = STATE_ICONS[state];
+    view.vaultState.title = label;
+    view.vaultState.setAttribute("aria-label", label);
+    // A fixed icon of the extension's own, never page or user text
+    view.vaultState.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">${paths}</svg>`;
+  }
+  shown = state;
+}
+
+/**
+ * Open or close the reset form.
+ *
+ * @param open Whether to open it.
+ */
+function showReset(open: boolean): void {
+  resetting = open;
+  view.reset.reset();
+  showError(view.vaultError, null);
+  renderVault(shown);
+  if (open) view.resetPassword.focus();
 }
 
 /**
@@ -267,6 +309,29 @@ document
     "click",
     () => void act({ type: "review-cancel" }, view.reviewError),
   );
+view.resetOpen.addEventListener("click", () => showReset(true));
+document
+  .querySelector("#reset-cancel")!
+  .addEventListener("click", () => showReset(false));
+view.reset.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const password = view.resetPassword.value;
+  if (password === "") return;
+  view.reset.reset();
+  void ask<VaultStatus>({ type: "vault-reset", password }).then(
+    async (response) => {
+      if ("error" in response) {
+        // A reset locks the vault before checking the password
+        await refresh();
+        showError(view.vaultError, response.error);
+        return;
+      }
+      resetting = false;
+      showError(view.vaultError, null);
+      render(response);
+    },
+  );
+});
 view.infoToggle.addEventListener("click", () => {
   view.info.hidden = !view.info.hidden;
   view.infoToggle.setAttribute("aria-expanded", String(!view.info.hidden));

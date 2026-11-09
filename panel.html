@@ -133,8 +133,31 @@
         margin: 0;
       }
       .state {
+        display: grid;
+        place-items: center;
         color: var(--muted);
-        font-weight: 400;
+      }
+      button.link {
+        padding: 0;
+        margin-top: 12px;
+        border: 0;
+        background: none;
+        color: var(--muted);
+        font-size: 13px;
+        text-decoration: underline;
+      }
+      button.link:hover {
+        color: var(--text);
+      }
+      button.danger {
+        background: var(--error);
+        border-color: var(--error);
+        color: var(--background);
+      }
+      .warning {
+        margin: 0;
+        color: var(--error);
+        font-size: 13px;
       }
       button.icon {
         display: grid;
@@ -213,7 +236,8 @@
 
     <section id="vault">
       <div class="heading">
-        <h2>Vault <span class="state" id="vault-state"></span></h2>
+        <h2>Vault</h2>
+        <span class="state" id="vault-state" role="img" hidden></span>
         <button
           class="icon"
           id="vault-info-toggle"
@@ -300,6 +324,29 @@
       <div class="row" id="unlocked" hidden>
         <button id="lock" type="button">Lock</button>
       </div>
+
+      <button class="link" id="reset-open" type="button" hidden>
+        Reset vault
+      </button>
+
+      <form id="reset" novalidate hidden>
+        <p class="warning">
+          Resetting deletes your vault and every original value in it. Markers
+          you've already used can't be restored.
+        </p>
+        <label>
+          Password
+          <input
+            id="reset-password"
+            type="password"
+            autocomplete="current-password"
+          />
+        </label>
+        <div class="buttons">
+          <button class="danger" type="submit">Reset vault</button>
+          <button id="reset-cancel" type="button">Cancel</button>
+        </div>
+      </form>
 
       <p class="error" id="vault-error" hidden></p>
     </section>
