@@ -29,7 +29,7 @@ Click the DataFog tab on the right edge of chatgpt.com, or the toolbar icon, to 
 - `src/background.ts` opens an offscreen document and passes the content script's requests to it, with the current settings.
 - `src/offscreen.ts` runs Core and answers with counts by type. It stays loaded while the side panel is closed, unlike the service worker, which Chrome stops when idle. Counts come from Core's `transform`, so a value two detectors match counts once.
 - `src/vault.ts`, in the offscreen document, keeps the vault: [FogVault](https://github.com/DataFog/fogvault) encrypts the workspace in IndexedDB, and Core's adapter (`@datafog/core-fogvault-browser`) owns the workspace that maps values to markers. It saves an approved review before the chat box changes, and locks after 15 minutes without use.
-- `src/panel.ts` runs the side panel: creating, unlocking and locking the vault, and reviewing Pseudonymize. Only extension pages can send it vault requests; the password and original values never reach the chat site.
+- `src/panel.ts` runs the side panel: creating, unlocking, locking and resetting the vault, and reviewing Pseudonymize. Only extension pages can send it vault requests; the password and original values never reach the chat site.
 - `src/page.ts` watches the page for sends and attached files.
 - `src/badge.ts` draws the badge in a shadow root, isolated from the page. `src/tab.ts` draws the page tab the same way.
 - Redact edits the chat box through `execCommand`, so ChatGPT's editor keeps the change.
