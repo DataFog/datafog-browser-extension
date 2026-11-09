@@ -17,6 +17,7 @@ import type { WorkspaceFinding } from "@datafog/wasm";
 import type {
   CreatedVault,
   Pseudonymized,
+  Restored,
   RedactEdit,
   ReviewItem,
   ReviewSource,
@@ -40,7 +41,7 @@ export type Vault = Pick<
 /** The parts of Core's adapter the host uses. */
 export type Owner = Pick<
   FogVaultWorkspace,
-  "prepareReview" | "commit" | "lock" | "closed"
+  "prepareReview" | "commit" | "lock" | "closed" | "restoreReport"
 >;
 
 /** Raw identifiers for opening the workspace. */
@@ -280,6 +281,47 @@ export class VaultHost<V extends Vault = Vault> {
     await this.deps.deleteStore(VAULT_NAME);
     this.deps.notify();
     return this.status(null);
+  }
+
+  /**
+   * Put the original values back in place of the vault's markers. Markers the
+   * vault can't restore, such as ones it never issued, are left as they are.
+   *
+   * @param text Text with markers, such as an answer.
+   * @returns The restored text, and how many markers were and weren't.
+   */
+  restore(text: string): Restored {
+    const owner = this.owner;
+    if (!owner || owner.closed) throw failure("vault_locked");
+    this.touch();
+    const report = owner.restoreReport(text);
+    if (report.text !== null)
+      return {
+        text: report.text,
+        restored: report.restoredMarkers,
+        unrestored: 0,
+      };
+    // Core restores all or nothing, so restore the text between the problems
+    let restored = 0;
+    let at = 0;
+    const parts: string[] = [];
+    const issues = report.issues.toSorted(
+      (a, b) => a.utf16Range.start - b.utf16Range.start,
+    );
+    for (const { utf16Range } of [
+      ...issues,
+      { utf16Range: { start: text.length, end: text.length } },
+    ]) {
+      const span = text.slice(at, utf16Range.start);
+      const part = owner.restoreReport(span);
+      parts.push(
+        part.text ?? span,
+        text.slice(utf16Range.start, utf16Range.end),
+      );
+      restored += part.text === null ? 0 : part.restoredMarkers;
+      at = utf16Range.end;
+    }
+    return { text: parts.join(""), restored, unrestored: issues.length };
   }
 
   /**

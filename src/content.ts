@@ -486,7 +486,21 @@ async function pseudonymizeComposer(): Promise<void> {
 }
 
 /**
- * Answer the service worker: the chat box's text, or markers to put in it.
+ * The text of the chat's latest answer.
+ *
+ * @returns Its text, or null if there's no answer yet.
+ */
+function latestAnswer(): string | null {
+  const answers = document.querySelectorAll<HTMLElement>(
+    '[data-message-author-role="assistant"]',
+  );
+  const text = answers.item(answers.length - 1)?.innerText.trim();
+  return text ? text : null;
+}
+
+/**
+ * Answer the service worker: the chat box's text, the latest answer,
+ * or markers to put in the chat box.
  *
  * @param request The request.
  * @returns The response.
@@ -495,6 +509,7 @@ async function answer(request: TabRequest): Promise<object> {
   if (request.type === "chat-text") {
     return { text: composer ? readText(composer) : null };
   }
+  if (request.type === "latest-answer") return { text: latestAnswer() };
   // Approved in the side panel for this text; anything since wins
   if (!composer || readText(composer) !== request.before) {
     return { error: "chat_box_changed" };

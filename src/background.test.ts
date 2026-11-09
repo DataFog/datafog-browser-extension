@@ -47,6 +47,7 @@ const tabMessage = vi.fn(
 );
 const setStorage = vi.fn(async (_items: object) => {});
 const removeStorage = vi.fn(async (_keys: string) => {});
+const queryTabs = vi.fn(async (_query: object) => [{ id: 7 }]);
 let stored: object;
 
 const PANEL: Sender = {
@@ -126,7 +127,7 @@ beforeEach(async () => {
           remove: removeStorage,
         },
       },
-      tabs: { sendMessage: tabMessage },
+      tabs: { sendMessage: tabMessage, query: queryTabs },
     },
   });
   await import("./background");
@@ -339,4 +340,40 @@ test("drops the review when the chat box changed since", async () => {
   expect(sent).toContain("review-cancel");
   expect(sent).not.toContain("review-approve");
   warn.mockRestore();
+});
+
+test("restores the latest answer in the side panel's window", async () => {
+  tabMessage.mockResolvedValueOnce({ text: "Hi [[EMAIL_7KQ4ZM]]" });
+  const restored = { text: "Hi a@b.co", restored: 1, unrestored: 0 };
+  sendMessage.mockResolvedValueOnce(restored);
+
+  expect(await send({ type: "restore-latest", windowId: 3 }, PANEL)).toEqual(
+    restored,
+  );
+  expect(queryTabs).toHaveBeenCalledWith({ active: true, windowId: 3 });
+  expect(tabMessage).toHaveBeenCalledWith(7, { type: "latest-answer" });
+  expect(sendMessage).toHaveBeenCalledWith(
+    expect.objectContaining({
+      request: { type: "restore", text: "Hi [[EMAIL_7KQ4ZM]]" },
+    }),
+  );
+});
+
+test("says when there's no chat or answer to restore", async () => {
+  tabMessage.mockRejectedValueOnce(new Error("Receiving end does not exist"));
+  expect(await send({ type: "restore-latest", windowId: 3 }, PANEL)).toEqual({
+    error: "no_chat",
+  });
+
+  tabMessage.mockResolvedValueOnce({ text: null });
+  expect(await send({ type: "restore-latest", windowId: 3 }, PANEL)).toEqual({
+    error: "no_answer",
+  });
+});
+
+test("refuses restore requests from a web page", async () => {
+  expect(await send({ type: "restore-latest", windowId: 3 })).toEqual({
+    error: "not_allowed",
+  });
+  expect(tabMessage).not.toHaveBeenCalled();
 });

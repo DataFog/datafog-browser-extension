@@ -854,3 +854,23 @@ test("offers Send anyway when a scan never answers", async () => {
   expect(badge().dot.className).toBe("dot failed");
   expect(panelButton("send").hidden).toBe(false);
 });
+
+test("reads the latest answer for restore", async () => {
+  await start(
+    async () => ({}),
+    `${PAGE}
+    <div data-message-author-role="assistant">First</div>
+    <div data-message-author-role="user">[[EMAIL_7KQ4ZM]]</div>
+    <div data-message-author-role="assistant">Write to [[EMAIL_7KQ4ZM]]</div>`,
+  );
+
+  expect(await fromWorker({ type: "latest-answer" })).toEqual({
+    text: "Write to [[EMAIL_7KQ4ZM]]",
+  });
+});
+
+test("says when there's no answer yet", async () => {
+  await start(async () => ({}));
+
+  expect(await fromWorker({ type: "latest-answer" })).toEqual({ text: null });
+});

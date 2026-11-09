@@ -14,6 +14,7 @@ import {
   type PanelRequest,
   type Pseudonymized,
   type Request,
+  type Restored,
   type ReviewSource,
   type TabRequest,
   type VaultRequest,
@@ -120,6 +121,29 @@ async function askTab<T>(tabId: number, request: TabRequest): Promise<T> {
 }
 
 /**
+ * Restore the markers in the latest answer of the chat in a window's active
+ * tab.
+ *
+ * @param windowId The side panel's window.
+ * @returns The restored answer.
+ */
+async function restoreLatest(windowId: number): Promise<Restored> {
+  const [tab] = await chrome.tabs.query({ active: true, windowId });
+  if (tab?.id === undefined) throw coded("no_chat");
+  let answer: string | null;
+  try {
+    ({ text: answer } = await askTab<{ text: string | null }>(tab.id, {
+      type: "latest-answer",
+    }));
+  } catch {
+    // No content script answers outside ChatGPT
+    throw coded("no_chat");
+  }
+  if (answer === null) throw coded("no_answer");
+  return forwardVault<Restored>({ type: "restore", text: answer });
+}
+
+/**
  * Save an approved review and put its markers in the chat box, unless the chat
  * box changed since the review was prepared.
  *
@@ -154,6 +178,7 @@ async function approveReview(): Promise<unknown> {
  */
 async function handlePanel(request: PanelRequest): Promise<unknown> {
   if (request.type === "review-approve") return approveReview();
+  if (request.type === "restore-latest") return restoreLatest(request.windowId);
   if (request.type === "vault-reset") {
     const status = await forwardVault<VaultStatus>(request);
     await chrome.storage.local.remove("vault");
@@ -188,6 +213,7 @@ const PANEL_REQUESTS = new Set<string>([
   "vault-reset",
   "review-approve",
   "review-cancel",
+  "restore-latest",
 ]);
 
 /**
