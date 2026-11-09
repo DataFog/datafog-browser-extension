@@ -349,3 +349,67 @@ test("closes the reset form on Cancel", async () => {
     expect.objectContaining({ type: "vault-reset" }),
   );
 });
+
+test("restores the latest answer once the vault is unlocked", async () => {
+  await start((request) =>
+    request.type === "restore-latest"
+      ? { text: "Write to <b>jane@example.com</b>", restored: 1, unrestored: 1 }
+      : { ...LOCKED, state: "unlocked" },
+  );
+
+  $("#restore-latest").click();
+  await settle();
+
+  expect(sendMessage).toHaveBeenCalledWith({
+    type: "restore-latest",
+    windowId: 3,
+  });
+  expect($("#restored").hidden).toBe(false);
+  expect($("#restored-text").querySelector("b")).toBeNull();
+  expect($("#restored-text").textContent).toBe(
+    "Write to <b>jane@example.com</b>",
+  );
+  expect($("#restored-summary").textContent).toBe(
+    "Restored 1 marker. 1 marker couldn't be restored and stayed as is.",
+  );
+});
+
+test("explains why an answer can't be restored", async () => {
+  await start((request) =>
+    request.type === "restore-latest"
+      ? { error: "no_chat" }
+      : { ...LOCKED, state: "unlocked" },
+  );
+
+  $("#restore-latest").click();
+  await settle();
+
+  expect($("#restore-error").textContent).toBe(
+    "Open a ChatGPT chat in this tab to restore its latest answer.",
+  );
+  expect($("#restored").hidden).toBe(true);
+});
+
+test("offers Restore only while unlocked, and clears it on lock", async () => {
+  let status: VaultStatus = { ...LOCKED, state: "unlocked" };
+  await start((request) =>
+    request.type === "restore-latest"
+      ? { text: "jane@example.com", restored: 1, unrestored: 0 }
+      : status,
+  );
+  $("#restore-latest").click();
+  await settle();
+  expect($("#restored-text").textContent).toBe("jane@example.com");
+
+  status = LOCKED;
+  notices.forEach((notice) =>
+    notice({ target: "panel", type: "vault-changed" }),
+  );
+  await settle();
+
+  expect(
+    document.querySelector<HTMLButtonElement>("#restore-latest")!.disabled,
+  ).toBe(true);
+  expect($("#restored").hidden).toBe(true);
+  expect($("#restored-text").textContent).toBe("");
+});

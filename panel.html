@@ -212,6 +212,19 @@
       ul.rules li.unmet::before {
         content: "✗";
       }
+      #restore-latest {
+        margin-top: 8px;
+      }
+      .restored {
+        max-height: 240px;
+        overflow-y: auto;
+        padding: 8px;
+        border-radius: 8px;
+        background: var(--field);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-size: 13px;
+      }
       [hidden] {
         display: none !important;
       }
@@ -351,13 +364,25 @@
       <p class="error" id="vault-error" hidden></p>
     </section>
 
-    <section id="workspace">
-      <h2>Workspace</h2>
-      <p class="muted">Coming soon.</p>
-    </section>
-
     <section id="restore">
       <h2>Restore</h2>
+      <p class="muted" id="restore-note"></p>
+      <button id="restore-latest" class="primary" type="button">
+        Restore latest answer
+      </button>
+      <div class="row" id="restored" hidden>
+        <p class="muted" id="restored-summary"></p>
+        <div class="restored" id="restored-text"></div>
+        <div class="buttons">
+          <button id="copy-restored" type="button">Copy</button>
+          <button id="clear-restored" type="button">Clear</button>
+        </div>
+      </div>
+      <p class="error" id="restore-error" hidden></p>
+    </section>
+
+    <section id="workspace">
+      <h2>Workspace</h2>
       <p class="muted">Coming soon.</p>
     </section>
 

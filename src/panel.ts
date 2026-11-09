@@ -7,6 +7,7 @@ import type {
   ErrorResponse,
   PanelNotice,
   PanelRequest,
+  Restored,
   VaultStatus,
 } from "./messages";
 
@@ -21,6 +22,9 @@ const EXPLAINED: Record<string, string> = {
     "The chat box changed after this review was prepared. Choose Pseudonymize again.",
   nothing_found: "There's nothing to pseudonymize in the chat box.",
   no_review: "This review is gone. Choose Pseudonymize again.",
+  no_chat: "Open a ChatGPT chat in this tab to restore its latest answer.",
+  no_answer: "There's no answer in this chat yet.",
+  vault_locked: "Unlock your vault to restore.",
 };
 
 /** The lock's body, shared by both icons. */
@@ -64,6 +68,13 @@ const view = {
   unlockPassword: document.querySelector<HTMLInputElement>("#unlock-password")!,
   unlocked: document.querySelector<HTMLDivElement>("#unlocked")!,
   vaultError: document.querySelector<HTMLParagraphElement>("#vault-error")!,
+  restoreNote: document.querySelector<HTMLParagraphElement>("#restore-note")!,
+  restoreLatest: document.querySelector<HTMLButtonElement>("#restore-latest")!,
+  restored: document.querySelector<HTMLDivElement>("#restored")!,
+  restoredSummary:
+    document.querySelector<HTMLParagraphElement>("#restored-summary")!,
+  restoredText: document.querySelector<HTMLDivElement>("#restored-text")!,
+  restoreError: document.querySelector<HTMLParagraphElement>("#restore-error")!,
 };
 
 /** Kept only until the user says they saved it. */
@@ -217,6 +228,66 @@ function renderReview({
 }
 
 /**
+ * Pluralize a count of markers.
+ *
+ * @param count How many.
+ * @returns "1 marker" or "N markers".
+ */
+function markers(count: number): string {
+  return `${count} marker${count === 1 ? "" : "s"}`;
+}
+
+/**
+ * Show a restored answer, or clear it.
+ *
+ * @param restored The restored answer, or null to clear it.
+ */
+function showRestored(restored: Restored | null): void {
+  view.restored.hidden = restored === null;
+  // Values only ever go in as text, never as markup
+  view.restoredText.textContent = restored?.text ?? "";
+  if (!restored) return;
+  const left = restored.unrestored
+    ? ` ${markers(restored.unrestored)} couldn't be restored and stayed as is.`
+    : "";
+  view.restoredSummary.textContent = `Restored ${markers(restored.restored)}.${left}`;
+}
+
+/**
+ * Offer Restore while the vault is unlocked, clearing restored values when
+ * it locks.
+ *
+ * @param state The vault's state.
+ */
+function renderRestore(state: VaultStatus["state"]): void {
+  const unlocked = state === "unlocked";
+  view.restoreLatest.disabled = !unlocked;
+  view.restoreNote.textContent = unlocked
+    ? "Put the original values back in place of markers in ChatGPT's latest answer."
+    : "Unlock your vault to restore markers in ChatGPT's answers.";
+  if (!unlocked) {
+    showRestored(null);
+    showError(view.restoreError, null);
+  }
+}
+
+/** Restore the latest answer in this window's chat. */
+async function restoreLatest(): Promise<void> {
+  const { id } = await chrome.windows.getCurrent();
+  const response = await ask<Restored>({
+    type: "restore-latest",
+    windowId: id ?? chrome.windows.WINDOW_ID_CURRENT,
+  });
+  if ("error" in response) {
+    showRestored(null);
+    showError(view.restoreError, response.error);
+    return;
+  }
+  showError(view.restoreError, null);
+  showRestored(response);
+}
+
+/**
  * Show the vault and any review.
  *
  * @param status The vault's status.
@@ -224,6 +295,7 @@ function renderReview({
 function render(status: VaultStatus): void {
   renderVault(status.state);
   renderReview(status);
+  renderRestore(status.state);
 }
 
 /** Fetch the status and show it. */
@@ -336,6 +408,13 @@ view.infoToggle.addEventListener("click", () => {
   view.info.hidden = !view.info.hidden;
   view.infoToggle.setAttribute("aria-expanded", String(!view.info.hidden));
 });
+view.restoreLatest.addEventListener("click", () => void restoreLatest());
+document.querySelector("#copy-restored")!.addEventListener("click", () => {
+  void navigator.clipboard.writeText(view.restoredText.textContent ?? "");
+});
+document
+  .querySelector("#clear-restored")!
+  .addEventListener("click", () => showRestored(null));
 document.querySelector("#copy-key")!.addEventListener("click", () => {
   if (recoveryKey) void navigator.clipboard.writeText(recoveryKey);
 });
