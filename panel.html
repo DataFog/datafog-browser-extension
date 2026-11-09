@@ -215,16 +215,6 @@
       #restore-latest {
         margin-top: 8px;
       }
-      .restored {
-        max-height: 240px;
-        overflow-y: auto;
-        padding: 8px;
-        border-radius: 8px;
-        background: var(--field);
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-        font-size: 13px;
-      }
       [hidden] {
         display: none !important;
       }
@@ -372,10 +362,9 @@
       </button>
       <div class="row" id="restored" hidden>
         <p class="muted" id="restored-summary"></p>
-        <div class="restored" id="restored-text"></div>
         <div class="buttons">
-          <button id="copy-restored" type="button">Copy</button>
-          <button id="clear-restored" type="button">Clear</button>
+          <button id="hide-originals" type="button">Hide originals</button>
+          <button id="copy-restored" type="button">Copy restored answer</button>
         </div>
       </div>
       <p class="error" id="restore-error" hidden></p>

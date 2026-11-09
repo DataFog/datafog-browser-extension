@@ -350,12 +350,13 @@ test("closes the reset form on Cancel", async () => {
   );
 });
 
-test("restores the latest answer once the vault is unlocked", async () => {
-  await start((request) =>
-    request.type === "restore-latest"
-      ? { text: "Write to <b>jane@example.com</b>", restored: 1, unrestored: 1 }
-      : { ...LOCKED, state: "unlocked" },
-  );
+test("restores the latest answer in the page, and hides it again", async () => {
+  await start((request) => {
+    if (request.type === "restore-latest")
+      return { text: "To a@b.co", restored: 2, unrestored: 1, shown: 2 };
+    if (request.type === "hide-originals") return {};
+    return { ...LOCKED, state: "unlocked" };
+  });
 
   $("#restore-latest").click();
   await settle();
@@ -365,12 +366,32 @@ test("restores the latest answer once the vault is unlocked", async () => {
     windowId: 3,
   });
   expect($("#restored").hidden).toBe(false);
-  expect($("#restored-text").querySelector("b")).toBeNull();
-  expect($("#restored-text").textContent).toBe(
-    "Write to <b>jane@example.com</b>",
-  );
   expect($("#restored-summary").textContent).toBe(
-    "Restored 1 marker. 1 marker couldn't be restored and stayed as is.",
+    "Showing 2 original values in ChatGPT's answer. 1 marker couldn't be restored and stayed as is.",
+  );
+
+  $("#hide-originals").click();
+  await settle();
+
+  expect(sendMessage).toHaveBeenCalledWith({
+    type: "hide-originals",
+    windowId: 3,
+  });
+  expect($("#restored").hidden).toBe(true);
+});
+
+test("offers Copy when the values can't show in the page", async () => {
+  await start((request) =>
+    request.type === "restore-latest"
+      ? { text: "To a@b.co", restored: 1, unrestored: 0, shown: 0 }
+      : { ...LOCKED, state: "unlocked" },
+  );
+
+  $("#restore-latest").click();
+  await settle();
+
+  expect($("#restored-summary").textContent).toBe(
+    "Restored 1 marker, but couldn't show them in the page. Copy the restored answer instead.",
   );
 });
 
@@ -394,12 +415,12 @@ test("offers Restore only while unlocked, and clears it on lock", async () => {
   let status: VaultStatus = { ...LOCKED, state: "unlocked" };
   await start((request) =>
     request.type === "restore-latest"
-      ? { text: "jane@example.com", restored: 1, unrestored: 0 }
+      ? { text: "a@b.co", restored: 1, unrestored: 0, shown: 1 }
       : status,
   );
   $("#restore-latest").click();
   await settle();
-  expect($("#restored-text").textContent).toBe("jane@example.com");
+  expect($("#restored").hidden).toBe(false);
 
   status = LOCKED;
   notices.forEach((notice) =>
@@ -411,5 +432,4 @@ test("offers Restore only while unlocked, and clears it on lock", async () => {
     document.querySelector<HTMLButtonElement>("#restore-latest")!.disabled,
   ).toBe(true);
   expect($("#restored").hidden).toBe(true);
-  expect($("#restored-text").textContent).toBe("");
 });

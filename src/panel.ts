@@ -7,7 +7,7 @@ import type {
   ErrorResponse,
   PanelNotice,
   PanelRequest,
-  Restored,
+  RestoredInPage,
   VaultStatus,
 } from "./messages";
 
@@ -73,12 +73,14 @@ const view = {
   restored: document.querySelector<HTMLDivElement>("#restored")!,
   restoredSummary:
     document.querySelector<HTMLParagraphElement>("#restored-summary")!,
-  restoredText: document.querySelector<HTMLDivElement>("#restored-text")!,
   restoreError: document.querySelector<HTMLParagraphElement>("#restore-error")!,
 };
 
 /** Kept only until the user says they saved it. */
 let recoveryKey: string | null = null;
+
+/** The latest restored answer, kept only for Copy until it's hidden. */
+let restoredText = "";
 
 /** Whether the reset form is open. */
 let resetting = false;
@@ -238,19 +240,32 @@ function markers(count: number): string {
 }
 
 /**
- * Show a restored answer, or clear it.
+ * Say what was restored in the page, or clear it.
  *
  * @param restored The restored answer, or null to clear it.
  */
-function showRestored(restored: Restored | null): void {
+function showRestored(restored: RestoredInPage | null): void {
   view.restored.hidden = restored === null;
-  // Values only ever go in as text, never as markup
-  view.restoredText.textContent = restored?.text ?? "";
+  restoredText = restored?.text ?? "";
   if (!restored) return;
+  const where =
+    restored.shown > 0
+      ? `Showing ${restored.shown} original value${restored.shown === 1 ? "" : "s"} in ChatGPT's answer.`
+      : `Restored ${markers(restored.restored)}, but couldn't show them in the page. Copy the restored answer instead.`;
   const left = restored.unrestored
     ? ` ${markers(restored.unrestored)} couldn't be restored and stayed as is.`
     : "";
-  view.restoredSummary.textContent = `Restored ${markers(restored.restored)}.${left}`;
+  view.restoredSummary.textContent = `${where}${left}`;
+}
+
+/** Put the markers back in this window's chat. */
+async function hideInPage(): Promise<void> {
+  const { id } = await chrome.windows.getCurrent();
+  showRestored(null);
+  await ask({
+    type: "hide-originals",
+    windowId: id ?? chrome.windows.WINDOW_ID_CURRENT,
+  });
 }
 
 /**
@@ -263,7 +278,7 @@ function renderRestore(state: VaultStatus["state"]): void {
   const unlocked = state === "unlocked";
   view.restoreLatest.disabled = !unlocked;
   view.restoreNote.textContent = unlocked
-    ? "Put the original values back in place of markers in ChatGPT's latest answer."
+    ? "Show the original values in place of markers in ChatGPT's latest answer."
     : "Unlock your vault to restore markers in ChatGPT's answers.";
   if (!unlocked) {
     showRestored(null);
@@ -274,7 +289,7 @@ function renderRestore(state: VaultStatus["state"]): void {
 /** Restore the latest answer in this window's chat. */
 async function restoreLatest(): Promise<void> {
   const { id } = await chrome.windows.getCurrent();
-  const response = await ask<Restored>({
+  const response = await ask<RestoredInPage>({
     type: "restore-latest",
     windowId: id ?? chrome.windows.WINDOW_ID_CURRENT,
   });
@@ -410,11 +425,11 @@ view.infoToggle.addEventListener("click", () => {
 });
 view.restoreLatest.addEventListener("click", () => void restoreLatest());
 document.querySelector("#copy-restored")!.addEventListener("click", () => {
-  void navigator.clipboard.writeText(view.restoredText.textContent ?? "");
+  void navigator.clipboard.writeText(restoredText);
 });
 document
-  .querySelector("#clear-restored")!
-  .addEventListener("click", () => showRestored(null));
+  .querySelector("#hide-originals")!
+  .addEventListener("click", () => void hideInPage());
 document.querySelector("#copy-key")!.addEventListener("click", () => {
   if (recoveryKey) void navigator.clipboard.writeText(recoveryKey);
 });
