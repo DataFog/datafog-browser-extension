@@ -487,6 +487,7 @@ async function pseudonymizeComposer(): Promise<void> {
 
 /** Where ChatGPT has kept its answers, newest last; it changes without notice. */
 const ANSWER_SELECTORS = [
+  "[data-dil-response]",
   '[data-message-author-role="assistant"]',
   'article[data-turn="assistant"]',
   ".markdown",

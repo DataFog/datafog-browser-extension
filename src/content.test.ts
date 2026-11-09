@@ -889,3 +889,19 @@ test("falls back to the last text with a marker, outside the chat box", async ()
     text: "Write to [[EMAIL_7KQ4ZM]] today",
   });
 });
+
+test("reads the latest answer from ChatGPT's response containers", async () => {
+  await start(
+    async () => ({}),
+    `<main>
+      <div data-user-message-bubble>Ask [[EMAIL_7KQ4ZM]]</div>
+      <div data-dil-response>First answer</div>
+      <div data-user-message-bubble>And again</div>
+      <div data-dil-response><p>Write to [[EMAIL_7KQ4ZM]]</p></div>
+    </main>${PAGE}`,
+  );
+
+  expect(await fromWorker({ type: "latest-answer" })).toEqual({
+    text: "Write to [[EMAIL_7KQ4ZM]]",
+  });
+});
