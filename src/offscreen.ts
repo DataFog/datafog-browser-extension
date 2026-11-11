@@ -146,6 +146,15 @@ async function handle({
     case "review-cancel":
       host.cancel();
       return host.status(routing);
+    case "review-not-sensitive":
+      await host.markNotSensitive(request.index);
+      return host.status(routing);
+    case "choice-clear":
+      await host.clearChoice({
+        entityType: request.entityType,
+        value: request.value,
+      });
+      return host.status(routing);
     default:
       return { error: "unknown_request" };
   }

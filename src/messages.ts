@@ -43,6 +43,10 @@ export type PanelRequest =
   | { type: "vault-reset"; password: string }
   | { type: "review-approve" }
   | { type: "review-cancel" }
+  /** Remember the review's value at this index as not sensitive. */
+  | { type: "review-not-sensitive"; index: number }
+  /** Replace a value remembered as not sensitive again. */
+  | { type: "choice-clear"; entityType: string; value: string }
   | { type: "restore-latest"; windowId: number }
   | { type: "hide-originals"; windowId: number };
 

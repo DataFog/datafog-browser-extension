@@ -237,6 +237,27 @@ test("forwards the side panel's requests with the vault's routing", async () => 
   });
 });
 
+test("passes not sensitive choices on from the side panel only", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const mark = { type: "review-not-sensitive", index: 0 } as const;
+  const clear = {
+    type: "choice-clear",
+    entityType: "PERSON",
+    value: "Ann",
+  } as const;
+
+  expect(await send(mark)).toEqual({ error: "not_allowed" });
+  expect(await send(clear)).toEqual({ error: "not_allowed" });
+  expect(sendMessage).not.toHaveBeenCalled();
+
+  sendMessage.mockResolvedValue({ state: "unlocked" });
+  await send(mark, PANEL);
+  await send(clear, PANEL);
+  const sent = sendMessage.mock.calls.map(([message]) => message.request);
+  expect(sent).toEqual([mark, clear]);
+  warn.mockRestore();
+});
+
 test("stores a new vault's routing, and passes on its recovery key", async () => {
   sendMessage.mockResolvedValueOnce({
     status: { state: "unlocked" },
