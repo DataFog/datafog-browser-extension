@@ -10,6 +10,7 @@ import {
   ready,
   redact as redactWith,
   scanRules,
+  skipChoices,
   workspaceFindings as findingsWith,
   type Scanner,
 } from "./detect";
@@ -123,6 +124,31 @@ describe("markers and labels", () => {
   test("still finds values beside a marker", async () => {
     const text = "[[EMAIL_7KQ4ZM]] and jane@example.com";
     expect(await countFindings(text, settings)).toEqual({ EMAIL: 1 });
+  });
+});
+
+describe("skipChoices", () => {
+  const remembered = skipChoices(scanRules, () => [
+    { entityType: "EMAIL", value: " JANE@example.com " },
+  ]);
+
+  test("skips a remembered value, whatever its case or spacing", async () => {
+    expect(await countWith(prompt, settings, remembered)).toEqual({
+      CREDIT_CARD: 1,
+    });
+    expect((await redactWith(prompt, settings, remembered)).text).toBe(
+      "my email is jane@example.com and card [CREDIT_CARD]",
+    );
+  });
+
+  test("still finds the same text as another type", async () => {
+    const other = skipChoices(scanRules, () => [
+      { entityType: "PERSON", value: "jane@example.com" },
+    ]);
+    expect(await countWith(prompt, settings, other)).toEqual({
+      EMAIL: 1,
+      CREDIT_CARD: 1,
+    });
   });
 });
 
