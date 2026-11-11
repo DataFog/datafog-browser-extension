@@ -12,6 +12,7 @@
 
 import type {
   FogVaultWorkspace,
+  SavedWorkspaceChange,
   WorkspaceVaultPlan,
 } from "@datafog/core-fogvault-browser";
 import type {
@@ -30,6 +31,7 @@ import type {
   RedactEdit,
   ReviewItem,
   ReviewSource,
+  ValueChoice,
   VaultRouting,
   VaultStatus,
 } from "./messages";
@@ -60,7 +62,13 @@ export type Vault = Pick<
 /** The parts of Core's adapter the host uses. */
 export type Owner = Pick<
   FogVaultWorkspace,
-  "prepareReview" | "commit" | "lock" | "closed" | "restoreReport"
+  | "prepareReview"
+  | "preparePolicyChanges"
+  | "policy"
+  | "commit"
+  | "lock"
+  | "closed"
+  | "restoreReport"
 >;
 
 /** Raw identifiers for opening the workspace. */
@@ -96,6 +104,26 @@ interface Review extends ReviewSource {
 /** Pseudonymize asked for while the vault was locked. */
 interface Waiting extends ReviewSource {
   settings: Settings;
+}
+
+/**
+ * A review's source, to prepare it again.
+ *
+ * @param review The review.
+ * @returns Its chat box text, tab and settings.
+ */
+function again({ tabId, text, settings }: Review): Waiting {
+  return { tabId, text, settings };
+}
+
+/**
+ * The type a marker names, such as EMAIL for [[EMAIL_7KQ4ZM]].
+ *
+ * @param marker The marker.
+ * @returns Its type.
+ */
+function labelOf(marker: string): string {
+  return /^\[\[(.+)_[0-9A-Z]+\]\]$/.exec(marker)?.[1] ?? "";
 }
 
 /**
@@ -205,7 +233,116 @@ export class VaultHost<V extends Vault = Vault> {
       rememberedUntil: routing
         ? this.deps.devices.rememberedUntil(this.deps.now())
         : null,
+      notSensitive: this.notSensitive(),
     };
+  }
+
+  /**
+   * The values marked not sensitive, while unlocked.
+   *
+   * @returns Each value and its type; empty while locked.
+   */
+  notSensitive(): ValueChoice[] {
+    if (!this.owner || this.owner.closed) return [];
+    return this.owner
+      .policy()
+      .choices.filter((choice) => choice.disposition === "not_sensitive")
+      .map(({ entityType, value }) => ({ entityType, value }));
+  }
+
+  /**
+   * Remember a reviewed value as not sensitive, and prepare the review again
+   * without it. Core leaves the value as is from then on.
+   *
+   * @param index The value's place in the review.
+   */
+  async markNotSensitive(index: number): Promise<void> {
+    const review = this.review;
+    const owner = this.owner;
+    const item = review?.items[index];
+    if (!review || !owner || !item) throw failure("no_review");
+    this.drop();
+    this.waiting = again(review);
+    await this.saveChoice(
+      owner,
+      item.entityType,
+      item.original,
+      "not_sensitive",
+    );
+    await this.prepareWaiting();
+  }
+
+  /**
+   * Forget that a value is not sensitive, so it's replaced again. An open
+   * review is prepared again, since the value may be in it.
+   *
+   * @param choice The value and its type.
+   */
+  async clearChoice(choice: ValueChoice): Promise<void> {
+    const owner = this.owner;
+    if (!owner || owner.closed) throw failure("vault_locked");
+    if (this.review) {
+      this.waiting = again(this.review);
+      this.drop();
+    }
+    await this.saveChoice(owner, choice.entityType, choice.value, null);
+    if (this.waiting) await this.prepareWaiting();
+    else this.deps.notify();
+  }
+
+  /**
+   * Save one value's choice to the vault.
+   *
+   * @param owner The workspace.
+   * @param entityType The value's type.
+   * @param value The value.
+   * @param disposition Not sensitive, or null to forget the choice.
+   */
+  private async saveChoice(
+    owner: Owner,
+    entityType: string,
+    value: string,
+    disposition: "not_sensitive" | null,
+  ): Promise<void> {
+    const plan = owner.preparePolicyChanges(
+      { rules: [], choices: [{ entityType, value, disposition }] },
+      this.deps.randomId(),
+    );
+    await this.save(owner, plan);
+  }
+
+  /**
+   * Save a prepared change. A failed save closes the workspace, so the vault
+   * locks, and the change is settled at the next unlock.
+   *
+   * @param owner The workspace.
+   * @param plan The change.
+   * @returns What was saved.
+   */
+  private async save(
+    owner: Owner,
+    plan: WorkspaceVaultPlan,
+  ): Promise<SavedWorkspaceChange> {
+    try {
+      const saved = await owner.commit(plan, { approved: true });
+      this.touch();
+      return saved;
+    } catch (error) {
+      this.error = codeOf(error);
+      this.waiting = null;
+      if (!owner.closed) plan.discard();
+      else {
+        const requestId =
+          typeof error === "object" && error !== null && "requestId" in error
+            ? error.requestId
+            : undefined;
+        if (requestId instanceof Uint8Array) this.unsettled = requestId;
+        this.owner = null;
+        await this.vault?.lock();
+      }
+      this.deps.notify();
+      throw error;
+    }
   }
 
   /**
@@ -550,41 +687,23 @@ export class VaultHost<V extends Vault = Vault> {
       throw failure("settings_changed");
     }
     this.review = null;
-    try {
-      const saved = await owner.commit(review.plan, { approved: true });
-      this.touch();
-      const preview = saved.previews[0];
-      const edits: RedactEdit[] = preview.transformations
-        .map((item) => ({
-          start: item.sourceUtf16Range.start,
-          end: item.sourceUtf16Range.end,
-          replacement: preview.text.slice(
-            item.outputUtf16Range.start,
-            item.outputUtf16Range.end,
-          ),
-        }))
-        .toSorted((a, b) => a.start - b.start);
-      return {
-        tabId: review.tabId,
-        text: review.text,
-        response: { text: preview.text, edits },
-      };
-    } catch (error) {
-      // A failed save closes the workspace; lock, and settle it at unlock
-      this.error = codeOf(error);
-      if (!owner.closed) review.plan.discard();
-      else {
-        const requestId =
-          typeof error === "object" && error !== null && "requestId" in error
-            ? error.requestId
-            : undefined;
-        if (requestId instanceof Uint8Array) this.unsettled = requestId;
-        this.owner = null;
-        await this.vault?.lock();
-      }
-      this.deps.notify();
-      throw error;
-    }
+    const saved = await this.save(owner, review.plan);
+    const preview = saved.previews[0];
+    const edits: RedactEdit[] = preview.transformations
+      .map((item) => ({
+        start: item.sourceUtf16Range.start,
+        end: item.sourceUtf16Range.end,
+        replacement: preview.text.slice(
+          item.outputUtf16Range.start,
+          item.outputUtf16Range.end,
+        ),
+      }))
+      .toSorted((a, b) => a.start - b.start);
+    return {
+      tabId: review.tabId,
+      text: review.text,
+      response: { text: preview.text, edits },
+    };
   }
 
   /** Drop the review, and any Pseudonymize waiting for an unlock. */
@@ -633,6 +752,12 @@ export class VaultHost<V extends Vault = Vault> {
           settings: waiting.settings,
           plan,
           items: preview.transformations.map((item) => ({
+            entityType: labelOf(
+              preview.text.slice(
+                item.outputUtf16Range.start,
+                item.outputUtf16Range.end,
+              ),
+            ),
             original: waiting.text.slice(
               item.sourceUtf16Range.start,
               item.sourceUtf16Range.end,

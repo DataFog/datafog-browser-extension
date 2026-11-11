@@ -107,26 +107,36 @@ class FakeDevices implements Devices {
  */
 function makeOwner(): FakeOwner {
   let pending: PreparedWorkspaceChange | null = null;
+  /**
+   * Hand out a change as the adapter does, one at a time.
+   *
+   * @param change Core's prepared change.
+   * @returns The adapter's plan for it.
+   */
+  const wrap = (change: PreparedWorkspaceChange) => {
+    pending = change;
+    return {
+      preview: () => change.preview(),
+      previews: () => change.previews(),
+      heads: () => change.heads(),
+      snapshotFormat: () => change.snapshotFormat(),
+      policyPreview: () => change.policyPreview(),
+      sendIntents: () => change.sendIntents(),
+      discard: () => {
+        made.discards++;
+        change.discard();
+      },
+    };
+  };
   const made: FakeOwner = {
     closed: false,
     discards: 0,
     failNextSave: null,
-    prepareReview: (inputs, operationId) => {
-      const change = workspace.prepareReview(inputs, operationId);
-      pending = change;
-      return {
-        preview: () => change.preview(),
-        previews: () => change.previews(),
-        heads: () => change.heads(),
-        snapshotFormat: () => change.snapshotFormat(),
-        policyPreview: () => change.policyPreview(),
-        sendIntents: () => change.sendIntents(),
-        discard: () => {
-          made.discards++;
-          change.discard();
-        },
-      };
-    },
+    prepareReview: (inputs, operationId) =>
+      wrap(workspace.prepareReview(inputs, operationId)),
+    preparePolicyChanges: (edits, operationId) =>
+      wrap(workspace.preparePolicyChanges(edits, operationId)),
+    policy: () => workspace.policy(),
     commit: async () => {
       if (made.failNextSave) {
         made.closed = true;
@@ -337,8 +347,56 @@ test("gives a value the same marker the next time", async () => {
   await host.pseudonymize("Write to jane@example.com", 7, DEFAULT_SETTINGS);
 
   expect(host.status(routing).review).toEqual([
-    { original: "jane@example.com", marker: first },
+    { entityType: "EMAIL", original: "jane@example.com", marker: first },
   ]);
+});
+
+test("remembers a value as not sensitive, and leaves it out of reviews", async () => {
+  const routing = await create();
+  await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
+
+  await host.markNotSensitive(0);
+
+  expect(host.status(routing)).toMatchObject({
+    review: [{ entityType: "EMAIL", original: "al@example.org" }],
+    notSensitive: [{ entityType: "EMAIL", value: "jane@example.com" }],
+  });
+  host.cancel();
+  await host.pseudonymize("Write to JANE@example.com", 7, DEFAULT_SETTINGS);
+  expect(host.status(routing)).toMatchObject({
+    review: null,
+    reviewError: "nothing_found",
+  });
+});
+
+test("replaces a value again once its choice is removed", async () => {
+  const routing = await create();
+  await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
+  await host.markNotSensitive(0);
+
+  await host.clearChoice({ entityType: "EMAIL", value: "jane@example.com" });
+
+  expect(host.status(routing).notSensitive).toEqual([]);
+  expect(host.status(routing).review?.map((item) => item.original)).toEqual([
+    "jane@example.com",
+    "al@example.org",
+  ]);
+});
+
+test("locks when a choice can't be saved, as for a review", async () => {
+  const routing = await create();
+  await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
+  owner.failNextSave = Object.assign(new Error(), { code: "storage_failed" });
+
+  await expect(host.markNotSensitive(0)).rejects.toMatchObject({
+    code: "storage_failed",
+  });
+  expect(host.status(routing)).toMatchObject({
+    state: "locked",
+    review: null,
+    waiting: false,
+    notSensitive: [],
+  });
 });
 
 test("says when there's nothing to pseudonymize", async () => {

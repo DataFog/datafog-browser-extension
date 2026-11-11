@@ -21,6 +21,7 @@ const LOCKED: VaultStatus = {
   review: null,
   reviewError: null,
   rememberedUntil: null,
+  notSensitive: [],
 };
 
 let notices: ((message: object) => void)[];
@@ -246,7 +247,11 @@ test("lists each value and its marker, as text", async () => {
     ...LOCKED,
     state: "unlocked",
     review: [
-      { original: "<b>jane@example.com</b>", marker: "[[EMAIL_7KQ4ZM]]" },
+      {
+        entityType: "EMAIL",
+        original: "<b>jane@example.com</b>",
+        marker: "[[EMAIL_7KQ4ZM]]",
+      },
     ],
   }));
 
@@ -269,7 +274,13 @@ test("asks to unlock when Pseudonymize is waiting", async () => {
 });
 
 test("approves the review, and explains a changed chat box", async () => {
-  const review = [{ original: "jane@example.com", marker: "[[EMAIL_7KQ4ZM]]" }];
+  const review = [
+    {
+      entityType: "EMAIL",
+      original: "jane@example.com",
+      marker: "[[EMAIL_7KQ4ZM]]",
+    },
+  ];
   let status: VaultStatus = { ...LOCKED, state: "unlocked", review };
   await start((request) => {
     if (request.type !== "review-approve") return status;
