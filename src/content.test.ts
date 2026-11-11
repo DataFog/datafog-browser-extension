@@ -229,8 +229,20 @@ function stubEditing(): ReturnType<typeof vi.fn> {
   const exec = vi.fn((command: string, _ui?: boolean, value?: string) => {
     if (command === "insertText") {
       const range = window.getSelection()!.getRangeAt(0);
-      range.deleteContents();
-      range.insertNode(document.createTextNode(value ?? ""));
+      const { startContainer, startOffset, endContainer, endOffset } = range;
+      const first = startContainer.parentElement!.closest("p");
+      const last = endContainer.parentElement!.closest("p");
+      if (first && last && first !== last) {
+        // Across paragraphs: join them around the new text, as an editor does
+        const before = startContainer.textContent!.slice(0, startOffset);
+        const after = endContainer.textContent!.slice(endOffset);
+        while (first.nextSibling !== last) first.nextSibling!.remove();
+        first.textContent = before + (value ?? "") + after;
+        last.remove();
+      } else {
+        range.deleteContents();
+        range.insertNode(document.createTextNode(value ?? ""));
+      }
     }
     return true;
   });
@@ -242,10 +254,13 @@ function stubEditing(): ReturnType<typeof vi.fn> {
  * Load the content script on a rich-text chat box and choose Redact.
  *
  * @param lines The chat box's paragraphs, as markup.
+ * @param value The value to redact, as [EMAIL].
  * @returns The chat box.
  */
-async function redactRichText(lines: string[]): Promise<HTMLElement> {
-  const value = "jane@example.com";
+async function redactRichText(
+  lines: string[],
+  value = "jane@example.com",
+): Promise<HTMLElement> {
   await start(
     async (request) => {
       if (request.type === "scan")
@@ -279,6 +294,18 @@ test("redacts a long prompt with one edit per value", async () => {
   expect(exec.mock.calls).toEqual([["insertText", false, "[EMAIL]"]]);
   expect(box.textContent).toContain("Contact: [EMAIL]");
   expect(box.textContent).not.toContain("jane@example.com");
+});
+
+test("redacts a value across lines in place", async () => {
+  const exec = stubEditing();
+
+  const box = await redactRichText(
+    ["Ship to", "77 Harbor View Lane", "Port Ellison, WA 98366", "Thanks"],
+    "77 Harbor View Lane\nPort Ellison, WA 98366",
+  );
+
+  expect(exec.mock.calls).toEqual([["insertText", false, "[EMAIL]"]]);
+  expect(box.innerText).toBe("Ship to\n[EMAIL]\nThanks");
 });
 
 test("retypes the chat box when a value spans formatting", async () => {
