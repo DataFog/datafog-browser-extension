@@ -1,6 +1,6 @@
 /**
- * Side panel: the vault, the Pseudonymize review, and later the workspace and
- * restore views.
+ * Side panel: the vault, the Pseudonymize review, the workspace's not
+ * sensitive values, and restoring answers.
  */
 
 import type {
@@ -9,8 +9,10 @@ import type {
   PanelRequest,
   RestoredInPage,
   UnlockedVault,
+  ValueChoice,
   VaultStatus,
 } from "./messages";
+import { LABELS } from "./settings";
 
 /** What the recovery key is for, when the vault is new. */
 const RECOVERY_NOTE =
@@ -96,6 +98,11 @@ const view = {
   restoredSummary:
     document.querySelector<HTMLParagraphElement>("#restored-summary")!,
   restoreError: document.querySelector<HTMLParagraphElement>("#restore-error")!,
+  workspaceNote:
+    document.querySelector<HTMLParagraphElement>("#workspace-note")!,
+  notSensitive: document.querySelector<HTMLUListElement>("#not-sensitive")!,
+  workspaceError:
+    document.querySelector<HTMLParagraphElement>("#workspace-error")!,
 };
 
 /** Kept only until the user says they saved it. */
@@ -244,19 +251,81 @@ function renderReview({
   else view.reviewNote.textContent = "";
   // Values only ever go in as text, never as markup
   view.reviewItems.replaceChildren(
-    ...(review ?? []).map(({ original, marker }) => {
+    ...(review ?? []).map(({ original, marker }, index) => {
       const item = document.createElement("li");
       const value = document.createElement("div");
       value.textContent = original;
       const replacement = document.createElement("div");
       replacement.className = "marker";
       replacement.textContent = `→ ${marker}`;
-      item.append(value, replacement);
+      const keep = linkButton("Not sensitive");
+      keep.addEventListener(
+        "click",
+        () =>
+          void act({ type: "review-not-sensitive", index }, view.reviewError),
+      );
+      item.append(value, replacement, keep);
       return item;
     }),
   );
   fitReview(review?.length ?? 0);
   showError(view.reviewError, reviewError);
+}
+
+/**
+ * Make a small text button for a list row.
+ *
+ * @param text The button's text.
+ * @returns The button.
+ */
+function linkButton(text: string): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "link inline";
+  button.textContent = text;
+  return button;
+}
+
+/**
+ * Show the values remembered as not sensitive, each with Remove.
+ *
+ * @param status The vault's status.
+ */
+function renderWorkspace({ state, notSensitive }: VaultStatus): void {
+  if (state !== "unlocked")
+    view.workspaceNote.textContent =
+      "Unlock your vault to see the values you've marked not sensitive.";
+  else if (notSensitive.length === 0)
+    view.workspaceNote.textContent =
+      "Mark a value not sensitive in a review, and DataFog leaves it as is from then on.";
+  else
+    view.workspaceNote.textContent =
+      "DataFog leaves these values as is. Remove one to replace it again.";
+  // Values only ever go in as text, never as markup
+  view.notSensitive.replaceChildren(
+    ...notSensitive.map((choice) => {
+      const item = document.createElement("li");
+      const value = document.createElement("div");
+      value.textContent = choice.value;
+      const type = document.createElement("div");
+      type.className = "muted";
+      type.textContent = LABELS[choice.entityType] ?? choice.entityType;
+      const remove = linkButton("Remove");
+      remove.addEventListener("click", () => void clearChoice(choice));
+      item.append(value, type, remove);
+      return item;
+    }),
+  );
+  if (state !== "unlocked") showError(view.workspaceError, null);
+}
+
+/**
+ * Replace a value remembered as not sensitive again.
+ *
+ * @param choice The value and its type.
+ */
+async function clearChoice(choice: ValueChoice): Promise<void> {
+  await act({ type: "choice-clear", ...choice }, view.workspaceError);
 }
 
 /**
@@ -369,6 +438,7 @@ async function restoreLatest(): Promise<void> {
 function render(status: VaultStatus): void {
   renderVault(status);
   renderReview(status);
+  renderWorkspace(status);
   renderRestore(status.state);
 }
 

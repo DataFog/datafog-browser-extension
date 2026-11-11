@@ -263,6 +263,65 @@ test("lists each value and its marker, as text", async () => {
   expect(item.textContent).toContain("→ [[EMAIL_7KQ4ZM]]");
 });
 
+test("marks a review value not sensitive", async () => {
+  const review = [
+    { entityType: "PERSON", original: "Ann", marker: "[[PERSON_7KQ4ZM]]" },
+  ];
+  let status: VaultStatus = { ...LOCKED, state: "unlocked", review };
+  await start((request) => {
+    if (request.type === "review-not-sensitive") {
+      status = {
+        ...status,
+        review: null,
+        notSensitive: [{ entityType: "PERSON", value: "Ann" }],
+      };
+    }
+    return status;
+  });
+
+  $("#review-items li button").click();
+  await settle();
+
+  expect(sendMessage).toHaveBeenCalledWith({
+    type: "review-not-sensitive",
+    index: 0,
+  });
+  expect($("#not-sensitive").textContent).toContain("Ann");
+});
+
+test("lists not sensitive values as text, and removes one", async () => {
+  const choice = { entityType: "PERSON", value: "<i>Ann</i>" };
+  let status: VaultStatus = {
+    ...LOCKED,
+    state: "unlocked",
+    notSensitive: [choice],
+  };
+  await start((request) => {
+    if (request.type === "choice-clear") {
+      status = { ...status, notSensitive: [] };
+    }
+    return status;
+  });
+
+  const item = document.querySelector("#not-sensitive li")!;
+  expect(item.querySelector("i")).toBeNull();
+  expect(item.textContent).toContain("<i>Ann</i>");
+  expect(item.textContent).toContain("Name");
+
+  item.querySelector("button")!.click();
+  await settle();
+
+  expect(sendMessage).toHaveBeenCalledWith({ type: "choice-clear", ...choice });
+  expect($("#not-sensitive").children).toHaveLength(0);
+  expect($("#workspace-note").textContent).toContain("Mark a value");
+});
+
+test("asks to unlock before showing not sensitive values", async () => {
+  await start(() => LOCKED);
+
+  expect($("#workspace-note").textContent).toContain("Unlock your vault");
+});
+
 test("asks to unlock when Pseudonymize is waiting", async () => {
   await start(() => ({ ...LOCKED, waiting: true }));
 
