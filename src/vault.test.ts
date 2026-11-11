@@ -82,6 +82,7 @@ function makeOwner(): FakeOwner {
       made.closed = true;
       return { locked: true };
     },
+    restoreReport: (text) => workspace.restoreReport(text),
   };
   return made;
 }
@@ -318,4 +319,51 @@ test("resets the vault only with the right password", async () => {
   expect(deleteStore).toHaveBeenCalledWith("datafog");
   expect(status.state).toBe("none");
   expect(owner.closed).toBe(true);
+});
+
+test("restores the markers it issued", async () => {
+  const routing = await create();
+  await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
+  const { response } = await host.approve();
+
+  const restored = host.restore(`Sure: ${response.text}`);
+
+  const [first, second] = response.edits.map((edit) => edit.replacement);
+  expect(restored).toEqual({
+    text: `Sure: ${TEXT}`,
+    restored: 2,
+    unrestored: 0,
+    values: [
+      { marker: first, original: "jane@example.com" },
+      { marker: second, original: "al@example.org" },
+    ],
+  });
+  expect(host.status(routing).state).toBe("unlocked");
+});
+
+test("leaves markers it can't restore as they are", async () => {
+  await create();
+  await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
+  const { response } = await host.approve();
+  const [first] = response.edits;
+
+  const restored = host.restore(
+    `${first.replacement} and [[EMAIL_ZZZZZZ]] and ${first.replacement}`,
+  );
+
+  expect(restored).toEqual({
+    text: "jane@example.com and [[EMAIL_ZZZZZZ]] and jane@example.com",
+    restored: 2,
+    unrestored: 1,
+    values: [{ marker: first.replacement, original: "jane@example.com" }],
+  });
+});
+
+test("won't restore while locked", async () => {
+  const routing = await create();
+  await host.lock(routing);
+
+  expect(() => host.restore("[[EMAIL_7KQ4ZM]]")).toThrow(
+    expect.objectContaining({ code: "vault_locked" }),
+  );
 });

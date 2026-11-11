@@ -16,6 +16,7 @@ import {
   type ScanResponse,
   type TabRequest,
 } from "./messages";
+import { hideOriginals, MARKER, showOriginals } from "./originals";
 import { clickSend, watchPage } from "./page";
 import { mountTab } from "./tab";
 
@@ -485,8 +486,63 @@ async function pseudonymizeComposer(): Promise<void> {
   }
 }
 
+/** Where ChatGPT has kept its answers, newest last; it changes without notice. */
+const ANSWER_SELECTORS = [
+  "[data-dil-response]",
+  '[data-message-author-role="assistant"]',
+  'article[data-turn="assistant"]',
+  ".markdown",
+];
+
 /**
- * Answer the service worker: the chat box's text, or markers to put in it.
+ * The last element on the page with a marker in it, outside the chat box: a
+ * fallback for when ChatGPT's answers can't be found by name.
+ *
+ * @returns The element, or null if no marker is on the page.
+ */
+function lastMarkedBlock(): Element | null {
+  const box = composer?.closest("form") ?? composer;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let found: Element | null = null;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const parent = node.parentElement;
+    if (!parent || box?.contains(parent) || parent.closest("datafog-badge"))
+      continue;
+    if (MARKER.test(node.textContent ?? "")) found = parent;
+  }
+  // The answer's whole text block, not only the run with the marker
+  return found?.closest("article, li, p, pre, div") ?? found;
+}
+
+/**
+ * The chat's latest answer.
+ *
+ * @returns Its element, or null if there's no answer yet.
+ */
+function latestAnswer(): HTMLElement | null {
+  for (const selector of ANSWER_SELECTORS) {
+    const answers = document.querySelectorAll<HTMLElement>(selector);
+    const last = answers.item(answers.length - 1);
+    if (last?.innerText.trim()) return last;
+  }
+  const block = lastMarkedBlock();
+  return block instanceof HTMLElement ? block : null;
+}
+
+/**
+ * An answer's text, without the runs of blank lines tables leave.
+ *
+ * @param element The answer's element.
+ * @returns Its text, or null if it has none.
+ */
+function answerText(element: HTMLElement | null): string | null {
+  const text = element?.innerText.replaceAll(/\n{3,}/g, "\n\n").trim();
+  return text ? text : null;
+}
+
+/**
+ * Answer the service worker: the chat box's text, the latest answer,
+ * or markers to put in the chat box.
  *
  * @param request The request.
  * @returns The response.
@@ -494,6 +550,19 @@ async function pseudonymizeComposer(): Promise<void> {
 async function answer(request: TabRequest): Promise<object> {
   if (request.type === "chat-text") {
     return { text: composer ? readText(composer) : null };
+  }
+  if (request.type === "latest-answer") {
+    // Shown values aren't in the page's text; read the markers under them
+    hideOriginals();
+    return { text: answerText(latestAnswer()) };
+  }
+  if (request.type === "show-originals") {
+    const latest = latestAnswer();
+    return { shown: latest ? showOriginals(latest, request.values) : 0 };
+  }
+  if (request.type === "hide-originals") {
+    hideOriginals();
+    return {};
   }
   // Approved in the side panel for this text; anything since wins
   if (!composer || readText(composer) !== request.before) {

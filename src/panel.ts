@@ -7,6 +7,7 @@ import type {
   ErrorResponse,
   PanelNotice,
   PanelRequest,
+  RestoredInPage,
   VaultStatus,
 } from "./messages";
 
@@ -21,6 +22,10 @@ const EXPLAINED: Record<string, string> = {
     "The chat box changed after this review was prepared. Choose Pseudonymize again.",
   nothing_found: "There's nothing to pseudonymize in the chat box.",
   no_review: "This review is gone. Choose Pseudonymize again.",
+  no_chat: "Open a ChatGPT chat in this tab to restore its latest answer.",
+  no_answer: "There's no answer in this chat yet.",
+  vault_locked: "Unlock your vault to restore.",
+  no_markers: "There are no markers in ChatGPT's latest answer.",
 };
 
 /** The lock's body, shared by both icons. */
@@ -64,10 +69,19 @@ const view = {
   unlockPassword: document.querySelector<HTMLInputElement>("#unlock-password")!,
   unlocked: document.querySelector<HTMLDivElement>("#unlocked")!,
   vaultError: document.querySelector<HTMLParagraphElement>("#vault-error")!,
+  restoreNote: document.querySelector<HTMLParagraphElement>("#restore-note")!,
+  restoreLatest: document.querySelector<HTMLButtonElement>("#restore-latest")!,
+  restored: document.querySelector<HTMLDivElement>("#restored")!,
+  restoredSummary:
+    document.querySelector<HTMLParagraphElement>("#restored-summary")!,
+  restoreError: document.querySelector<HTMLParagraphElement>("#restore-error")!,
 };
 
 /** Kept only until the user says they saved it. */
 let recoveryKey: string | null = null;
+
+/** The latest restored answer, kept only for Copy until it's hidden. */
+let restoredText = "";
 
 /** Whether the reset form is open. */
 let resetting = false;
@@ -217,6 +231,80 @@ function renderReview({
 }
 
 /**
+ * Pluralize a count of markers.
+ *
+ * @param count How many.
+ * @returns "1 marker" or "N markers".
+ */
+function markers(count: number): string {
+  return `${count} marker${count === 1 ? "" : "s"}`;
+}
+
+/**
+ * Say what was restored in the page, or clear it.
+ *
+ * @param restored The restored answer, or null to clear it.
+ */
+function showRestored(restored: RestoredInPage | null): void {
+  view.restored.hidden = restored === null;
+  restoredText = restored?.text ?? "";
+  if (!restored) return;
+  const left = restored.unrestored
+    ? ` ${markers(restored.unrestored)} couldn't be restored and stayed as is.`
+    : "";
+  let summary = `Showing ${restored.shown} original value${restored.shown === 1 ? "" : "s"} in ChatGPT's answer.${left}`;
+  if (restored.restored === 0)
+    summary = `None of the ${markers(restored.unrestored)} in this answer could be restored.`;
+  else if (restored.shown === 0)
+    summary = `Restored ${markers(restored.restored)}, but couldn't show them in the page. Copy the restored answer instead.${left}`;
+  view.restoredSummary.textContent = summary;
+}
+
+/** Put the markers back in this window's chat. */
+async function hideInPage(): Promise<void> {
+  const { id } = await chrome.windows.getCurrent();
+  showRestored(null);
+  await ask({
+    type: "hide-originals",
+    windowId: id ?? chrome.windows.WINDOW_ID_CURRENT,
+  });
+}
+
+/**
+ * Offer Restore while the vault is unlocked, clearing restored values when
+ * it locks.
+ *
+ * @param state The vault's state.
+ */
+function renderRestore(state: VaultStatus["state"]): void {
+  const unlocked = state === "unlocked";
+  view.restoreLatest.disabled = !unlocked;
+  view.restoreNote.textContent = unlocked
+    ? "Show the original values in place of markers in ChatGPT's latest answer."
+    : "Unlock your vault to restore markers in ChatGPT's answers.";
+  if (!unlocked) {
+    showRestored(null);
+    showError(view.restoreError, null);
+  }
+}
+
+/** Restore the latest answer in this window's chat. */
+async function restoreLatest(): Promise<void> {
+  const { id } = await chrome.windows.getCurrent();
+  const response = await ask<RestoredInPage>({
+    type: "restore-latest",
+    windowId: id ?? chrome.windows.WINDOW_ID_CURRENT,
+  });
+  if ("error" in response) {
+    showRestored(null);
+    showError(view.restoreError, response.error);
+    return;
+  }
+  showError(view.restoreError, null);
+  showRestored(response);
+}
+
+/**
  * Show the vault and any review.
  *
  * @param status The vault's status.
@@ -224,6 +312,7 @@ function renderReview({
 function render(status: VaultStatus): void {
   renderVault(status.state);
   renderReview(status);
+  renderRestore(status.state);
 }
 
 /** Fetch the status and show it. */
@@ -336,6 +425,13 @@ view.infoToggle.addEventListener("click", () => {
   view.info.hidden = !view.info.hidden;
   view.infoToggle.setAttribute("aria-expanded", String(!view.info.hidden));
 });
+view.restoreLatest.addEventListener("click", () => void restoreLatest());
+document.querySelector("#copy-restored")!.addEventListener("click", () => {
+  void navigator.clipboard.writeText(restoredText);
+});
+document
+  .querySelector("#hide-originals")!
+  .addEventListener("click", () => void hideInPage());
 document.querySelector("#copy-key")!.addEventListener("click", () => {
   if (recoveryKey) void navigator.clipboard.writeText(recoveryKey);
 });

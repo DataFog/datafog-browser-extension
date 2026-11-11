@@ -7,6 +7,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import {
   NO_CHAT_BOX,
   type OffscreenRequest,
+  type PanelNotice,
   type PanelRequest,
   type Request,
   type TabRequest,
@@ -21,7 +22,7 @@ interface Sender {
 }
 
 type Listener = (
-  request: Request | PanelRequest,
+  request: Request | PanelRequest | PanelNotice,
   sender: Sender,
   respond: (response: unknown) => void,
 ) => boolean;
@@ -47,6 +48,7 @@ const tabMessage = vi.fn(
 );
 const setStorage = vi.fn(async (_items: object) => {});
 const removeStorage = vi.fn(async (_keys: string) => {});
+const queryTabs = vi.fn(async (_query: object) => [{ id: 7 }]);
 let stored: object;
 
 const PANEL: Sender = {
@@ -126,7 +128,7 @@ beforeEach(async () => {
           remove: removeStorage,
         },
       },
-      tabs: { sendMessage: tabMessage },
+      tabs: { sendMessage: tabMessage, query: queryTabs },
     },
   });
   await import("./background");
@@ -339,4 +341,86 @@ test("drops the review when the chat box changed since", async () => {
   expect(sent).toContain("review-cancel");
   expect(sent).not.toContain("review-approve");
   warn.mockRestore();
+});
+
+test("restores the latest answer, showing the values in the page", async () => {
+  tabMessage
+    .mockResolvedValueOnce({ text: "Hi [[EMAIL_7KQ4ZM]]" })
+    .mockResolvedValueOnce({ shown: 1 });
+  const values = [{ marker: "[[EMAIL_7KQ4ZM]]", original: "a@b.co" }];
+  const restored = { text: "Hi a@b.co", restored: 1, unrestored: 0 };
+  sendMessage.mockResolvedValueOnce({ ...restored, values });
+
+  expect(await send({ type: "restore-latest", windowId: 3 }, PANEL)).toEqual({
+    ...restored,
+    shown: 1,
+  });
+  expect(queryTabs).toHaveBeenCalledWith({ active: true, windowId: 3 });
+  expect(tabMessage).toHaveBeenCalledWith(7, { type: "latest-answer" });
+  expect(tabMessage).toHaveBeenCalledWith(7, {
+    type: "show-originals",
+    values,
+  });
+  expect(sendMessage).toHaveBeenCalledWith(
+    expect.objectContaining({
+      request: { type: "restore", text: "Hi [[EMAIL_7KQ4ZM]]" },
+    }),
+  );
+});
+
+test("says when there's no chat or answer to restore", async () => {
+  tabMessage.mockRejectedValueOnce(new Error("Receiving end does not exist"));
+  expect(await send({ type: "restore-latest", windowId: 3 }, PANEL)).toEqual({
+    error: "no_chat",
+  });
+
+  tabMessage.mockResolvedValueOnce({ text: null });
+  expect(await send({ type: "restore-latest", windowId: 3 }, PANEL)).toEqual({
+    error: "no_answer",
+  });
+});
+
+test("refuses restore requests from a web page", async () => {
+  expect(await send({ type: "restore-latest", windowId: 3 })).toEqual({
+    error: "not_allowed",
+  });
+  expect(tabMessage).not.toHaveBeenCalled();
+});
+
+test("hides the values in the page when asked", async () => {
+  expect(await send({ type: "hide-originals", windowId: 3 }, PANEL)).toEqual(
+    {},
+  );
+  expect(tabMessage).toHaveBeenCalledWith(7, { type: "hide-originals" });
+});
+
+test("hides the values in every tab once the vault locks", async () => {
+  queryTabs.mockResolvedValueOnce([{ id: 7 }, { id: 8 }]);
+  sendMessage.mockResolvedValueOnce({ state: "locked" });
+  tabMessage.mockRejectedValueOnce(new Error("no content script"));
+
+  // The vault's notice gets no reply; the worker acts on it in the background
+  listener({ target: "panel", type: "vault-changed" }, PANEL, () => {});
+  await vi.waitFor(() =>
+    expect(tabMessage).toHaveBeenCalledWith(8, { type: "hide-originals" }),
+  );
+  expect(tabMessage).toHaveBeenCalledWith(7, { type: "hide-originals" });
+});
+
+test("says when the latest answer has no markers", async () => {
+  tabMessage.mockResolvedValueOnce({ text: "Nothing to restore" });
+  sendMessage.mockResolvedValueOnce({
+    text: "Nothing to restore",
+    restored: 0,
+    unrestored: 0,
+    values: [],
+  });
+
+  expect(await send({ type: "restore-latest", windowId: 3 }, PANEL)).toEqual({
+    error: "no_markers",
+  });
+  expect(tabMessage).not.toHaveBeenCalledWith(
+    7,
+    expect.objectContaining({ type: "show-originals" }),
+  );
 });

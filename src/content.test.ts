@@ -854,3 +854,91 @@ test("offers Send anyway when a scan never answers", async () => {
   expect(badge().dot.className).toBe("dot failed");
   expect(panelButton("send").hidden).toBe(false);
 });
+
+test("reads the latest answer for restore", async () => {
+  await start(
+    async () => ({}),
+    `${PAGE}
+    <div data-message-author-role="assistant">First</div>
+    <div data-message-author-role="user">[[EMAIL_7KQ4ZM]]</div>
+    <div data-message-author-role="assistant">Write to [[EMAIL_7KQ4ZM]]</div>`,
+  );
+
+  expect(await fromWorker({ type: "latest-answer" })).toEqual({
+    text: "Write to [[EMAIL_7KQ4ZM]]",
+  });
+});
+
+test("says when there's no answer yet", async () => {
+  await start(async () => ({}));
+
+  expect(await fromWorker({ type: "latest-answer" })).toEqual({ text: null });
+});
+
+test("falls back to the last text with a marker, outside the chat box", async () => {
+  const box = await start(
+    async () => ({}),
+    `<main>
+      <section><p>Earlier: [[EMAIL_N3PX2D]]</p></section>
+      <section><p>Write to [[EMAIL_7KQ4ZM]] today</p></section>
+    </main>${PAGE}`,
+  );
+  box.value = "Draft for [[EMAIL_ZZZZZZ]]";
+
+  expect(await fromWorker({ type: "latest-answer" })).toEqual({
+    text: "Write to [[EMAIL_7KQ4ZM]] today",
+  });
+});
+
+test("reads the latest answer from ChatGPT's response containers", async () => {
+  await start(
+    async () => ({}),
+    `<main>
+      <div data-user-message-bubble>Ask [[EMAIL_7KQ4ZM]]</div>
+      <div data-dil-response>First answer</div>
+      <div data-user-message-bubble>And again</div>
+      <div data-dil-response><p>Write to [[EMAIL_7KQ4ZM]]</p></div>
+    </main>${PAGE}`,
+  );
+
+  expect(await fromWorker({ type: "latest-answer" })).toEqual({
+    text: "Write to [[EMAIL_7KQ4ZM]]",
+  });
+});
+
+test("shows the original values in the latest answer, and hides them", async () => {
+  await start(
+    async () => ({}),
+    `<main>
+      <div data-dil-response><p>Old [[EMAIL_7KQ4ZM]]</p></div>
+      <div data-dil-response><p>Write to [[EMAIL_7KQ4ZM]]</p></div>
+    </main>${PAGE}`,
+  );
+  const [older, latest] = document.querySelectorAll("[data-dil-response]");
+  const values = [{ marker: "[[EMAIL_7KQ4ZM]]", original: "jane@example.com" }];
+
+  expect(await fromWorker({ type: "show-originals", values })).toEqual({
+    shown: 1,
+  });
+  expect(latest.querySelector("datafog-original")).not.toBeNull();
+  expect(older.querySelector("datafog-original")).toBeNull();
+
+  await fromWorker({ type: "hide-originals" });
+  expect(latest.textContent).toBe("Write to [[EMAIL_7KQ4ZM]]");
+});
+
+test("reads the markers under shown values, so Restore works again", async () => {
+  await start(
+    async () => ({}),
+    `<main><div data-dil-response><p>Write to [[EMAIL_7KQ4ZM]]</p></div></main>${PAGE}`,
+  );
+  const values = [{ marker: "[[EMAIL_7KQ4ZM]]", original: "jane@example.com" }];
+  await fromWorker({ type: "show-originals", values });
+
+  expect(await fromWorker({ type: "latest-answer" })).toEqual({
+    text: "Write to [[EMAIL_7KQ4ZM]]",
+  });
+  expect(await fromWorker({ type: "show-originals", values })).toEqual({
+    shown: 1,
+  });
+});

@@ -40,11 +40,17 @@ export type PanelRequest =
   | { type: "vault-lock" }
   | { type: "vault-reset"; password: string }
   | { type: "review-approve" }
-  | { type: "review-cancel" };
+  | { type: "review-cancel" }
+  | { type: "restore-latest"; windowId: number }
+  | { type: "hide-originals"; windowId: number };
 
 /** A vault request the service worker forwards to the offscreen document. */
 export type VaultRequest =
-  | Exclude<PanelRequest, { type: "review-approve" }>
+  | Exclude<
+      PanelRequest,
+      { type: "review-approve" | "restore-latest" | "hide-originals" }
+    >
+  | { type: "restore"; text: string }
   | { type: "pseudonymize"; text: string; tabId: number }
   | { type: "review-source" }
   | { type: "review-approve" };
@@ -64,6 +70,9 @@ export interface OffscreenRequest {
 /** A request the service worker sends a ChatGPT tab. */
 export type TabRequest =
   | { type: "chat-text" }
+  | { type: "latest-answer" }
+  | { type: "show-originals"; values: RestoredValue[] }
+  | { type: "hide-originals" }
   | { type: "apply-pseudonyms"; before: string; response: RedactResponse };
 
 /** Tells an open side panel the vault or its review changed. */
@@ -109,6 +118,29 @@ export interface CreatedVault {
 }
 
 /** The text a review was prepared from, and its tab. */
+/** A marker and the original value it stands for. */
+export interface RestoredValue {
+  marker: string;
+  original: string;
+}
+
+/** An answer with its markers restored, and how many were and weren't. */
+export interface Restored {
+  text: string;
+  restored: number;
+  unrestored: number;
+}
+
+/** What the vault restored, with each marker's value to show in the page. */
+export interface RestoredWithValues extends Restored {
+  values: RestoredValue[];
+}
+
+/** A restored answer, and how many values now show in the page. */
+export interface RestoredInPage extends Restored {
+  shown: number;
+}
+
 export interface ReviewSource {
   tabId: number;
   text: string;

@@ -100,6 +100,8 @@ async function handle({
     case "pseudonymize":
       await host.pseudonymize(request.text, request.tabId, settings);
       return host.status(routing);
+    case "restore":
+      return host.restore(request.text);
     case "review-source":
       return { source: host.source() };
     case "review-approve":

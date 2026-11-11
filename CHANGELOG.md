@@ -16,6 +16,7 @@ Prototype: a Chrome extension that checks what you type into ChatGPT for sensiti
 - Attaching a file opens the badge's panel with a warning that files aren't protected, since DataFog only checks text in the chat box. It stays until the message is sent.
 - **Pseudonymize** in the badge's panel replaces each found value with a marker such as `[[EMAIL_7KQ4ZM]]`, and the same value gets the same marker every time. The side panel shows each value and its marker for review; **Replace in chat box** saves them to your vault, then edits the chat box. If the chat box changed in the meantime, nothing is replaced. **Undo** puts the values back.
 - A vault in the side panel keeps the originals encrypted on your device. Creating it shows a recovery key once. It locks after 15 minutes without use, when Chrome closes, or with **Lock**, and asks for your password to unlock. **Reset vault** deletes the vault and everything in it, after checking your password.
+- **Restore latest answer** in the side panel shows the original values in place of the markers in ChatGPT's latest answer, highlighted. **Hide originals** puts the markers back, as does locking the vault, and **Copy restored answer** copies the answer with its values. Markers the vault can't restore stay as they are, and the panel says how many.
 - An optional setting, off by default, holds a message when something sensitive is found, for the send button and Enter. The panel explains and offers **Send anyway**, and pressing send again also sends it. If DataFog can't check the text, the message stays held until you choose Send anyway.
 - A settings page to turn checking on or off, choose what to look for, and list exact values to always allow, such as your own work email.
 - The extension uses the new DataFog logo in the badge and page tab, and for its toolbar, extensions page and store icons.
@@ -25,7 +26,7 @@ Prototype: a Chrome extension that checks what you type into ChatGPT for sensiti
 ### Security
 
 - Detection runs on your device with [DataFog Core](https://github.com/DataFog/datafog-core) (`@datafog/wasm` 1.1.0-rc.1). The extension makes no network requests.
-- The vault uses FogVault (`@datafog/fogvault-browser` 0.1.0) through Core's adapter (`@datafog/core-fogvault-browser` 1.1.0-rc.1), with an Argon2 password key. The password and original values stay in the side panel and the offscreen document, and are never stored unencrypted or sent to the chat site.
+- The vault uses FogVault (`@datafog/fogvault-browser` 0.1.0) through Core's adapter (`@datafog/core-fogvault-browser` 1.1.0-rc.1), with an Argon2 password key. The password and original values stay in the side panel and the offscreen document, and are never stored unencrypted or sent to the chat site. Restored values show in the chat page inside closed shadow roots, so the page's scripts, its copy button and its text see only the markers.
 - Permissions requested: `storage`, for settings; `sidePanel`, for the DataFog panel; and `offscreen`, to keep Core running while the panel is closed.
 - Errors carry codes only, never text from the chat box.
 
@@ -33,7 +34,7 @@ Prototype: a Chrome extension that checks what you type into ChatGPT for sensiti
 
 - Works on chatgpt.com only.
 - Redaction is one way: labels such as `[EMAIL]` can't be turned back into the original values.
-- Markers in ChatGPT's answers can't be restored to the original values yet, and the recovery key can't be used yet.
+- Restore covers only the latest answer, and restores any marker in the vault, not only ones sent in that chat. Values disappear if ChatGPT redraws the answer; choose Restore again. The recovery key can't be used yet.
 - Core is pinned to a release candidate, 1.1.0-rc.1.
 - Detection is pattern-based, so names and street addresses are not detected.
 - The allowlist is saved unencrypted in Chrome's extension storage.
