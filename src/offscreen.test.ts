@@ -15,6 +15,13 @@ vi.mock("./detect", () => ({
   workspaceFindings: vi.fn(() => []),
 }));
 
+// IndexedDB isn't here; device keys have their own tests through the host
+vi.mock("./device", () => ({
+  DeviceKeys: class {
+    async load(): Promise<void> {}
+  },
+}));
+
 type Listener = (
   message: OffscreenRequest | Request,
   sender: object,

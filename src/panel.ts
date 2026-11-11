@@ -8,8 +8,17 @@ import type {
   PanelNotice,
   PanelRequest,
   RestoredInPage,
+  UnlockedVault,
   VaultStatus,
 } from "./messages";
+
+/** What the recovery key is for, when the vault is new. */
+const RECOVERY_NOTE =
+  "Your recovery key. Save it somewhere safe, such as a password manager. You'll need it to get back into your vault if you forget your password, and DataFog can't show it again.";
+
+/** Why there's a new recovery key, when remembering changed the vault's keys. */
+const NEW_RECOVERY_NOTE =
+  "Remembering this device gave your vault new keys, so your old recovery key no longer works. Save this new one somewhere safe, such as a password manager. DataFog can't show it again.";
 
 /** Values the review shows before its list scrolls. */
 const REVIEW_VISIBLE = 5;
@@ -62,6 +71,12 @@ const view = {
   createPassword: document.querySelector<HTMLInputElement>("#create-password")!,
   createConfirm: document.querySelector<HTMLInputElement>("#create-confirm")!,
   createSubmit: document.querySelector<HTMLButtonElement>("#create-submit")!,
+  createRemember: document.querySelector<HTMLInputElement>("#create-remember")!,
+  unlockRemember: document.querySelector<HTMLInputElement>("#unlock-remember")!,
+  recoveryNote: document.querySelector<HTMLParagraphElement>("#recovery-note")!,
+  remembered: document.querySelector<HTMLParagraphElement>("#remembered")!,
+  rememberedUntil:
+    document.querySelector<HTMLSpanElement>("#remembered-until")!,
   resetOpen: document.querySelector<HTMLButtonElement>("#reset-open")!,
   reset: document.querySelector<HTMLFormElement>("#reset")!,
   resetPassword: document.querySelector<HTMLInputElement>("#reset-password")!,
@@ -90,8 +105,8 @@ let restoredText = "";
 /** Whether the reset form is open. */
 let resetting = false;
 
-/** The last state shown, to redraw after opening or closing the reset form. */
-let shown: VaultStatus["state"] = "none";
+/** The last status shown, to redraw after opening or closing the reset form. */
+let shown: VaultStatus | null = null;
 
 /**
  * Say what an error code means.
@@ -137,10 +152,17 @@ async function ask<T>(request: PanelRequest): Promise<T | ErrorResponse> {
  *
  * @param state The vault's state.
  */
-function renderVault(state: VaultStatus["state"]): void {
+function renderVault(status: VaultStatus): void {
+  const { state, rememberedUntil } = status;
+  view.remembered.hidden =
+    state === "none" || rememberedUntil === null || recoveryKey !== null;
+  view.rememberedUntil.textContent = rememberedUntil
+    ? `This device is remembered until ${new Date(rememberedUntil).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.`
+    : "";
   view.create.hidden = state !== "none" || recoveryKey !== null;
   view.recovery.hidden = recoveryKey === null;
   view.recoveryKey.textContent = recoveryKey ?? "";
+  if (recoveryKey === null) view.recoveryNote.textContent = RECOVERY_NOTE;
   view.unlock.hidden = state !== "locked" || resetting;
   view.unlocked.hidden =
     state !== "unlocked" || recoveryKey !== null || resetting;
@@ -154,7 +176,7 @@ function renderVault(state: VaultStatus["state"]): void {
     // A fixed icon of the extension's own, never page or user text
     view.vaultState.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">${paths}</svg>`;
   }
-  shown = state;
+  shown = status;
 }
 
 /**
@@ -166,7 +188,7 @@ function showReset(open: boolean): void {
   resetting = open;
   view.reset.reset();
   showError(view.vaultError, null);
-  renderVault(shown);
+  if (shown) renderVault(shown);
   if (open) view.resetPassword.focus();
 }
 
@@ -343,14 +365,18 @@ async function restoreLatest(): Promise<void> {
  * @param status The vault's status.
  */
 function render(status: VaultStatus): void {
-  renderVault(status.state);
+  renderVault(status);
   renderReview(status);
   renderRestore(status.state);
 }
 
-/** Fetch the status and show it. */
-async function refresh(): Promise<void> {
-  const status = await ask<VaultStatus>({ type: "vault-status" });
+/**
+ * Fetch the status and show it.
+ *
+ * @param autoUnlock Whether a remembered device may unlock the vault.
+ */
+async function refresh(autoUnlock = false): Promise<void> {
+  const status = await ask<VaultStatus>({ type: "vault-status", autoUnlock });
   if ("error" in status) showError(view.vaultError, status.error);
   else render(status);
 }
@@ -381,10 +407,11 @@ async function act(
  *
  * @param password The new password.
  */
-async function create(password: string): Promise<void> {
+async function create(password: string, remember: boolean): Promise<void> {
   const response = await ask<{ status: VaultStatus; recoveryKey: string }>({
     type: "vault-create",
     password,
+    remember,
   });
   if ("error" in response) {
     showError(view.vaultError, response.error);
@@ -395,13 +422,39 @@ async function create(password: string): Promise<void> {
   render(response.status);
 }
 
+/**
+ * Unlock the vault, showing a new recovery key if remembering made one.
+ *
+ * @param password The password.
+ * @param remember Whether to remember this device for 30 days.
+ */
+async function unlock(password: string, remember: boolean): Promise<void> {
+  const response = await ask<UnlockedVault>({
+    type: "vault-unlock",
+    password,
+    remember,
+  });
+  if ("error" in response) {
+    await refresh();
+    showError(view.vaultError, response.error);
+    return;
+  }
+  showError(view.vaultError, null);
+  if (response.recoveryKey) {
+    recoveryKey = response.recoveryKey;
+    view.recoveryNote.textContent = NEW_RECOVERY_NOTE;
+  }
+  render(response.status);
+}
+
 view.create.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!checkPassword()) return;
   const password = view.createPassword.value;
+  const remember = view.createRemember.checked;
   view.create.reset();
   checkPassword();
-  void create(password);
+  void create(password, remember);
 });
 view.create.addEventListener("input", () => void checkPassword());
 
@@ -409,9 +462,17 @@ view.unlock.addEventListener("submit", (event) => {
   event.preventDefault();
   const password = view.unlockPassword.value;
   if (password === "") return;
+  const remember = view.unlockRemember.checked;
   view.unlock.reset();
-  void act({ type: "vault-unlock", password }, view.vaultError);
+  void unlock(password, remember);
 });
+
+view.remembered
+  .querySelector("#forget-device")!
+  .addEventListener(
+    "click",
+    () => void act({ type: "device-forget" }, view.vaultError),
+  );
 
 document
   .querySelector("#lock")!
@@ -492,4 +553,4 @@ export async function connect(): Promise<void> {
 }
 
 void connect();
-void refresh();
+void refresh(true);

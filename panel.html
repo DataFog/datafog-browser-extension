@@ -164,6 +164,19 @@
         border-color: var(--error);
         color: var(--background);
       }
+      label.check {
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+      }
+      #remembered {
+        margin-top: 8px;
+      }
+      button.link.inline {
+        display: block;
+        margin: 2px 0 0;
+        font-size: inherit;
+      }
       .warning {
         margin: 0;
         color: var(--error);
@@ -277,6 +290,10 @@
           and keeps the original encrypted in this vault, on this device. The
           vault locks after 15 minutes without use, or when Chrome closes.
         </p>
+        <p>
+          A remembered device unlocks the vault without your password for 30
+          days. Locking by hand asks for your password next time.
+        </p>
         <a href="https://docs.datafog.ai" target="_blank" rel="noreferrer"
           >Learn more</a
         >
@@ -303,17 +320,17 @@
           <li id="rule-length">At least 8 characters</li>
           <li id="rule-match">Passwords match</li>
         </ul>
+        <label class="check">
+          <input id="create-remember" type="checkbox" /> Remember this device
+          for 30 days
+        </label>
         <button class="primary" id="create-submit" type="submit" disabled>
           Create vault
         </button>
       </form>
 
       <div class="row" id="recovery" hidden>
-        <p class="muted">
-          Your recovery key. Save it somewhere safe, such as a password manager.
-          You'll need it to get back into your vault if you forget your
-          password, and DataFog can't show it again.
-        </p>
+        <p class="muted" id="recovery-note"></p>
         <code id="recovery-key"></code>
         <div class="buttons">
           <button id="copy-key" type="button">Copy</button>
@@ -332,12 +349,23 @@
             autocomplete="current-password"
           />
         </label>
+        <label class="check">
+          <input id="unlock-remember" type="checkbox" /> Remember this device
+          for 30 days
+        </label>
         <button class="primary" type="submit">Unlock</button>
       </form>
 
       <div class="row" id="unlocked" hidden>
         <button id="lock" type="button">Lock</button>
       </div>
+
+      <p class="muted" id="remembered" hidden>
+        <span id="remembered-until"></span>
+        <button class="link inline" id="forget-device" type="button">
+          Forget this device
+        </button>
+      </p>
 
       <button class="link" id="reset-open" type="button" hidden>
         Reset vault
