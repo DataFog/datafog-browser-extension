@@ -247,6 +247,13 @@ function stubEditing(): ReturnType<typeof vi.fn> {
         range.collapse(true);
       }
     }
+    if (command === "insertLineBreak") {
+      const range = window.getSelection()!.getRangeAt(0);
+      const br = document.createElement("br");
+      range.insertNode(br);
+      range.setStartAfter(br);
+      range.collapse(true);
+    }
     if (command === "insertParagraph") {
       // Split the paragraph at the caret, moving the caret to the new one
       const range = window.getSelection()!.getRangeAt(0);
@@ -341,6 +348,42 @@ test("undoes a value across lines in place, a paragraph per line", async () => {
 
   expect(box.innerText).toBe([...lines, "Thanks"].join("\n"));
   expect(box.querySelectorAll("p")).toHaveLength(4);
+  expect(exec).not.toHaveBeenCalledWith("selectAll");
+});
+
+test("undoes in place in one paragraph of lines, as ChatGPT's editor has", async () => {
+  const exec = stubEditing();
+  const value = "77 Harbor View Lane\nPort Ellison";
+  const markup =
+    "<p>Ship to<br>77 Harbor View Lane<br>Port Ellison<br><br>Thanks</p>";
+  await start(async (request) => {
+    if (request.type === "scan")
+      return { seq: request.seq, enabled: true, counts: { ADDRESS: 1 } };
+    if (request.type !== "redact") return {};
+    const at = request.text.indexOf(value);
+    return {
+      text: request.text.replace(value, "[ADDRESS]"),
+      edits: [{ start: at, end: at + value.length, replacement: "[ADDRESS]" }],
+    };
+  }, `<form><div id="prompt-textarea" contenteditable="true">${markup}</div></form>`);
+  const box = document.querySelector<HTMLElement>("#prompt-textarea")!;
+  // happy-dom's innerText skips <br>; Chromium reads each as a newline
+  Object.defineProperty(box, "innerText", {
+    get: () =>
+      [...box.querySelectorAll("p")[0].childNodes]
+        .map((node) => (node.nodeName === "BR" ? "\n" : node.textContent))
+        .join(""),
+  });
+  box.dispatchEvent(new Event("input"));
+  await vi.advanceTimersByTimeAsync(400);
+  await press("redact");
+  expect(box.innerHTML).toContain("[ADDRESS]");
+  exec.mockClear();
+
+  await press("undo");
+
+  expect(box.innerHTML).toBe(markup);
+  expect(exec).toHaveBeenCalledWith("insertLineBreak");
   expect(exec).not.toHaveBeenCalledWith("selectAll");
 });
 

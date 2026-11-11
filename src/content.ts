@@ -348,25 +348,31 @@ function replaceText(element: HTMLElement, text: string): void {
   }
 
   document.execCommand("selectAll");
-  typeLines(text);
+  typeLines(element, text);
 }
 
 /**
- * Type text over the selection, a paragraph per line, as the editor stores it.
+ * Type text over the selection, with the chat box's kind of line break.
  *
- * innerText puts two newlines between paragraphs and three more for each
- * blank one, so n newlines are (n + 1) / 3 paragraph breaks; typing each
- * newline as its own break would add blank lines.
+ * ChatGPT's editor keeps every line in one paragraph, split by <br>s, and
+ * innerText reads each as one newline. Editors with a paragraph per line put
+ * two newlines between paragraphs and three more for each blank one, so there
+ * n newlines are (n + 1) / 3 paragraph breaks.
  *
+ * @param element The chat box.
  * @param text The text, with lines as innerText reads them.
  */
-function typeLines(text: string): void {
+function typeLines(element: HTMLElement, text: string): void {
   if (!text) document.execCommand("delete");
+  const oneParagraph = element.children.length <= 1;
   for (const part of text.split(/(\n+)/)) {
     if (part.startsWith("\n")) {
-      const breaks = Math.max(1, Math.round((part.length + 1) / 3));
+      const breaks = oneParagraph
+        ? part.length
+        : Math.max(1, Math.round((part.length + 1) / 3));
+      const command = oneParagraph ? "insertLineBreak" : "insertParagraph";
       for (let count = 0; count < breaks; count++) {
-        document.execCommand("insertParagraph");
+        document.execCommand(command);
       }
     } else if (part) {
       document.execCommand("insertText", false, part);
@@ -474,7 +480,7 @@ function replaceValues(
     if (!range) return false;
     selection.removeAllRanges();
     selection.addRange(range);
-    typeLines(edit.replacement);
+    typeLines(element, edit.replacement);
   }
   return readText(element) === response.text;
 }
