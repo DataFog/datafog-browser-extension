@@ -448,3 +448,29 @@ test("says when none of the answer's markers could be restored", async () => {
     "None of the 2 markers in this answer could be restored.",
   );
 });
+
+test("scrolls a long review within the panel", async () => {
+  const review = Array.from({ length: 12 }, (_, index) => ({
+    original: `person${index}@example.com`,
+    marker: `[[EMAIL_${String(index).padStart(6, "0")}]]`,
+  }));
+  await start(() => ({ ...LOCKED, state: "unlocked", review }));
+
+  expect($("#review-items").childElementCount).toBe(12);
+  expect($("#review-items").classList.contains("scroll")).toBe(true);
+  expect($("#review-count").hidden).toBe(false);
+  expect($("#review-count").textContent).toBe(
+    "12 values. Scroll the list to see them all.",
+  );
+});
+
+test("shows a short review in full", async () => {
+  const review = Array.from({ length: 5 }, (_, index) => ({
+    original: `person${index}@example.com`,
+    marker: `[[EMAIL_${String(index).padStart(6, "0")}]]`,
+  }));
+  await start(() => ({ ...LOCKED, state: "unlocked", review }));
+
+  expect($("#review-items").classList.contains("scroll")).toBe(false);
+  expect($("#review-count").hidden).toBe(true);
+});

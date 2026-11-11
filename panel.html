@@ -119,6 +119,16 @@
         border-bottom: 1px solid var(--line);
         overflow-wrap: anywhere;
       }
+      #review-items.scroll {
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: 0 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      #review-items.scroll li:last-child {
+        border-bottom: 0;
+      }
       li .marker {
         font-family: ui-monospace, monospace;
         font-size: 12px;
@@ -227,6 +237,7 @@
     <section id="review" hidden>
       <h2>Pseudonymize</h2>
       <p class="muted" id="review-note"></p>
+      <p class="muted" id="review-count" hidden></p>
       <ul id="review-items"></ul>
       <div class="buttons" id="review-buttons">
         <button id="approve" class="primary" type="button">
