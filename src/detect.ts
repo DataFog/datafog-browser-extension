@@ -58,6 +58,28 @@ function redactConfig(settings: Settings): TransformationConfig {
   return { ...config, allow: { exact } };
 }
 
+/** DataFog's own markers, such as [[EMAIL_7KQ4ZM]], and labels, such as [EMAIL]. */
+const PLACEHOLDER = /\[\[[A-Z][A-Z_]*_[A-Z0-9]+\]\]|\[[A-Z][A-Z_]*\]/g;
+
+/**
+ * Drop findings that touch DataFog's own markers or labels. The model can
+ * read a marker as part of an address, and replacing part of one breaks it.
+ *
+ * @param text The prompt.
+ * @param found What was found in it.
+ * @returns The findings clear of every marker and label.
+ */
+function outsidePlaceholders(text: string, found: Finding[]): Finding[] {
+  const spans = [...text.matchAll(PLACEHOLDER)].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+  if (spans.length === 0) return found;
+  return found.filter(({ utf16Range: { start, end } }) =>
+    spans.every((span) => end <= span.start || start >= span.end),
+  );
+}
+
 /**
  * Find a prompt's values and decide which to replace: after the allowlist,
  * and with a value two detectors match once.
@@ -73,7 +95,10 @@ async function replaceable(
   scanner: Scanner,
 ): Promise<Transformation[]> {
   if (!text.trim() || settings.entities.length === 0) return [];
-  const found = await scanner(text, settings.entities);
+  const found = outsidePlaceholders(
+    text,
+    await scanner(text, settings.entities),
+  );
   return transform(text, found, redactConfig(settings)).transformations;
 }
 
@@ -116,7 +141,10 @@ export async function redact(
   if (!text.trim() || settings.entities.length === 0) {
     return { text, edits: [] };
   }
-  const found = await scanner(text, settings.entities);
+  const found = outsidePlaceholders(
+    text,
+    await scanner(text, settings.entities),
+  );
   const result = transform(text, found, redactConfig(settings));
   return {
     text: result.text,

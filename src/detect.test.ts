@@ -11,6 +11,7 @@ import {
   redact as redactWith,
   scanRules,
   workspaceFindings as findingsWith,
+  type Scanner,
 } from "./detect";
 import { DEFAULT_ENTITIES, type Settings } from "./settings";
 
@@ -91,6 +92,37 @@ describe("countFindings", () => {
       {},
     );
     expect(await countFindings("   ", settings)).toEqual({});
+  });
+});
+
+// Stands in for the model reading a marker as part of an address
+const greedy: Scanner = async (text) => {
+  const at = text.indexOf("MPC9QD]]");
+  return at === -1
+    ? []
+    : [
+        {
+          entityType: "ADDRESS",
+          matchedText: "MPC9QD]]",
+          byteRange: { start: at, end: at + 8 },
+          codepointRange: { start: at, end: at + 8 },
+          utf16Range: { start: at, end: at + 8 },
+          detectorName: "model",
+        },
+      ];
+};
+
+describe("markers and labels", () => {
+  test("never flags part of a marker or label", async () => {
+    const text = "Ship to [[ADDRESS_MPC9QD]] and [EMAIL]";
+    const chosen = { ...settings, entities: ["ADDRESS"] };
+    expect(await countWith(text, chosen, greedy)).toEqual({});
+    expect((await redactWith(text, chosen, greedy)).text).toBe(text);
+  });
+
+  test("still finds values beside a marker", async () => {
+    const text = "[[EMAIL_7KQ4ZM]] and jane@example.com";
+    expect(await countFindings(text, settings)).toEqual({ EMAIL: 1 });
   });
 });
 
