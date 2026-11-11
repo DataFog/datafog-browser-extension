@@ -58,6 +58,22 @@ extension rather than in FogVault.
 - Anyone who can use the Chrome profile can open the vault while the device is
   remembered. The vault encryption review covers this.
 
+### Not sensitive values
+
+The review offers one per-value choice: "Not sensitive". It saves Core's
+`not_sensitive` policy choice for that type and value in the vault's workspace,
+and the review is prepared again without it. The workspace section of the side
+panel lists these values, each with Remove, which clears the choice so the
+value gets a new marker next time.
+
+- Core refuses `keep` ("send as is") for every protected type, which covers
+  every type the extension checks, so V1 doesn't offer it.
+- The choices live in the encrypted workspace, so they're only known while the
+  vault is unlocked. The badge and Redact skip them then, matching as Core
+  does: by type, ignoring case and spacing. While locked, they're flagged again.
+- The settings allowlist stays separate: it applies everywhere, locked or not,
+  and is meant for values such as the user's own work email.
+
 ### Mapping TTL
 
 Mappings expire 30 days after they were last touched. A mapping is touched when
