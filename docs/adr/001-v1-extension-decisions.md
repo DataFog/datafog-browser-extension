@@ -77,9 +77,13 @@ mapping, so this depends on a Core addition, proposed separately.
 
 ### Model
 
-V1 ships GLiNER2.5 Small (about 297 MB) for names and addresses, accepting the
-size and memory cost. Rule-based detection runs first so results don't wait on
-the model. Smaller distilled models replace it later.
+V1 finds names and addresses with the statements CNN bundled in Core 1.1.0
+(about 1 MB of weights, compiled into Core's WebAssembly), in its own Worker in
+the offscreen document. It replaces the earlier plan to ship GLiNER2.5 Small
+(about 297 MB): it's bundled, needs no download, and is fast enough to run on
+every check. It's tuned for statements, so it misses more in everyday chat text.
+Other types keep using Core's rules, and the model's Worker closes while Name
+and Mailing address are both off.
 
 ### Send blocking
 
@@ -104,17 +108,12 @@ Dismiss or Send anyway.
 - sites other than ChatGPT
 - the other ADR 004 exclusions, except remembered unlock (above)
 
-## Open questions
-
-- Whether the model is bundled in the extension or downloaded once on first
-  use. Downloading changes the "no network requests" claim.
-
 ## Consequences
 
 - ADR 004 needs an amendment for remembered unlock.
 - TTL waits on the Core API; the rest of V1 does not.
-- The extension grows from about 3 MB to about 300 MB if the model is bundled, and the offscreen document holds Core, FogVault and the model in memory
-  while Chrome is open.
+- The offscreen document holds Core, FogVault and the model's Worker, with a
+  second copy of Core, in memory while Chrome is open.
 - The README and CHANGELOG no longer promise that the extension never touches
   ChatGPT's send button. Users who leave send blocking off keep that behavior.
 - The V1 acceptance run in #9 covers the vault, restore and conversation flow;
