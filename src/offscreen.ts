@@ -6,14 +6,9 @@
 import { FogVaultWorkspace } from "@datafog/core-fogvault-browser";
 import { FogVault, randomId } from "@datafog/fogvault-browser";
 import { Workspace } from "@datafog/wasm";
+import { CnnSession } from "@datafog/wasm/cnn";
 
-import {
-  countFindings,
-  ready,
-  redact,
-  scanRules,
-  workspaceFindings,
-} from "./detect";
+import { countFindings, ready, redact, workspaceFindings } from "./detect";
 import { DeviceKeys } from "./device";
 import {
   toError,
@@ -21,11 +16,20 @@ import {
   type PanelNotice,
   type Request,
 } from "./messages";
+import { ModelScanner } from "./model";
 import { blockingSends } from "./settings";
 import { VaultHost } from "./vault";
 
 // Start loading Core right away; requests wait on it
 const engine = ready();
+
+// The model loads on the first scan that needs it
+const model = new ModelScanner(() =>
+  CnnSession.open({
+    // Its Worker loads from Core's own unbundled files
+    workerUrl: chrome.runtime.getURL("datafog/wasm/cnn/worker.js"),
+  }),
+);
 
 const devices = new DeviceKeys();
 // Device keys load once; requests wait on them, as on Core
@@ -69,7 +73,7 @@ const host = new VaultHost({
       recordId,
       expectedNamespace: namespace,
     }),
-  findings: (text, settings) => workspaceFindings(text, settings, scanRules),
+  findings: (text, settings) => workspaceFindings(text, settings, model.scan),
   randomId,
   deleteStore: (name) =>
     new Promise((resolve, reject) => {
@@ -112,12 +116,12 @@ async function handle({
         seq: request.seq,
         enabled: settings.enabled,
         counts: settings.enabled
-          ? await countFindings(request.text, settings, scanRules)
+          ? await countFindings(request.text, settings, model.scan)
           : {},
         blockSends: blockingSends(settings),
       };
     case "redact":
-      return redact(request.text, settings, scanRules);
+      return redact(request.text, settings, model.scan);
     case "vault-status":
       return host.status(routing);
     case "vault-create":

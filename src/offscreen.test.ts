@@ -10,11 +10,13 @@ import { DEFAULT_SETTINGS } from "./settings";
 
 vi.mock("./detect", () => ({
   ready: vi.fn(async () => {}),
-  scanRules: vi.fn(async () => []),
   countFindings: vi.fn(async () => ({ EMAIL: 1 })),
   redact: vi.fn(async () => ({ text: "[EMAIL]", edits: [] })),
   workspaceFindings: vi.fn(async () => []),
 }));
+
+// Workers aren't here; the model scanner has its own tests
+vi.mock("@datafog/wasm/cnn", () => ({ CnnSession: { open: vi.fn() } }));
 
 // IndexedDB isn't here; device keys have their own tests through the host
 vi.mock("./device", () => ({
