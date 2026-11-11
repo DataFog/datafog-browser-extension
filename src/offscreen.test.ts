@@ -10,9 +10,10 @@ import { DEFAULT_SETTINGS } from "./settings";
 
 vi.mock("./detect", () => ({
   ready: vi.fn(async () => {}),
-  countFindings: vi.fn(() => ({ EMAIL: 1 })),
-  redact: vi.fn(() => ({ text: "[EMAIL]", edits: [] })),
-  workspaceFindings: vi.fn(() => []),
+  scanRules: vi.fn(async () => []),
+  countFindings: vi.fn(async () => ({ EMAIL: 1 })),
+  redact: vi.fn(async () => ({ text: "[EMAIL]", edits: [] })),
+  workspaceFindings: vi.fn(async () => []),
 }));
 
 // IndexedDB isn't here; device keys have their own tests through the host
@@ -92,9 +93,9 @@ test("skips Core when checking is off", async () => {
 
 test("answers and logs a code when Core fails", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  vi.mocked(redact).mockImplementationOnce(() => {
-    throw Object.assign(new Error("a@b.co"), { code: "invalid_input" });
-  });
+  vi.mocked(redact).mockRejectedValueOnce(
+    Object.assign(new Error("a@b.co"), { code: "invalid_input" }),
+  );
 
   expect(await forward({ type: "redact", text: "a@b.co" })).toEqual({
     error: "invalid_input",

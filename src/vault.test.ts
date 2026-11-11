@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { Workspace, type PreparedWorkspaceChange } from "@datafog/wasm";
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 
-import { ready, workspaceFindings } from "./detect";
+import { ready, scanRules, workspaceFindings } from "./detect";
 import { REMEMBER_MS, type DeviceRecord, type Devices } from "./device";
 import type { VaultRouting } from "./messages";
 import { DEFAULT_SETTINGS } from "./settings";
@@ -37,6 +37,8 @@ let host: VaultHost;
 let recoveryKey: Uint8Array;
 let devices: FakeDevices;
 let now: number;
+/** Holds finding values back until resolved, as a slow model would. */
+let scanning: Promise<void>;
 /** Device identities the stand-in vault holds, base64, and its profile. */
 let slots: string[];
 let profile: "password" | "password-or-device";
@@ -237,6 +239,7 @@ beforeEach(() => {
       receipt: RECEIPT,
     })),
   };
+  scanning = Promise.resolve();
   notify = vi.fn<() => void>();
   deleteStore = vi.fn(async () => {});
   host = new VaultHost({
@@ -252,7 +255,10 @@ beforeEach(() => {
       owner = makeOwner();
       return owner;
     },
-    findings: workspaceFindings,
+    findings: async (text, settings) => {
+      await scanning;
+      return workspaceFindings(text, settings, scanRules);
+    },
     randomId: () => randomBytes(16),
     deleteStore,
     notify,
@@ -377,6 +383,46 @@ test("discards the plan when the review is cancelled or replaced", async () => {
   host.cancel();
   expect(owner.discards).toBe(2);
   expect(host.status(routing).review).toBeNull();
+});
+
+/**
+ * Hold finding values back until the returned function is called.
+ *
+ * @returns Releases them.
+ */
+function holdScans(): () => void {
+  const held: { release?: () => void } = {};
+  scanning = new Promise((resolve) => {
+    held.release = resolve;
+  });
+  return () => held.release?.();
+}
+
+test("drops a review cancelled while its values are found", async () => {
+  const routing = await create();
+  const release = holdScans();
+  const pending = host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
+
+  host.cancel();
+  release();
+  await pending;
+  expect(host.status(routing).review).toBeNull();
+  expect(host.status(routing).waiting).toBe(false);
+});
+
+test("keeps Pseudonymize waiting if the vault locks meanwhile", async () => {
+  const routing = await create();
+  const release = holdScans();
+  const pending = host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
+
+  await host.lock(routing);
+  release();
+  await pending;
+  expect(host.status(routing)).toMatchObject({
+    state: "locked",
+    waiting: true,
+    review: null,
+  });
 });
 
 test("locks after 15 minutes without use", async () => {

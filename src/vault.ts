@@ -77,7 +77,7 @@ export interface VaultDeps<V extends Vault> {
   now: () => number;
   createOwner: (vault: V, route: Route) => Promise<Owner>;
   openOwner: (vault: V, route: Route) => Promise<Owner>;
-  findings: (text: string, settings: Settings) => WorkspaceFinding[];
+  findings: (text: string, settings: Settings) => Promise<WorkspaceFinding[]>;
   randomId: () => Uint8Array;
   /** Delete the vault's database. */
   deleteStore: (name: string) => Promise<void>;
@@ -171,6 +171,8 @@ export class VaultHost<V extends Vault = Vault> {
   private owner: Owner | null = null;
   private review: Review | null = null;
   private waiting: Waiting | null = null;
+  /** Counts review preparations, so a cancelled or replaced one is dropped. */
+  private turn = 0;
   private error: string | null = null;
   /** A save whose outcome is unknown, to reconcile at the next unlock. */
   private unsettled: Uint8Array | null = null;
@@ -578,6 +580,7 @@ export class VaultHost<V extends Vault = Vault> {
 
   /** Drop the review, and any Pseudonymize waiting for an unlock. */
   cancel(): void {
+    this.turn++;
     this.drop();
     this.waiting = null;
     this.error = null;
@@ -596,15 +599,18 @@ export class VaultHost<V extends Vault = Vault> {
     const owner = this.owner;
     if (!waiting || !owner) return;
     this.waiting = null;
+    const turn = ++this.turn;
     try {
+      const found = await this.deps.findings(waiting.text, waiting.settings);
+      // Cancelled or replaced while finding them
+      if (turn !== this.turn) return;
+      // Locked meanwhile: wait for the next unlock, as before one
+      if (owner !== this.owner || owner.closed) {
+        this.waiting = waiting;
+        return;
+      }
       const plan = owner.prepareReview(
-        [
-          {
-            text: waiting.text,
-            scannerFindings: this.deps.findings(waiting.text, waiting.settings),
-            userSelections: [],
-          },
-        ],
+        [{ text: waiting.text, scannerFindings: found, userSelections: [] }],
         this.deps.randomId(),
       );
       const preview = plan.preview();

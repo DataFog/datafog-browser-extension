@@ -7,7 +7,13 @@ import { FogVaultWorkspace } from "@datafog/core-fogvault-browser";
 import { FogVault, randomId } from "@datafog/fogvault-browser";
 import { Workspace } from "@datafog/wasm";
 
-import { countFindings, ready, redact, workspaceFindings } from "./detect";
+import {
+  countFindings,
+  ready,
+  redact,
+  scanRules,
+  workspaceFindings,
+} from "./detect";
 import { DeviceKeys } from "./device";
 import {
   toError,
@@ -63,7 +69,7 @@ const host = new VaultHost({
       recordId,
       expectedNamespace: namespace,
     }),
-  findings: workspaceFindings,
+  findings: (text, settings) => workspaceFindings(text, settings, scanRules),
   randomId,
   deleteStore: (name) =>
     new Promise((resolve, reject) => {
@@ -105,11 +111,13 @@ async function handle({
       return {
         seq: request.seq,
         enabled: settings.enabled,
-        counts: settings.enabled ? countFindings(request.text, settings) : {},
+        counts: settings.enabled
+          ? await countFindings(request.text, settings, scanRules)
+          : {},
         blockSends: blockingSends(settings),
       };
     case "redact":
-      return redact(request.text, settings);
+      return redact(request.text, settings, scanRules);
     case "vault-status":
       return host.status(routing);
     case "vault-create":

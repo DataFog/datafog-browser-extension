@@ -5,7 +5,7 @@
  * Stands in for chrome.runtime by calling the detection code directly.
  */
 
-import { countFindings, ready, redact } from "./detect";
+import { countFindings, ready, redact, scanRules } from "./detect";
 import type { Request } from "./messages";
 import { DEFAULT_SETTINGS } from "./settings";
 
@@ -23,10 +23,12 @@ async function sendMessage(request: Request): Promise<unknown> {
     return {
       seq: request.seq,
       enabled: true,
-      counts: countFindings(request.text, DEFAULT_SETTINGS),
+      counts: await countFindings(request.text, DEFAULT_SETTINGS, scanRules),
     };
   }
-  if (request.type === "redact") return redact(request.text, DEFAULT_SETTINGS);
+  if (request.type === "redact") {
+    return redact(request.text, DEFAULT_SETTINGS, scanRules);
+  }
   return {};
 }
 
