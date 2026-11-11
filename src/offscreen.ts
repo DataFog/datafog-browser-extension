@@ -8,6 +8,7 @@ import { FogVault, randomId } from "@datafog/fogvault-browser";
 import { Workspace } from "@datafog/wasm";
 
 import { countFindings, ready, redact, workspaceFindings } from "./detect";
+import { DeviceKeys } from "./device";
 import {
   toError,
   type OffscreenRequest,
@@ -20,8 +21,14 @@ import { VaultHost } from "./vault";
 // Start loading Core right away; requests wait on it
 const engine = ready();
 
+const devices = new DeviceKeys();
+// Device keys load once; requests wait on them, as on Core
+const loaded = devices.load();
+
 const host = new VaultHost({
-  newVault: () =>
+  devices,
+  now: Date.now,
+  newVault: (providers) =>
     new FogVault({
       // Room for one workspace; FogVault rejects anything larger
       limits: {
@@ -32,6 +39,14 @@ const host = new VaultHost({
       },
       kdfProfiles: [{ memory_kib: 65_536, passes: 3 }],
       storageProfile: "arraybuffer",
+      // Password, or a remembered device; room for a device key a month
+      access: {
+        profiles: ["password", "password-or-device"],
+        maxDescriptorBytes: 4096,
+        maxDeviceSlots: 16,
+        maxProviderBlobBytes: 256,
+      },
+      providers,
       // The Worker loads from its own unbundled files
       workerUrl: chrome.runtime.getURL("fogvault/worker.mjs"),
     }),
@@ -77,6 +92,14 @@ async function handle({
   routing = null,
 }: OffscreenRequest): Promise<unknown> {
   await engine;
+  await loaded;
+  // Using the vault, or opening the panel, unlocks it with a remembered device
+  if (
+    request.type === "pseudonymize" ||
+    request.type === "restore" ||
+    (request.type === "vault-status" && request.autoUnlock === true)
+  )
+    await host.unlockWithDevice(routing);
   switch (request.type) {
     case "scan":
       return {
@@ -90,11 +113,13 @@ async function handle({
     case "vault-status":
       return host.status(routing);
     case "vault-create":
-      return host.create(request.password, routing);
+      return host.create(request.password, routing, request.remember);
     case "vault-unlock":
-      return host.unlock(request.password, routing);
+      return host.unlock(request.password, routing, request.remember);
     case "vault-lock":
-      return host.lock(routing);
+      return host.lock(routing, true);
+    case "device-forget":
+      return host.forgetDevice(routing);
     case "vault-reset":
       return host.reset(request.password, routing);
     case "pseudonymize":

@@ -34,10 +34,12 @@ export type CoreRequest = Exclude<
  * password, and the review shows the original values.
  */
 export type PanelRequest =
-  | { type: "vault-status" }
-  | { type: "vault-create"; password: string }
-  | { type: "vault-unlock"; password: string }
+  /** autoUnlock: the panel just opened, so a remembered device may unlock. */
+  | { type: "vault-status"; autoUnlock?: boolean }
+  | { type: "vault-create"; password: string; remember: boolean }
+  | { type: "vault-unlock"; password: string; remember: boolean }
   | { type: "vault-lock" }
+  | { type: "device-forget" }
   | { type: "vault-reset"; password: string }
   | { type: "review-approve" }
   | { type: "review-cancel" }
@@ -108,6 +110,14 @@ export interface VaultStatus {
    * which marks a failed response.
    */
   reviewError: string | null;
+  /** When this device stops unlocking the vault, or null if not remembered. */
+  rememberedUntil: number | null;
+}
+
+/** An unlocked vault, with a new recovery key if remembering needed one. */
+export interface UnlockedVault {
+  status: VaultStatus;
+  recoveryKey: string | null;
 }
 
 export interface CreatedVault {

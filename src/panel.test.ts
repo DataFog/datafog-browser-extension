@@ -20,6 +20,7 @@ const LOCKED: VaultStatus = {
   waiting: false,
   review: null,
   reviewError: null,
+  rememberedUntil: null,
 };
 
 let notices: ((message: object) => void)[];
@@ -189,6 +190,7 @@ test("shows the recovery key once, then the unlocked vault", async () => {
   expect(sendMessage).toHaveBeenCalledWith({
     type: "vault-create",
     password: "correct horse",
+    remember: false,
   });
   expect($("#recovery").hidden).toBe(false);
   expect($("#recovery-key").textContent).toBe("S2V5");
@@ -221,6 +223,7 @@ test("unlocks with the password, and says when that fails", async () => {
   expect(sendMessage).toHaveBeenCalledWith({
     type: "vault-unlock",
     password: "wrong password",
+    remember: false,
   });
   expect($("#vault-error").textContent).toBe(
     "Something went wrong. Error code: Integrity",
@@ -473,4 +476,70 @@ test("shows a short review in full", async () => {
 
   expect($("#review-items").classList.contains("scroll")).toBe(false);
   expect($("#review-count").hidden).toBe(true);
+});
+
+test("remembers the device when asked, and says until when", async () => {
+  const until = new Date(2026, 11, 11).getTime();
+  await start((request) =>
+    request.type === "vault-unlock"
+      ? {
+          status: { ...LOCKED, state: "unlocked", rememberedUntil: until },
+          recoveryKey: null,
+        }
+      : LOCKED,
+  );
+  expect(sendMessage).toHaveBeenCalledWith({
+    type: "vault-status",
+    autoUnlock: true,
+  });
+
+  fill("#unlock-password", "correct horse");
+  document.querySelector<HTMLInputElement>("#unlock-remember")!.checked = true;
+  await submit("#unlock");
+
+  expect(sendMessage).toHaveBeenCalledWith({
+    type: "vault-unlock",
+    password: "correct horse",
+    remember: true,
+  });
+  expect($("#remembered").hidden).toBe(false);
+  expect($("#remembered-until").textContent).toBe(
+    `This device is remembered until ${new Date(until).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.`,
+  );
+});
+
+test("shows a new recovery key when remembering changed the vault's keys", async () => {
+  await start((request) =>
+    request.type === "vault-unlock"
+      ? {
+          status: { ...LOCKED, state: "unlocked", rememberedUntil: 1 },
+          recoveryKey: "TkVX",
+        }
+      : LOCKED,
+  );
+
+  fill("#unlock-password", "correct horse");
+  document.querySelector<HTMLInputElement>("#unlock-remember")!.checked = true;
+  await submit("#unlock");
+
+  expect($("#recovery").hidden).toBe(false);
+  expect($("#recovery-key").textContent).toBe("TkVX");
+  expect($("#recovery-note").textContent).toContain(
+    "your old recovery key no longer works",
+  );
+});
+
+test("forgets the device", async () => {
+  await start((request) =>
+    request.type === "device-forget"
+      ? { ...LOCKED, state: "unlocked" }
+      : { ...LOCKED, state: "unlocked", rememberedUntil: Date.now() },
+  );
+  expect($("#remembered").hidden).toBe(false);
+
+  $("#forget-device").click();
+  await settle();
+
+  expect(sendMessage).toHaveBeenCalledWith({ type: "device-forget" });
+  expect($("#remembered").hidden).toBe(true);
 });

@@ -207,7 +207,9 @@ test("opens the side panel again after it closes", async () => {
 test("refuses vault requests from a web page", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-  expect(await send({ type: "vault-unlock", password: "pw" })).toEqual({
+  expect(
+    await send({ type: "vault-unlock", password: "pw", remember: false }),
+  ).toEqual({
     error: "not_allowed",
   });
   expect(
@@ -243,7 +245,10 @@ test("stores a new vault's routing, and passes on its recovery key", async () =>
   });
 
   expect(
-    await send({ type: "vault-create", password: "correct horse" }, PANEL),
+    await send(
+      { type: "vault-create", password: "correct horse", remember: false },
+      PANEL,
+    ),
   ).toEqual({ status: { state: "unlocked" }, recoveryKey: "S2V5" });
   expect(setStorage).toHaveBeenCalledWith({ vault: ROUTING });
 });

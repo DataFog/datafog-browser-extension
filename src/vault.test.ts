@@ -9,6 +9,7 @@ import { Workspace, type PreparedWorkspaceChange } from "@datafog/wasm";
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 
 import { ready, workspaceFindings } from "./detect";
+import { REMEMBER_MS, type DeviceRecord, type Devices } from "./device";
 import type { VaultRouting } from "./messages";
 import { DEFAULT_SETTINGS } from "./settings";
 import { IDLE_LOCK_MS, VaultHost, type Owner, type Vault } from "./vault";
@@ -34,6 +35,68 @@ let notify: ReturnType<typeof vi.fn<() => void>>;
 let deleteStore: ReturnType<typeof vi.fn<(name: string) => Promise<void>>>;
 let host: VaultHost;
 let recoveryKey: Uint8Array;
+let devices: FakeDevices;
+let now: number;
+/** Device identities the stand-in vault holds, base64, and its profile. */
+let slots: string[];
+let profile: "password" | "password-or-device";
+
+/** Device keys in memory, as DeviceKeys keeps them in IndexedDB. */
+class FakeDevices implements Devices {
+  records: DeviceRecord[] = [];
+  pausedNow = false;
+  private next = 0;
+  async load(): Promise<void> {}
+  providers(): never[] {
+    return [];
+  }
+  active(at: number): DeviceRecord | null {
+    return this.pausedNow ? null : this.current(at);
+  }
+  rememberedUntil(at: number): number | null {
+    const record = this.current(at);
+    return record ? record.rememberedAt + REMEMBER_MS : null;
+  }
+  async prune(at: number): Promise<void> {
+    if (this.records.some((record) => record.key) && !this.current(at))
+      await this.forget();
+  }
+  async create(at: number) {
+    const keyId = btoa(String.fromCharCode(++this.next));
+    const key = await crypto.subtle.generateKey(
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"],
+    );
+    this.records.push({ keyId, key, rememberedAt: at });
+    return {
+      providerId: new Uint8Array(16),
+      keyId: Uint8Array.from(atob(keyId), (char) => char.charCodeAt(0)),
+      deviceBound: true as const,
+      nonexportable: true as const,
+    };
+  }
+  async forget(): Promise<void> {
+    this.records = this.records.map((record) => ({ ...record, key: null }));
+  }
+  paused(): boolean {
+    return this.pausedNow;
+  }
+  async setPaused(paused: boolean): Promise<void> {
+    this.pausedNow = paused;
+  }
+  async clear(): Promise<void> {
+    this.records = [];
+    this.pausedNow = false;
+  }
+  private current(at: number): DeviceRecord | null {
+    return (
+      this.records.find(
+        (record) => record.key && at - record.rememberedAt < REMEMBER_MS,
+      ) ?? null
+    );
+  }
+}
 
 /**
  * Make an owner for the shared workspace, saving each approved plan.
@@ -93,7 +156,7 @@ function makeOwner(): FakeOwner {
  * @returns The new routing.
  */
 async function create(): Promise<VaultRouting> {
-  return (await host.create("correct horse", null)).routing;
+  return (await host.create("correct horse", null, false)).routing;
 }
 
 beforeAll(async () => {
@@ -105,14 +168,62 @@ beforeAll(async () => {
   await ready();
 });
 
+/**
+ * A device identity's base64 key ID.
+ *
+ * @param identity The identity.
+ * @returns Its key ID.
+ */
+function keyIdOf(identity: { keyId: Uint8Array }): string {
+  return btoa(String.fromCharCode(...identity.keyId));
+}
+
 beforeEach(() => {
   recoveryKey = new Uint8Array([1, 2, 3]);
+  devices = new FakeDevices();
+  now = 1_000_000;
+  slots = [];
+  profile = "password-or-device";
   vault = {
-    create: vi.fn(async () => ({
-      created: true as const,
-      receipt: RECEIPT,
-      recovery_key: recoveryKey,
+    create: vi.fn(async (_name, _password, options) => {
+      slots = (options?.devices ?? []).map(keyIdOf);
+      return {
+        created: true as const,
+        receipt: RECEIPT,
+        recovery_key: recoveryKey,
+      };
+    }),
+    describeAccess: vi.fn(async () => ({
+      profile,
+      recovery: true,
+      rootEpoch: 0n,
+      devices: slots.map((keyId) => ({
+        slotId: new Uint8Array(16).fill(keyId.charCodeAt(0)),
+        identity: {
+          providerId: new Uint8Array(16),
+          keyId: Uint8Array.from(atob(keyId), (char) => char.charCodeAt(0)),
+          deviceBound: true as const,
+          nonexportable: true as const,
+        },
+      })),
     })),
+    unlockDevice: vi.fn(async () => ({
+      unlocked: true as const,
+      receipt: RECEIPT,
+    })),
+    enrollDevice: vi.fn(async (_source, identity) => {
+      slots.push(keyIdOf(identity));
+      return { receipt: RECEIPT, key_effect: "Preserved" as const };
+    }),
+    protectAccess: vi.fn(async (_source, target) => {
+      profile = "password-or-device";
+      slots = target.devices.map(keyIdOf);
+      return {
+        receipt: RECEIPT,
+        key_effect: "FreshRootAndContentKeys" as const,
+        recovery_key: new Uint8Array([4, 5, 6]),
+      };
+    }),
     open: vi.fn(async () => ({ opened: true as const })),
     unlock: vi.fn(async (password: string) => {
       if (password !== "correct horse")
@@ -130,6 +241,8 @@ beforeEach(() => {
   deleteStore = vi.fn(async () => {});
   host = new VaultHost({
     newVault: () => vault,
+    devices,
+    now: () => now,
     createOwner: async (_vault, route) => {
       workspace = Workspace.create(route.namespace, randomBytes(16));
       owner = makeOwner();
@@ -151,14 +264,15 @@ afterEach(() => {
 });
 
 test("creates an unlocked vault, handing over the recovery key once", async () => {
-  const created = await host.create("correct horse", null);
+  const created = await host.create("correct horse", null, false);
 
   expect(vi.mocked(vault.create)).toHaveBeenCalledWith(
     "datafog",
     "correct horse",
-    {
+    expect.objectContaining({
       recovery: true,
-    },
+      profile: "password-or-device",
+    }),
   );
   expect(created.recoveryKey).toBe("AQID");
   expect(recoveryKey).toEqual(new Uint8Array(3));
@@ -169,7 +283,7 @@ test("creates an unlocked vault, handing over the recovery key once", async () =
 test("won't create a second vault", async () => {
   const routing = await create();
 
-  await expect(host.create("another", routing)).rejects.toMatchObject({
+  await expect(host.create("another", routing, false)).rejects.toMatchObject({
     code: "vault_exists",
   });
 });
@@ -242,12 +356,12 @@ test("waits for an unlock, then prepares the review", async () => {
     waiting: true,
   });
 
-  await expect(host.unlock("wrong", routing)).rejects.toMatchObject({
+  await expect(host.unlock("wrong", routing, false)).rejects.toMatchObject({
     code: "Integrity",
   });
   expect(host.status(routing).state).toBe("locked");
 
-  const status = await host.unlock("correct horse", routing);
+  const { status } = await host.unlock("correct horse", routing, false);
   expect(status.state).toBe("unlocked");
   expect(status.waiting).toBe(false);
   expect(status.review).toHaveLength(2);
@@ -296,7 +410,7 @@ test("locks after a lost save, and settles it at the next unlock", async () => {
   });
   expect(vi.mocked(vault.lock)).toHaveBeenCalled();
 
-  await host.unlock("correct horse", routing);
+  await host.unlock("correct horse", routing, false);
   expect(vi.mocked(vault.reconcileLatest)).toHaveBeenCalledWith(requestId);
 });
 
@@ -366,4 +480,94 @@ test("won't restore while locked", async () => {
   expect(() => host.restore("[[EMAIL_7KQ4ZM]]")).toThrow(
     expect.objectContaining({ code: "vault_locked" }),
   );
+});
+
+test("creates every vault ready for a device, forgetting it unless asked", async () => {
+  const routing = await create();
+
+  expect(slots).toHaveLength(1);
+  expect(host.status(routing).rememberedUntil).toBeNull();
+  await host.lock(routing);
+  await host.unlockWithDevice(routing);
+  expect(host.status(routing).state).toBe("locked");
+});
+
+test("unlocks with a remembered device on use, for 30 days", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+  expect(host.status(routing).rememberedUntil).toBe(now + REMEMBER_MS);
+  await host.lock(routing);
+
+  await host.unlockWithDevice(routing);
+  expect(vi.mocked(vault.unlockDevice)).toHaveBeenCalledWith(
+    new Uint8Array(16).fill(slots[0].charCodeAt(0)),
+  );
+  expect(host.status(routing).state).toBe("unlocked");
+  expect(notify).toHaveBeenCalled();
+
+  await host.lock(routing);
+  now += REMEMBER_MS;
+  await host.unlockWithDevice(routing);
+  expect(host.status(routing)).toMatchObject({
+    state: "locked",
+    rememberedUntil: null,
+  });
+  expect(devices.records.every((record) => record.key === null)).toBe(true);
+});
+
+test("asks for the password after a manual lock", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+
+  await host.lock(routing, true);
+  await host.unlockWithDevice(routing);
+  expect(host.status(routing).state).toBe("locked");
+  expect(vi.mocked(vault.unlockDevice)).not.toHaveBeenCalled();
+
+  await host.unlock("correct horse", routing, false);
+  await host.lock(routing);
+  await host.unlockWithDevice(routing);
+  expect(host.status(routing).state).toBe("unlocked");
+});
+
+test("remembers the device at unlock, keeping the vault's keys", async () => {
+  const routing = await create();
+  await host.lock(routing);
+
+  const unlocked = await host.unlock("correct horse", routing, true);
+
+  expect(vi.mocked(vault.enrollDevice)).toHaveBeenCalled();
+  expect(vi.mocked(vault.protectAccess)).not.toHaveBeenCalled();
+  expect(unlocked.recoveryKey).toBeNull();
+  expect(unlocked.status.rememberedUntil).toBe(now + REMEMBER_MS);
+});
+
+test("gives an older password-only vault new keys to remember a device", async () => {
+  const routing = await create();
+  await host.lock(routing);
+  profile = "password";
+
+  const unlocked = await host.unlock("correct horse", routing, true);
+
+  expect(vi.mocked(vault.protectAccess)).toHaveBeenCalledWith(
+    { kind: "password", password: "correct horse" },
+    expect.objectContaining({ profile: "password-or-device", recovery: true }),
+  );
+  expect(unlocked.recoveryKey).toBe("BAUG");
+  expect(unlocked.status.state).toBe("unlocked");
+});
+
+test("forgets the device, and stays locked when its key fails", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+
+  expect((await host.forgetDevice(routing)).rememberedUntil).toBeNull();
+
+  await host.unlock("correct horse", routing, true);
+  await host.lock(routing);
+  vi.mocked(vault.unlockDevice).mockRejectedValueOnce(
+    Object.assign(new Error(), { code: "ProviderFailure" }),
+  );
+  await host.unlockWithDevice(routing);
+  expect(host.status(routing)).toMatchObject({
+    state: "locked",
+    rememberedUntil: null,
+  });
 });

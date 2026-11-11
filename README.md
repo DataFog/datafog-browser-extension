@@ -29,6 +29,7 @@ Click the DataFog tab on the right edge of chatgpt.com, or the toolbar icon, to 
 - `src/background.ts` opens an offscreen document and passes the content script's requests to it, with the current settings.
 - `src/offscreen.ts` runs Core and answers with counts by type. It stays loaded while the side panel is closed, unlike the service worker, which Chrome stops when idle. Counts come from Core's `transform`, so a value two detectors match counts once.
 - `src/vault.ts`, in the offscreen document, keeps the vault: [FogVault](https://github.com/DataFog/fogvault) encrypts the workspace in IndexedDB, and Core's adapter (`@datafog/core-fogvault-browser`) owns the workspace that maps values to markers. It saves an approved review before the chat box changes, and locks after 15 minutes without use.
+- `src/device.ts` keeps the key for **Remember this device**: a WebCrypto key that can't be exported, in the extension's IndexedDB, wraps the vault's seed in a FogVault device slot for 30 days. Forgetting the device or letting it expire deletes the key, so the slot can't be used.
 - `src/originals.ts` shows restored values in ChatGPT's answer, each in a closed shadow root so the page's scripts and text still see only the marker.
 - `src/panel.ts` runs the side panel: creating, unlocking, locking and resetting the vault, reviewing Pseudonymize, and restoring the latest answer. Only extension pages can send it vault requests; the password never reaches the chat site.
 - `src/page.ts` watches the page for sends and attached files.
