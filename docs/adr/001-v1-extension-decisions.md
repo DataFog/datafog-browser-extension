@@ -45,16 +45,16 @@ import.
 ### Remember device
 
 V1 includes an opt-in "Remember this device for 30 days" at unlock. ADR 004
-lists remembered unlock as out of V1; this ADR moves it into V1, built in the
-extension rather than in FogVault.
+lists remembered unlock as out of V1; this ADR moves it into V1, built on
+FogVault's device slots.
 
-- FogVault unlocks with a password, so the extension stores the password
-  wrapped with a non-extractable WebCrypto key in IndexedDB. It is never put in
-  `chrome.storage.sync`.
+- The extension keeps a non-extractable WebCrypto key in its own IndexedDB,
+  and FogVault wraps the vault's seed with it in a device slot. The password
+  is never stored, and nothing goes in `chrome.storage.sync`.
 - The 30 days run from unlock and are not extended by use. Until then, the
   vault unlocks on its own, including after Chrome restarts.
-- "Forget this device" removes the stored credential. Locking still clears
-  everything in memory.
+- "Forget this device", or the 30 days running out, deletes the key, so the
+  slot can't be used. Locking still clears everything in memory.
 - Anyone who can use the Chrome profile can open the vault while the device is
   remembered. The vault encryption review covers this.
 
