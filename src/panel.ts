@@ -11,6 +11,9 @@ import type {
   VaultStatus,
 } from "./messages";
 
+/** Values the review shows before its list scrolls. */
+const REVIEW_VISIBLE = 5;
+
 /** Shortest password the vault accepts. */
 const MIN_PASSWORD = 8;
 
@@ -47,6 +50,7 @@ const STATE_ICONS: Record<"locked" | "unlocked", [string, string]> = {
 const view = {
   review: document.querySelector<HTMLElement>("#review")!,
   reviewNote: document.querySelector<HTMLParagraphElement>("#review-note")!,
+  reviewCount: document.querySelector<HTMLParagraphElement>("#review-count")!,
   reviewItems: document.querySelector<HTMLUListElement>("#review-items")!,
   reviewButtons: document.querySelector<HTMLDivElement>("#review-buttons")!,
   reviewError: document.querySelector<HTMLParagraphElement>("#review-error")!,
@@ -227,7 +231,36 @@ function renderReview({
       return item;
     }),
   );
+  fitReview(review?.length ?? 0);
   showError(view.reviewError, reviewError);
+}
+
+/**
+ * Keep a long review to a few values, scrolling within the panel for the
+ * rest.
+ *
+ * @param count How many values the review has.
+ */
+function fitReview(count: number): void {
+  const scroll = count > REVIEW_VISIBLE;
+  view.reviewItems.classList.toggle("scroll", scroll);
+  view.reviewCount.hidden = !scroll;
+  view.reviewCount.textContent = scroll
+    ? `${count} values. Scroll the list to see them all.`
+    : "";
+  if (!scroll) {
+    view.reviewItems.style.maxHeight = "";
+    return;
+  }
+  // Show the first few in full, and half the next, so the list looks scrollable
+  const rows = Array.from(
+    view.reviewItems.children,
+    (row) => row.getBoundingClientRect().height,
+  );
+  const height =
+    rows.slice(0, REVIEW_VISIBLE).reduce((sum, row) => sum + row, 0) +
+    rows[REVIEW_VISIBLE] / 2;
+  view.reviewItems.style.maxHeight = height > 0 ? `${height}px` : "";
 }
 
 /**
