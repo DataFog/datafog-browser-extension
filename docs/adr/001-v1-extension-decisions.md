@@ -21,12 +21,12 @@ decisions on top of it, including one change to ADR 004's scope.
 
 The extension uses FogVault through Core's adapter, pinned exactly:
 
-- `@datafog/wasm` 1.1.0-rc.1
+- `@datafog/wasm` 1.1.0
 - `@datafog/fogvault-browser` 0.1.0
-- `@datafog/core-fogvault-browser` 1.1.0-rc.1
+- `@datafog/core-fogvault-browser` 1.1.0
 
-The release candidate adds `prepareForget` for mapping TTL. Both Core packages
-move to 1.1.0 when it's released.
+Core 1.1.0 adds `prepareForget` for mapping TTL. It was first pinned as
+1.1.0-rc.1, which has the same runtime.
 
 Core, the FogVault Worker and the model run in an offscreen document, not the
 service worker, which Chrome stops when idle and which can't start Workers. The
