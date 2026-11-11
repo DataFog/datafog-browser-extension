@@ -316,7 +316,7 @@ test("saves an approved review and says how to edit the chat box", async () => {
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
   const markers = host.status(routing).review!.map((item) => item.marker);
 
-  const saved = await host.approve();
+  const saved = await host.approve(DEFAULT_SETTINGS);
 
   expect(saved.tabId).toBe(7);
   expect(saved.text).toBe(TEXT);
@@ -332,7 +332,7 @@ test("gives a value the same marker the next time", async () => {
   const routing = await create();
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
   const first = host.status(routing).review![0].marker;
-  await host.approve();
+  await host.approve(DEFAULT_SETTINGS);
 
   await host.pseudonymize("Write to jane@example.com", 7, DEFAULT_SETTINGS);
 
@@ -398,6 +398,21 @@ function holdScans(): () => void {
   return () => held.release?.();
 }
 
+test("drops a review when what's checked for changes before approval", async () => {
+  const routing = await create();
+  await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
+
+  const changed = { ...DEFAULT_SETTINGS, allowlist: ["jane@example.com"] };
+  await expect(host.approve(changed)).rejects.toMatchObject({
+    code: "settings_changed",
+  });
+  expect(owner.discards).toBe(1);
+  expect(host.status(routing)).toMatchObject({
+    review: null,
+    reviewError: "settings_changed",
+  });
+});
+
 test("drops a review cancelled while its values are found", async () => {
   const routing = await create();
   const release = holdScans();
@@ -447,7 +462,7 @@ test("locks after a lost save, and settles it at the next unlock", async () => {
     requestId,
   });
 
-  await expect(host.approve()).rejects.toMatchObject({
+  await expect(host.approve(DEFAULT_SETTINGS)).rejects.toMatchObject({
     code: "OutcomeUnknown",
   });
   expect(host.status(routing)).toMatchObject({
@@ -484,7 +499,7 @@ test("resets the vault only with the right password", async () => {
 test("restores the markers it issued", async () => {
   const routing = await create();
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
-  const { response } = await host.approve();
+  const { response } = await host.approve(DEFAULT_SETTINGS);
 
   const restored = host.restore(`Sure: ${response.text}`);
 
@@ -504,7 +519,7 @@ test("restores the markers it issued", async () => {
 test("leaves markers it can't restore as they are", async () => {
   await create();
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
-  const { response } = await host.approve();
+  const { response } = await host.approve(DEFAULT_SETTINGS);
   const [first] = response.edits;
 
   const restored = host.restore(

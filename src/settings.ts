@@ -88,6 +88,30 @@ export function blockingSends(settings: Settings): boolean {
 }
 
 /**
+ * Whether two lists hold the same items, in any order.
+ *
+ * @param a One list.
+ * @param b The other.
+ * @returns True if they match.
+ */
+function sameItems(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((item) => b.includes(item));
+}
+
+/**
+ * Whether two settings find the same values: the same types and allowlist.
+ *
+ * @param a One set of settings.
+ * @param b The other.
+ * @returns True if a review made under one still holds under the other.
+ */
+export function sameChecks(a: Settings, b: Settings): boolean {
+  return (
+    sameItems(a.entities, b.entities) && sameItems(a.allowlist, b.allowlist)
+  );
+}
+
+/**
  * Save settings.
  *
  * @param settings The settings to store.

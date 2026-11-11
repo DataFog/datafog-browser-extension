@@ -142,7 +142,7 @@ async function handle({
     case "review-source":
       return { source: host.source() };
     case "review-approve":
-      return host.approve();
+      return host.approve(settings);
     case "review-cancel":
       host.cancel();
       return host.status(routing);

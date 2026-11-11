@@ -33,7 +33,7 @@ import type {
   VaultRouting,
   VaultStatus,
 } from "./messages";
-import type { Settings } from "./settings";
+import { sameChecks, type Settings } from "./settings";
 import type { Devices } from "./device";
 
 /** The vault's name in IndexedDB. */
@@ -89,6 +89,8 @@ export interface VaultDeps<V extends Vault> {
 interface Review extends ReviewSource {
   plan: WorkspaceVaultPlan;
   items: ReviewItem[];
+  /** The settings it was found under. */
+  settings: Settings;
 }
 
 /** Pseudonymize asked for while the vault was locked. */
@@ -534,12 +536,19 @@ export class VaultHost<V extends Vault = Vault> {
   /**
    * Save the approved review to the vault, and say how to apply it.
    *
+   * @param settings The settings now; a review found under others is dropped.
    * @returns The tab, its original text, and the edits that pseudonymize it.
    */
-  async approve(): Promise<Pseudonymized> {
+  async approve(settings: Settings): Promise<Pseudonymized> {
     const review = this.review;
     const owner = this.owner;
     if (!review || !owner) throw failure("no_review");
+    if (!sameChecks(review.settings, settings)) {
+      this.drop();
+      this.error = "settings_changed";
+      this.deps.notify();
+      throw failure("settings_changed");
+    }
     this.review = null;
     try {
       const saved = await owner.commit(review.plan, { approved: true });
@@ -621,6 +630,7 @@ export class VaultHost<V extends Vault = Vault> {
         this.review = {
           tabId: waiting.tabId,
           text: waiting.text,
+          settings: waiting.settings,
           plan,
           items: preview.transformations.map((item) => ({
             original: waiting.text.slice(

@@ -34,6 +34,8 @@ const EXPLAINED: Record<string, string> = {
     "The chat box changed after this review was prepared. Choose Pseudonymize again.",
   nothing_found: "There's nothing to pseudonymize in the chat box.",
   no_review: "This review is gone. Choose Pseudonymize again.",
+  settings_changed:
+    "What DataFog checks for changed after this review was prepared. Choose Pseudonymize again.",
   no_chat: "Open a ChatGPT chat in this tab to restore its latest answer.",
   no_answer: "There's no answer in this chat yet.",
   vault_locked: "Unlock your vault to restore.",
