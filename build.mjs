@@ -12,6 +12,9 @@ const watch = process.argv.includes("--watch");
 const wasm = "node_modules/@datafog/wasm/dist/datafog_wasm_bg.wasm";
 // FogVault runs in its own module Worker, loaded from these files unbundled
 const fogvault = "node_modules/@datafog/fogvault-browser/dist";
+// So does Core's name and address model; its Worker imports Core beside it
+const core = "node_modules/@datafog/wasm";
+const coreFiles = ["index.js", "dist", "cnn"];
 
 /**
  * Empty an output folder and copy in the wasm and static files.
@@ -36,6 +39,13 @@ prepare("dist", [
 ]);
 // Its licenses, under third-party/, ship with it
 cpSync(fogvault, "dist/fogvault", { recursive: true });
+for (const file of coreFiles) {
+  cpSync(`${core}/${file}`, `dist/datafog/wasm/${file}`, {
+    recursive: true,
+    // Types aren't needed at run time
+    filter: (source) => !source.endsWith(".d.ts"),
+  });
+}
 prepare("harness", ["harness.html"]);
 
 const common = { bundle: true, target: "chrome120", logLevel: "info" };
