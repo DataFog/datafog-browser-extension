@@ -241,8 +241,28 @@ function stubEditing(): ReturnType<typeof vi.fn> {
         last.remove();
       } else {
         range.deleteContents();
-        range.insertNode(document.createTextNode(value ?? ""));
+        const node = document.createTextNode(value ?? "");
+        range.insertNode(node);
+        range.setStartAfter(node);
+        range.collapse(true);
       }
+    }
+    if (command === "insertParagraph") {
+      // Split the paragraph at the caret, moving the caret to the new one
+      const range = window.getSelection()!.getRangeAt(0);
+      const block = (
+        range.startContainer instanceof Element
+          ? range.startContainer
+          : range.startContainer.parentElement!
+      ).closest("p")!;
+      const rest = document.createRange();
+      rest.setStart(range.startContainer, range.startOffset);
+      rest.setEnd(block, block.childNodes.length);
+      const next = document.createElement("p");
+      next.append(rest.extractContents());
+      block.after(next);
+      range.setStart(next, 0);
+      range.collapse(true);
     }
     return true;
   });
@@ -306,6 +326,22 @@ test("redacts a value across lines in place", async () => {
 
   expect(exec.mock.calls).toEqual([["insertText", false, "[EMAIL]"]]);
   expect(box.innerText).toBe("Ship to\n[EMAIL]\nThanks");
+});
+
+test("undoes a value across lines in place, a paragraph per line", async () => {
+  const exec = stubEditing();
+  const lines = ["Ship to", "77 Harbor View Lane", "Port Ellison, WA 98366"];
+  const box = await redactRichText(
+    [...lines, "Thanks"],
+    "77 Harbor View Lane\nPort Ellison, WA 98366",
+  );
+  exec.mockClear();
+
+  await press("undo");
+
+  expect(box.innerText).toBe([...lines, "Thanks"].join("\n"));
+  expect(box.querySelectorAll("p")).toHaveLength(4);
+  expect(exec).not.toHaveBeenCalledWith("selectAll");
 });
 
 test("retypes the chat box when a value spans formatting", async () => {

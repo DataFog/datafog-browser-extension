@@ -348,10 +348,30 @@ function replaceText(element: HTMLElement, text: string): void {
   }
 
   document.execCommand("selectAll");
-  text.split("\n").forEach((part, index) => {
-    if (index > 0) document.execCommand("insertParagraph");
-    if (part) document.execCommand("insertText", false, part);
-  });
+  typeLines(text);
+}
+
+/**
+ * Type text over the selection, a paragraph per line, as the editor stores it.
+ *
+ * innerText puts two newlines between paragraphs and three more for each
+ * blank one, so n newlines are (n + 1) / 3 paragraph breaks; typing each
+ * newline as its own break would add blank lines.
+ *
+ * @param text The text, with lines as innerText reads them.
+ */
+function typeLines(text: string): void {
+  if (!text) document.execCommand("delete");
+  for (const part of text.split(/(\n+)/)) {
+    if (part.startsWith("\n")) {
+      const breaks = Math.max(1, Math.round((part.length + 1) / 3));
+      for (let count = 0; count < breaks; count++) {
+        document.execCommand("insertParagraph");
+      }
+    } else if (part) {
+      document.execCommand("insertText", false, part);
+    }
+  }
 }
 
 /**
@@ -454,7 +474,7 @@ function replaceValues(
     if (!range) return false;
     selection.removeAllRanges();
     selection.addRange(range);
-    document.execCommand("insertText", false, edit.replacement);
+    typeLines(edit.replacement);
   }
   return readText(element) === response.text;
 }
