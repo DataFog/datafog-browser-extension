@@ -14,7 +14,7 @@ import {
 } from "@datafog/wasm";
 
 import type { RedactResponse } from "./messages";
-import type { Settings } from "./settings";
+import { MODEL_ENTITIES, type Settings } from "./settings";
 
 /**
  * Load the WebAssembly module. Safe to call more than once.
@@ -29,14 +29,17 @@ export function ready(): Promise<void> {
 export type Scanner = (text: string, entities: string[]) => Promise<Finding[]>;
 
 /**
- * Find values with Core's rules, synchronously in this document.
+ * Find values with Core's rules, synchronously in this document. Names and
+ * addresses need the model, so they're skipped.
  *
  * @param text The prompt.
  * @param entities The types to find.
  * @returns What Core found.
  */
-export const scanRules: Scanner = async (text, entities) =>
-  scan(text, { entities });
+export const scanRules: Scanner = async (text, entities) => {
+  const rules = entities.filter((type) => !MODEL_ENTITIES.includes(type));
+  return rules.length === 0 ? [] : scan(text, { entities: rules });
+};
 
 /**
  * Build the redaction config, including the user's allowlist.

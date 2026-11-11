@@ -15,8 +15,10 @@ const blockSends = document.querySelector<HTMLInputElement>("#block-sends")!;
 const allowlist = document.querySelector<HTMLTextAreaElement>("#allowlist")!;
 const status = document.querySelector<HTMLSpanElement>("#status")!;
 
-/** Why a type is off by default: it also matches ordinary numbers. */
+/** What a type may get wrong: why it's off by default, or its limits. */
 const HINTS: Record<string, string> = {
+  PERSON: "may miss some, or flag well-known names",
+  ADDRESS: "may miss some, mostly tuned for statements",
   PHONE: "may flag order or account numbers",
   DATE: "may flag timestamps",
   ZIP_CODE: "may flag any 5-digit number",

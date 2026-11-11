@@ -6,9 +6,7 @@
 import type { Finding } from "@datafog/wasm";
 
 import { scanRules, type Scanner } from "./detect";
-
-/** Types only the model finds. */
-export const MODEL_ENTITIES = ["PERSON", "ADDRESS"];
+import { MODEL_ENTITIES } from "./settings";
 
 /** What the scanner needs from Core's CnnSession. */
 export interface ModelSession {

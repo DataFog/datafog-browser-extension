@@ -71,6 +71,16 @@ describe("countFindings", () => {
     });
   });
 
+  test("leaves names and addresses to the model", async () => {
+    const text = "John Smith, jane@example.com";
+    expect(
+      await countFindings(text, { ...settings, entities: ["PERSON", "EMAIL"] }),
+    ).toEqual({ EMAIL: 1 });
+    expect(
+      await countFindings(text, { ...settings, entities: ["ADDRESS"] }),
+    ).toEqual({});
+  });
+
   test("skips allowlisted values", async () => {
     const allowed = { ...settings, allowlist: ["jane@example.com"] };
     expect(await countFindings(prompt, allowed)).toEqual({ CREDIT_CARD: 1 });
