@@ -348,10 +348,36 @@ function replaceText(element: HTMLElement, text: string): void {
   }
 
   document.execCommand("selectAll");
-  text.split("\n").forEach((part, index) => {
-    if (index > 0) document.execCommand("insertParagraph");
-    if (part) document.execCommand("insertText", false, part);
-  });
+  typeLines(element, text);
+}
+
+/**
+ * Type text over the selection, with the chat box's kind of line break.
+ *
+ * ChatGPT's editor keeps every line in one paragraph, split by <br>s, and
+ * innerText reads each as one newline. Editors with a paragraph per line put
+ * two newlines between paragraphs and three more for each blank one, so there
+ * n newlines are (n + 1) / 3 paragraph breaks.
+ *
+ * @param element The chat box.
+ * @param text The text, with lines as innerText reads them.
+ */
+function typeLines(element: HTMLElement, text: string): void {
+  if (!text) document.execCommand("delete");
+  const oneParagraph = element.children.length <= 1;
+  for (const part of text.split(/(\n+)/)) {
+    if (part.startsWith("\n")) {
+      const breaks = oneParagraph
+        ? part.length
+        : Math.max(1, Math.round((part.length + 1) / 3));
+      const command = oneParagraph ? "insertLineBreak" : "insertParagraph";
+      for (let count = 0; count < breaks; count++) {
+        document.execCommand(command);
+      }
+    } else if (part) {
+      document.execCommand("insertText", false, part);
+    }
+  }
 }
 
 /**
@@ -403,6 +429,34 @@ function locate(root: HTMLElement, value: string, nth: number): Range | null {
 }
 
 /**
+ * Find a value in the chat box, even across lines: one range from its first
+ * line's start to its last line's end, each line in a single text node.
+ *
+ * @param root The chat box.
+ * @param text The chat box's text.
+ * @param start Where the value starts in the text.
+ * @param end Where it ends.
+ * @returns A range covering it, or null if a line isn't in one text node.
+ */
+function locateSpan(
+  root: HTMLElement,
+  text: string,
+  start: number,
+  end: number,
+): Range | null {
+  const lines = text.slice(start, end).split("\n");
+  const first = lines[0];
+  const last = lines.at(-1) ?? "";
+  if (!first || !last) return null;
+  const head = locate(root, first, countBefore(text, first, start));
+  if (lines.length === 1 || !head) return head;
+  const tail = locate(root, last, countBefore(text, last, end - last.length));
+  if (!tail) return null;
+  head.setEnd(tail.endContainer, tail.endOffset);
+  return head;
+}
+
+/**
  * Swap each found value for its label with one small edit apiece, so a long
  * prompt with a few values isn't retyped line by line.
  *
@@ -422,12 +476,11 @@ function replaceValues(
   // Last first, so the values before each edit keep their places
   for (let index = response.edits.length - 1; index >= 0; index--) {
     const edit = response.edits[index];
-    const value = text.slice(edit.start, edit.end);
-    const range = locate(element, value, countBefore(text, value, edit.start));
+    const range = locateSpan(element, text, edit.start, edit.end);
     if (!range) return false;
     selection.removeAllRanges();
     selection.addRange(range);
-    document.execCommand("insertText", false, edit.replacement);
+    typeLines(element, edit.replacement);
   }
   return readText(element) === response.text;
 }

@@ -4,7 +4,13 @@
  * chrome.storage.local, not sync: allowlist values are themselves sensitive.
  */
 
-/** Detected by default; mirrors datafog-mcp's DEFAULT_ENTITIES. */
+/** Found by Core's model rather than its rules. */
+export const MODEL_ENTITIES = ["PERSON", "ADDRESS"];
+
+/**
+ * Detected by default: datafog-mcp's DEFAULT_ENTITIES, plus names and
+ * addresses, which Core's model finds in the browser.
+ */
 export const DEFAULT_ENTITIES = [
   "API_KEY",
   "BEARER_TOKEN",
@@ -16,6 +22,9 @@ export const DEFAULT_ENTITIES = [
   "PRIVATE_KEY",
   "SSN",
   "US_ROUTING_NUMBER",
+  // Together at the end: the model finds them, with its own caveats
+  "PERSON",
+  "ADDRESS",
 ];
 
 /** Supported but off by default: they also match timestamps and IDs. */
@@ -23,6 +32,7 @@ export const OPT_IN_ENTITIES = ["PHONE", "DATE", "ZIP_CODE", "IP_ADDRESS"];
 
 /** Plain-language names for non-technical users. */
 export const LABELS: Record<string, string> = {
+  ADDRESS: "Mailing address",
   API_KEY: "API key",
   BEARER_TOKEN: "Access token",
   CREDENTIAL_URI: "Database connection string",
@@ -30,6 +40,7 @@ export const LABELS: Record<string, string> = {
   EMAIL: "Email address",
   JWT: "Login token",
   NPI: "Provider ID (NPI)",
+  PERSON: "Name",
   PRIVATE_KEY: "Private key",
   SSN: "Social Security number",
   US_ROUTING_NUMBER: "Bank routing number",
@@ -74,6 +85,30 @@ export async function loadSettings(): Promise<Settings> {
  */
 export function blockingSends(settings: Settings): boolean {
   return settings.enabled && settings.blockSends;
+}
+
+/**
+ * Whether two lists hold the same items, in any order.
+ *
+ * @param a One list.
+ * @param b The other.
+ * @returns True if they match.
+ */
+function sameItems(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((item) => b.includes(item));
+}
+
+/**
+ * Whether two settings find the same values: the same types and allowlist.
+ *
+ * @param a One set of settings.
+ * @param b The other.
+ * @returns True if a review made under one still holds under the other.
+ */
+export function sameChecks(a: Settings, b: Settings): boolean {
+  return (
+    sameItems(a.entities, b.entities) && sameItems(a.allowlist, b.allowlist)
+  );
 }
 
 /**

@@ -229,8 +229,47 @@ function stubEditing(): ReturnType<typeof vi.fn> {
   const exec = vi.fn((command: string, _ui?: boolean, value?: string) => {
     if (command === "insertText") {
       const range = window.getSelection()!.getRangeAt(0);
-      range.deleteContents();
-      range.insertNode(document.createTextNode(value ?? ""));
+      const { startContainer, startOffset, endContainer, endOffset } = range;
+      const first = startContainer.parentElement!.closest("p");
+      const last = endContainer.parentElement!.closest("p");
+      if (first && last && first !== last) {
+        // Across paragraphs: join them around the new text, as an editor does
+        const before = startContainer.textContent!.slice(0, startOffset);
+        const after = endContainer.textContent!.slice(endOffset);
+        while (first.nextSibling !== last) first.nextSibling!.remove();
+        first.textContent = before + (value ?? "") + after;
+        last.remove();
+      } else {
+        range.deleteContents();
+        const node = document.createTextNode(value ?? "");
+        range.insertNode(node);
+        range.setStartAfter(node);
+        range.collapse(true);
+      }
+    }
+    if (command === "insertLineBreak") {
+      const range = window.getSelection()!.getRangeAt(0);
+      const br = document.createElement("br");
+      range.insertNode(br);
+      range.setStartAfter(br);
+      range.collapse(true);
+    }
+    if (command === "insertParagraph") {
+      // Split the paragraph at the caret, moving the caret to the new one
+      const range = window.getSelection()!.getRangeAt(0);
+      const block = (
+        range.startContainer instanceof Element
+          ? range.startContainer
+          : range.startContainer.parentElement!
+      ).closest("p")!;
+      const rest = document.createRange();
+      rest.setStart(range.startContainer, range.startOffset);
+      rest.setEnd(block, block.childNodes.length);
+      const next = document.createElement("p");
+      next.append(rest.extractContents());
+      block.after(next);
+      range.setStart(next, 0);
+      range.collapse(true);
     }
     return true;
   });
@@ -242,10 +281,13 @@ function stubEditing(): ReturnType<typeof vi.fn> {
  * Load the content script on a rich-text chat box and choose Redact.
  *
  * @param lines The chat box's paragraphs, as markup.
+ * @param value The value to redact, as [EMAIL].
  * @returns The chat box.
  */
-async function redactRichText(lines: string[]): Promise<HTMLElement> {
-  const value = "jane@example.com";
+async function redactRichText(
+  lines: string[],
+  value = "jane@example.com",
+): Promise<HTMLElement> {
   await start(
     async (request) => {
       if (request.type === "scan")
@@ -279,6 +321,70 @@ test("redacts a long prompt with one edit per value", async () => {
   expect(exec.mock.calls).toEqual([["insertText", false, "[EMAIL]"]]);
   expect(box.textContent).toContain("Contact: [EMAIL]");
   expect(box.textContent).not.toContain("jane@example.com");
+});
+
+test("redacts a value across lines in place", async () => {
+  const exec = stubEditing();
+
+  const box = await redactRichText(
+    ["Ship to", "77 Harbor View Lane", "Port Ellison, WA 98366", "Thanks"],
+    "77 Harbor View Lane\nPort Ellison, WA 98366",
+  );
+
+  expect(exec.mock.calls).toEqual([["insertText", false, "[EMAIL]"]]);
+  expect(box.innerText).toBe("Ship to\n[EMAIL]\nThanks");
+});
+
+test("undoes a value across lines in place, a paragraph per line", async () => {
+  const exec = stubEditing();
+  const lines = ["Ship to", "77 Harbor View Lane", "Port Ellison, WA 98366"];
+  const box = await redactRichText(
+    [...lines, "Thanks"],
+    "77 Harbor View Lane\nPort Ellison, WA 98366",
+  );
+  exec.mockClear();
+
+  await press("undo");
+
+  expect(box.innerText).toBe([...lines, "Thanks"].join("\n"));
+  expect(box.querySelectorAll("p")).toHaveLength(4);
+  expect(exec).not.toHaveBeenCalledWith("selectAll");
+});
+
+test("undoes in place in one paragraph of lines, as ChatGPT's editor has", async () => {
+  const exec = stubEditing();
+  const value = "77 Harbor View Lane\nPort Ellison";
+  const markup =
+    "<p>Ship to<br>77 Harbor View Lane<br>Port Ellison<br><br>Thanks</p>";
+  await start(async (request) => {
+    if (request.type === "scan")
+      return { seq: request.seq, enabled: true, counts: { ADDRESS: 1 } };
+    if (request.type !== "redact") return {};
+    const at = request.text.indexOf(value);
+    return {
+      text: request.text.replace(value, "[ADDRESS]"),
+      edits: [{ start: at, end: at + value.length, replacement: "[ADDRESS]" }],
+    };
+  }, `<form><div id="prompt-textarea" contenteditable="true">${markup}</div></form>`);
+  const box = document.querySelector<HTMLElement>("#prompt-textarea")!;
+  // happy-dom's innerText skips <br>; Chromium reads each as a newline
+  Object.defineProperty(box, "innerText", {
+    get: () =>
+      [...box.querySelectorAll("p")[0].childNodes]
+        .map((node) => (node.nodeName === "BR" ? "\n" : node.textContent))
+        .join(""),
+  });
+  box.dispatchEvent(new Event("input"));
+  await vi.advanceTimersByTimeAsync(400);
+  await press("redact");
+  expect(box.innerHTML).toContain("[ADDRESS]");
+  exec.mockClear();
+
+  await press("undo");
+
+  expect(box.innerHTML).toBe(markup);
+  expect(exec).toHaveBeenCalledWith("insertLineBreak");
+  expect(exec).not.toHaveBeenCalledWith("selectAll");
 });
 
 test("retypes the chat box when a value spans formatting", async () => {

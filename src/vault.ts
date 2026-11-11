@@ -33,7 +33,7 @@ import type {
   VaultRouting,
   VaultStatus,
 } from "./messages";
-import type { Settings } from "./settings";
+import { sameChecks, type Settings } from "./settings";
 import type { Devices } from "./device";
 
 /** The vault's name in IndexedDB. */
@@ -77,7 +77,7 @@ export interface VaultDeps<V extends Vault> {
   now: () => number;
   createOwner: (vault: V, route: Route) => Promise<Owner>;
   openOwner: (vault: V, route: Route) => Promise<Owner>;
-  findings: (text: string, settings: Settings) => WorkspaceFinding[];
+  findings: (text: string, settings: Settings) => Promise<WorkspaceFinding[]>;
   randomId: () => Uint8Array;
   /** Delete the vault's database. */
   deleteStore: (name: string) => Promise<void>;
@@ -89,6 +89,8 @@ export interface VaultDeps<V extends Vault> {
 interface Review extends ReviewSource {
   plan: WorkspaceVaultPlan;
   items: ReviewItem[];
+  /** The settings it was found under. */
+  settings: Settings;
 }
 
 /** Pseudonymize asked for while the vault was locked. */
@@ -171,6 +173,8 @@ export class VaultHost<V extends Vault = Vault> {
   private owner: Owner | null = null;
   private review: Review | null = null;
   private waiting: Waiting | null = null;
+  /** Counts review preparations, so a cancelled or replaced one is dropped. */
+  private turn = 0;
   private error: string | null = null;
   /** A save whose outcome is unknown, to reconcile at the next unlock. */
   private unsettled: Uint8Array | null = null;
@@ -532,12 +536,19 @@ export class VaultHost<V extends Vault = Vault> {
   /**
    * Save the approved review to the vault, and say how to apply it.
    *
+   * @param settings The settings now; a review found under others is dropped.
    * @returns The tab, its original text, and the edits that pseudonymize it.
    */
-  async approve(): Promise<Pseudonymized> {
+  async approve(settings: Settings): Promise<Pseudonymized> {
     const review = this.review;
     const owner = this.owner;
     if (!review || !owner) throw failure("no_review");
+    if (!sameChecks(review.settings, settings)) {
+      this.drop();
+      this.error = "settings_changed";
+      this.deps.notify();
+      throw failure("settings_changed");
+    }
     this.review = null;
     try {
       const saved = await owner.commit(review.plan, { approved: true });
@@ -578,6 +589,7 @@ export class VaultHost<V extends Vault = Vault> {
 
   /** Drop the review, and any Pseudonymize waiting for an unlock. */
   cancel(): void {
+    this.turn++;
     this.drop();
     this.waiting = null;
     this.error = null;
@@ -596,15 +608,18 @@ export class VaultHost<V extends Vault = Vault> {
     const owner = this.owner;
     if (!waiting || !owner) return;
     this.waiting = null;
+    const turn = ++this.turn;
     try {
+      const found = await this.deps.findings(waiting.text, waiting.settings);
+      // Cancelled or replaced while finding them
+      if (turn !== this.turn) return;
+      // Locked meanwhile: wait for the next unlock, as before one
+      if (owner !== this.owner || owner.closed) {
+        this.waiting = waiting;
+        return;
+      }
       const plan = owner.prepareReview(
-        [
-          {
-            text: waiting.text,
-            scannerFindings: this.deps.findings(waiting.text, waiting.settings),
-            userSelections: [],
-          },
-        ],
+        [{ text: waiting.text, scannerFindings: found, userSelections: [] }],
         this.deps.randomId(),
       );
       const preview = plan.preview();
@@ -615,6 +630,7 @@ export class VaultHost<V extends Vault = Vault> {
         this.review = {
           tabId: waiting.tabId,
           text: waiting.text,
+          settings: waiting.settings,
           plan,
           items: preview.transformations.map((item) => ({
             original: waiting.text.slice(

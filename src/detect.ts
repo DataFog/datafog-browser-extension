@@ -6,14 +6,15 @@
 import {
   init,
   scan,
-  scanAndTransform,
   transform,
+  type Finding,
+  type Transformation,
   type TransformationConfig,
   type WorkspaceFinding,
 } from "@datafog/wasm";
 
 import type { RedactResponse } from "./messages";
-import type { Settings } from "./settings";
+import { MODEL_ENTITIES, type Settings } from "./settings";
 
 /**
  * Load the WebAssembly module. Safe to call more than once.
@@ -23,6 +24,22 @@ import type { Settings } from "./settings";
 export function ready(): Promise<void> {
   return init();
 }
+
+/** Finds the values of the given types in a prompt. */
+export type Scanner = (text: string, entities: string[]) => Promise<Finding[]>;
+
+/**
+ * Find values with Core's rules, synchronously in this document. Names and
+ * addresses need the model, so they're skipped.
+ *
+ * @param text The prompt.
+ * @param entities The types to find.
+ * @returns What Core found.
+ */
+export const scanRules: Scanner = async (text, entities) => {
+  const rules = entities.filter((type) => !MODEL_ENTITIES.includes(type));
+  return rules.length === 0 ? [] : scan(text, { entities: rules });
+};
 
 /**
  * Build the redaction config, including the user's allowlist.
@@ -41,6 +58,50 @@ function redactConfig(settings: Settings): TransformationConfig {
   return { ...config, allow: { exact } };
 }
 
+/** DataFog's own markers, such as [[EMAIL_7KQ4ZM]], and labels, such as [EMAIL]. */
+const PLACEHOLDER = /\[\[[A-Z][A-Z_]*_[A-Z0-9]+\]\]|\[[A-Z][A-Z_]*\]/g;
+
+/**
+ * Drop findings that touch DataFog's own markers or labels. The model can
+ * read a marker as part of an address, and replacing part of one breaks it.
+ *
+ * @param text The prompt.
+ * @param found What was found in it.
+ * @returns The findings clear of every marker and label.
+ */
+function outsidePlaceholders(text: string, found: Finding[]): Finding[] {
+  const spans = [...text.matchAll(PLACEHOLDER)].map((match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+  if (spans.length === 0) return found;
+  return found.filter(({ utf16Range: { start, end } }) =>
+    spans.every((span) => end <= span.start || start >= span.end),
+  );
+}
+
+/**
+ * Find a prompt's values and decide which to replace: after the allowlist,
+ * and with a value two detectors match once.
+ *
+ * @param text The prompt.
+ * @param settings The current settings.
+ * @param scanner Finds the values.
+ * @returns One transformation per value; empty when nothing is checked.
+ */
+async function replaceable(
+  text: string,
+  settings: Settings,
+  scanner: Scanner,
+): Promise<Transformation[]> {
+  if (!text.trim() || settings.entities.length === 0) return [];
+  const found = outsidePlaceholders(
+    text,
+    await scanner(text, settings.entities),
+  );
+  return transform(text, found, redactConfig(settings)).transformations;
+}
+
 /**
  * Count what a prompt contains, by type.
  *
@@ -49,19 +110,16 @@ function redactConfig(settings: Settings): TransformationConfig {
  *
  * @param text The prompt.
  * @param settings The current settings.
+ * @param scanner Finds the values.
  * @returns Entity type to count; empty when nothing was found.
  */
-export function countFindings(
+export async function countFindings(
   text: string,
   settings: Settings,
-): Record<string, number> {
-  if (!text.trim() || settings.entities.length === 0) return {};
-
-  const found = scan(text, { entities: settings.entities });
-  const { transformations } = transform(text, found, redactConfig(settings));
-
+  scanner: Scanner,
+): Promise<Record<string, number>> {
   const counts: Record<string, number> = {};
-  for (const item of transformations) {
+  for (const item of await replaceable(text, settings, scanner)) {
     counts[item.entityType] = (counts[item.entityType] ?? 0) + 1;
   }
   return counts;
@@ -72,17 +130,22 @@ export function countFindings(
  *
  * @param text The prompt.
  * @param settings The current settings.
+ * @param scanner Finds the values.
  * @returns The redacted prompt, and where each label replaced a value.
  */
-export function redact(text: string, settings: Settings): RedactResponse {
+export async function redact(
+  text: string,
+  settings: Settings,
+  scanner: Scanner,
+): Promise<RedactResponse> {
   if (!text.trim() || settings.entities.length === 0) {
     return { text, edits: [] };
   }
-
-  const result = scanAndTransform(text, {
-    scan: { entities: settings.entities },
-    transform: redactConfig(settings),
-  });
+  const found = outsidePlaceholders(
+    text,
+    await scanner(text, settings.entities),
+  );
+  const result = transform(text, found, redactConfig(settings));
   return {
     text: result.text,
     edits: result.transformations.map((item) => ({
@@ -94,22 +157,20 @@ export function redact(text: string, settings: Settings): RedactResponse {
 }
 
 /**
- * Find the values Pseudonymize replaces: the same ones Redact would, after
- * the allowlist and with each value matched by two detectors once.
+ * Find the values Pseudonymize replaces: the same ones Redact would.
  *
  * @param text The prompt.
  * @param settings The current settings.
+ * @param scanner Finds the values.
  * @returns Findings for a workspace review.
  */
-export function workspaceFindings(
+export async function workspaceFindings(
   text: string,
   settings: Settings,
-): WorkspaceFinding[] {
-  if (!text.trim() || settings.entities.length === 0) return [];
-
-  const found = scan(text, { entities: settings.entities });
-  const { transformations } = transform(text, found, redactConfig(settings));
-  return transformations.map((item) => ({
+  scanner: Scanner,
+): Promise<WorkspaceFinding[]> {
+  const items = await replaceable(text, settings, scanner);
+  return items.map((item) => ({
     entityType: item.entityType,
     matchedText: text.slice(
       item.sourceUtf16Range.start,
