@@ -410,7 +410,38 @@
     </section>
 
     <section id="workspace">
-      <h2>Workspace</h2>
+      <div class="heading">
+        <h2>Workspace</h2>
+        <button
+          class="icon"
+          id="workspace-info-toggle"
+          type="button"
+          aria-label="About the workspace"
+          aria-controls="workspace-info"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" />
+            <path
+              d="M8 7v4.5M8 4.5v.5"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+      <div class="info" id="workspace-info" hidden>
+        <p>
+          Mark a value Not sensitive in a review, and DataFog leaves it as is
+          from then on. It's left out of reviews and, while the vault is
+          unlocked, the badge and Redact skip it too.
+        </p>
+        <p>
+          These values are saved in your vault, on this device. Remove one to
+          have DataFog replace it again.
+        </p>
+      </div>
       <p class="muted" id="workspace-note"></p>
       <ul id="not-sensitive"></ul>
       <p class="error" id="workspace-error" hidden></p>

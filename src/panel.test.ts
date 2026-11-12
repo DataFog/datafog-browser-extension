@@ -313,7 +313,20 @@ test("lists not sensitive values as text, and removes one", async () => {
 
   expect(sendMessage).toHaveBeenCalledWith({ type: "choice-clear", ...choice });
   expect($("#not-sensitive").children).toHaveLength(0);
-  expect($("#workspace-note").textContent).toContain("Mark a value");
+  expect($("#workspace-note").textContent).toBe(
+    "No values marked not sensitive yet.",
+  );
+});
+
+test("hides what the workspace does behind its info button", async () => {
+  await start(() => LOCKED);
+  const toggle = $("#workspace-info-toggle");
+
+  expect($("#workspace-info").hidden).toBe(true);
+  toggle.click();
+  expect($("#workspace-info").hidden).toBe(false);
+  expect($("#vault-info").hidden).toBe(true);
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
 });
 
 test("asks to unlock before showing not sensitive values", async () => {

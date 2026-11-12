@@ -69,8 +69,6 @@ const view = {
   reviewError: document.querySelector<HTMLParagraphElement>("#review-error")!,
   approve: document.querySelector<HTMLButtonElement>("#approve")!,
   vaultState: document.querySelector<HTMLSpanElement>("#vault-state")!,
-  infoToggle: document.querySelector<HTMLButtonElement>("#vault-info-toggle")!,
-  info: document.querySelector<HTMLDivElement>("#vault-info")!,
   create: document.querySelector<HTMLFormElement>("#create")!,
   createPassword: document.querySelector<HTMLInputElement>("#create-password")!,
   createConfirm: document.querySelector<HTMLInputElement>("#create-confirm")!,
@@ -295,12 +293,9 @@ function renderWorkspace({ state, notSensitive }: VaultStatus): void {
   if (state !== "unlocked")
     view.workspaceNote.textContent =
       "Unlock your vault to see the values you've marked not sensitive.";
-  else if (notSensitive.length === 0)
-    view.workspaceNote.textContent =
-      "Mark a value not sensitive in a review, and DataFog leaves it as is from then on.";
   else
     view.workspaceNote.textContent =
-      "DataFog leaves these values as is. Remove one to replace it again.";
+      notSensitive.length === 0 ? "No values marked not sensitive yet." : "";
   // Values only ever go in as text, never as markup
   view.notSensitive.replaceChildren(
     ...notSensitive.map((choice) => {
@@ -587,10 +582,16 @@ view.reset.addEventListener("submit", (event) => {
     },
   );
 });
-view.infoToggle.addEventListener("click", () => {
-  view.info.hidden = !view.info.hidden;
-  view.infoToggle.setAttribute("aria-expanded", String(!view.info.hidden));
-});
+// Each info button shows or hides the box it controls
+for (const toggle of document.querySelectorAll<HTMLButtonElement>(
+  "button.icon[aria-controls]",
+)) {
+  const info = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+  toggle.addEventListener("click", () => {
+    info.hidden = !info.hidden;
+    toggle.setAttribute("aria-expanded", String(!info.hidden));
+  });
+}
 view.restoreLatest.addEventListener("click", () => void restoreLatest());
 document.querySelector("#copy-restored")!.addEventListener("click", () => {
   void navigator.clipboard.writeText(restoredText);
