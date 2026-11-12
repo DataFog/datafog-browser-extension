@@ -4,6 +4,7 @@
 
 import {
   DEFAULT_ENTITIES,
+  GERMAN_ENTITIES,
   LABELS,
   OPT_IN_ENTITIES,
   loadSettings,
@@ -26,16 +27,25 @@ const HINTS: Record<string, string> = {
   ZIP_CODE: "may flag any 5-digit number",
   IP_ADDRESS: "common in logs and config files",
   UUID: "common as record and request IDs",
+  DE_TAX_ID: "only after a label such as Steuer-ID",
+  DE_SOCIAL_SECURITY_NUMBER: "only after a label such as SVNR",
+  DE_POSTAL_CODE: "only with PLZ or D- before it",
+  DE_PASSPORT_NUMBER: "only after a label such as Reisepass",
+  DE_RESIDENCE_PERMIT_NUMBER: "only after a label such as Aufenthaltstitel",
 };
 
 /**
  * Add one checkbox per entity type, with a hint on the noisy ones.
  *
+ * @param list Where the checkboxes go.
  * @param types The entity types, in display order.
  * @param selected The types currently on.
  */
-function renderTypes(types: string[], selected: string[]): void {
-  const list = document.getElementById("types")!;
+function renderTypes(
+  list: HTMLElement,
+  types: string[],
+  selected: string[],
+): void {
   for (const type of types) {
     const label = document.createElement("label");
     const box = document.createElement("input");
@@ -60,7 +70,16 @@ async function render(): Promise<void> {
   enabled.checked = settings.enabled;
   blockSends.checked = settings.blockSends;
   allowlist.value = settings.allowlist.join("\n");
-  renderTypes([...DEFAULT_ENTITIES, ...OPT_IN_ENTITIES], settings.entities);
+  renderTypes(
+    document.getElementById("types")!,
+    [...DEFAULT_ENTITIES, ...OPT_IN_ENTITIES],
+    settings.entities,
+  );
+  renderTypes(
+    document.getElementById("german-types")!,
+    GERMAN_ENTITIES,
+    settings.entities,
+  );
 }
 
 /** Save the form. */

@@ -39,6 +39,17 @@ export const OPT_IN_ENTITIES = [
   "UUID",
 ];
 
+/** Core's German identifiers, off by default. Choosing any turns on its German locale. */
+export const GERMAN_ENTITIES = [
+  "DE_IBAN",
+  "DE_VAT_ID",
+  "DE_TAX_ID",
+  "DE_SOCIAL_SECURITY_NUMBER",
+  "DE_POSTAL_CODE",
+  "DE_PASSPORT_NUMBER",
+  "DE_RESIDENCE_PERMIT_NUMBER",
+];
+
 /** Plain-language names for non-technical users. */
 export const LABELS: Record<string, string> = {
   ACCOUNT_NUMBER: "Account number",
@@ -60,6 +71,13 @@ export const LABELS: Record<string, string> = {
   ZIP_CODE: "ZIP code",
   IP_ADDRESS: "IP address",
   UUID: "UUID",
+  DE_IBAN: "German IBAN",
+  DE_VAT_ID: "German VAT ID",
+  DE_TAX_ID: "German tax ID",
+  DE_SOCIAL_SECURITY_NUMBER: "German social security number",
+  DE_POSTAL_CODE: "German postal code",
+  DE_PASSPORT_NUMBER: "German passport number",
+  DE_RESIDENCE_PERMIT_NUMBER: "German residence permit number",
 };
 
 export interface Settings {

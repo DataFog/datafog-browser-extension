@@ -15,7 +15,7 @@ import {
   workspaceFindings as findingsWith,
   type Scanner,
 } from "./detect";
-import { DEFAULT_ENTITIES, type Settings } from "./settings";
+import { DEFAULT_ENTITIES, GERMAN_ENTITIES, type Settings } from "./settings";
 
 const settings: Settings = {
   enabled: true,
@@ -149,6 +149,25 @@ describe("UUIDs", () => {
   test("finds UUIDs once turned on", async () => {
     const chosen = { ...settings, entities: [...DEFAULT_ENTITIES, "UUID"] };
     expect(await countFindings(text, chosen)).toEqual({ UUID: 1 });
+  });
+});
+
+describe("German identifiers", () => {
+  const text = "IBAN DE44 5001 0517 5407 3249 31, Steuer-ID: 12 345 678 901";
+
+  test("leaves German values alone by default", async () => {
+    expect(await countFindings(text, settings)).toEqual({});
+  });
+
+  test("finds German values once turned on", async () => {
+    const chosen = {
+      ...settings,
+      entities: [...DEFAULT_ENTITIES, ...GERMAN_ENTITIES],
+    };
+    expect(await countFindings(text, chosen)).toEqual({
+      DE_IBAN: 1,
+      DE_TAX_ID: 1,
+    });
   });
 });
 
