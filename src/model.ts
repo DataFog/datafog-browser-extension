@@ -3,18 +3,15 @@
  * Worker. Runs in the offscreen document; every other type uses Core's rules.
  */
 
-import type { Finding } from "@datafog/wasm";
+import type { Finding, ScanConfig } from "@datafog/wasm";
 
-import { scanRules, type Scanner } from "./detect";
+import { scanConfig, scanRules, type Scanner } from "./detect";
 import { MODEL_ENTITIES } from "./settings";
 
 /** What the scanner needs from Core's CnnSession. */
 export interface ModelSession {
   readonly status: string;
-  scan(
-    text: string,
-    config: { entities: string[] },
-  ): Promise<{ findings: Finding[] }>;
+  scan(text: string, config: ScanConfig): Promise<{ findings: Finding[] }>;
   close(): void;
 }
 
@@ -65,7 +62,7 @@ export class ModelScanner {
       return scanRules(text, entities);
     }
     const session = await this.ready();
-    const result = await session.scan(text, { entities });
+    const result = await session.scan(text, scanConfig(entities));
     return result.findings;
   }
 

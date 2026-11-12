@@ -9,6 +9,7 @@ import {
   countFindings as countWith,
   ready,
   redact as redactWith,
+  scanConfig,
   scanRules,
   skipChoices,
   workspaceFindings as findingsWith,
@@ -124,6 +125,24 @@ describe("markers and labels", () => {
   test("still finds values beside a marker", async () => {
     const text = "[[EMAIL_7KQ4ZM]] and jane@example.com";
     expect(await countFindings(text, settings)).toEqual({ EMAIL: 1 });
+  });
+});
+
+describe("scanConfig", () => {
+  test("turns on UUIDs and German types only when chosen", () => {
+    expect(scanConfig(["EMAIL"])).toEqual({ entities: ["EMAIL"] });
+    expect(scanConfig(["EMAIL", "UUID", "DE_IBAN"])).toEqual({
+      entities: ["EMAIL", "UUID", "DE_IBAN"],
+      detect_uuid: true,
+      locale: "de",
+    });
+  });
+
+  test("finds UUIDs and German values with the rules", async () => {
+    const text =
+      "id 123e4567-e89b-12d3-a456-426614174000, DE44500105175407324931";
+    const found = await scanRules(text, ["UUID", "DE_IBAN"]);
+    expect(found.map((item) => item.entityType)).toEqual(["UUID", "DE_IBAN"]);
   });
 });
 

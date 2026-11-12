@@ -8,6 +8,7 @@ import {
   scan,
   transform,
   type Finding,
+  type ScanConfig,
   type Transformation,
   type TransformationConfig,
   type WorkspaceFinding,
@@ -29,6 +30,21 @@ export function ready(): Promise<void> {
 export type Scanner = (text: string, entities: string[]) => Promise<Finding[]>;
 
 /**
+ * Core's scan config for these types. Choosing UUID or a German type isn't
+ * enough on its own: Core also needs its UUID switch or the German locale.
+ *
+ * @param entities The types to find.
+ * @returns The config to scan with.
+ */
+export function scanConfig(entities: string[]): ScanConfig {
+  return {
+    entities,
+    ...(entities.includes("UUID") && { detect_uuid: true }),
+    ...(entities.some((type) => type.startsWith("DE_")) && { locale: "de" }),
+  };
+}
+
+/**
  * Find values with Core's rules, synchronously in this document. Names and
  * addresses need the model, so they're skipped.
  *
@@ -38,7 +54,7 @@ export type Scanner = (text: string, entities: string[]) => Promise<Finding[]>;
  */
 export const scanRules: Scanner = async (text, entities) => {
   const rules = entities.filter((type) => !MODEL_ENTITIES.includes(type));
-  return rules.length === 0 ? [] : scan(text, { entities: rules });
+  return rules.length === 0 ? [] : scan(text, scanConfig(rules));
 };
 
 /**
