@@ -13,7 +13,7 @@ import {
   type WorkspaceFinding,
 } from "@datafog/wasm";
 
-import type { RedactResponse } from "./messages";
+import type { RedactResponse, ValueChoice } from "./messages";
 import { MODEL_ENTITIES, type Settings } from "./settings";
 
 /**
@@ -40,6 +40,42 @@ export const scanRules: Scanner = async (text, entities) => {
   const rules = entities.filter((type) => !MODEL_ENTITIES.includes(type));
   return rules.length === 0 ? [] : scan(text, { entities: rules });
 };
+
+/**
+ * A value as Core matches a remembered choice: case and spacing don't count.
+ *
+ * @param entityType The value's type.
+ * @param value The value.
+ * @returns A key equal for values Core treats as the same.
+ */
+function choiceKey(entityType: string, value: string): string {
+  const spaced = value.trim().replaceAll(/\s+/g, " ").toLowerCase();
+  return `${entityType}\u0000${spaced}`;
+}
+
+/**
+ * Leave out values remembered as not sensitive, as a review does.
+ *
+ * @param scanner Finds the values.
+ * @param choices The remembered values; none while the vault is locked.
+ * @returns A scanner that skips them.
+ */
+export function skipChoices(
+  scanner: Scanner,
+  choices: () => ValueChoice[],
+): Scanner {
+  return async (text, entities) => {
+    const found = await scanner(text, entities);
+    const known = new Set(
+      choices().map(({ entityType, value }) => choiceKey(entityType, value)),
+    );
+    if (known.size === 0) return found;
+    return found.filter(
+      ({ entityType, matchedText }) =>
+        !known.has(choiceKey(entityType, matchedText)),
+    );
+  };
+}
 
 /**
  * Build the redaction config, including the user's allowlist.

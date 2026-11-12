@@ -1,6 +1,6 @@
 /**
- * Side panel: the vault, the Pseudonymize review, and later the workspace and
- * restore views.
+ * Side panel: the vault, the Pseudonymize review, the workspace's not
+ * sensitive values, and restoring answers.
  */
 
 import type {
@@ -9,8 +9,10 @@ import type {
   PanelRequest,
   RestoredInPage,
   UnlockedVault,
+  ValueChoice,
   VaultStatus,
 } from "./messages";
+import { LABELS } from "./settings";
 
 /** What the recovery key is for, when the vault is new. */
 const RECOVERY_NOTE =
@@ -20,8 +22,8 @@ const RECOVERY_NOTE =
 const NEW_RECOVERY_NOTE =
   "Remembering this device gave your vault new keys, so your old recovery key no longer works. Save this new one somewhere safe, such as a password manager. DataFog can't show it again.";
 
-/** Values the review shows before its list scrolls. */
-const REVIEW_VISIBLE = 5;
+/** Values a list shows before it scrolls within the panel. */
+const LIST_VISIBLE = 5;
 
 /** Shortest password the vault accepts. */
 const MIN_PASSWORD = 8;
@@ -67,8 +69,6 @@ const view = {
   reviewError: document.querySelector<HTMLParagraphElement>("#review-error")!,
   approve: document.querySelector<HTMLButtonElement>("#approve")!,
   vaultState: document.querySelector<HTMLSpanElement>("#vault-state")!,
-  infoToggle: document.querySelector<HTMLButtonElement>("#vault-info-toggle")!,
-  info: document.querySelector<HTMLDivElement>("#vault-info")!,
   create: document.querySelector<HTMLFormElement>("#create")!,
   createPassword: document.querySelector<HTMLInputElement>("#create-password")!,
   createConfirm: document.querySelector<HTMLInputElement>("#create-confirm")!,
@@ -96,6 +96,14 @@ const view = {
   restoredSummary:
     document.querySelector<HTMLParagraphElement>("#restored-summary")!,
   restoreError: document.querySelector<HTMLParagraphElement>("#restore-error")!,
+  workspaceNote:
+    document.querySelector<HTMLParagraphElement>("#workspace-note")!,
+  notSensitive: document.querySelector<HTMLUListElement>("#not-sensitive")!,
+  notSensitiveCount: document.querySelector<HTMLParagraphElement>(
+    "#not-sensitive-count",
+  )!,
+  workspaceError:
+    document.querySelector<HTMLParagraphElement>("#workspace-error")!,
 };
 
 /** Kept only until the user says they saved it. */
@@ -244,47 +252,108 @@ function renderReview({
   else view.reviewNote.textContent = "";
   // Values only ever go in as text, never as markup
   view.reviewItems.replaceChildren(
-    ...(review ?? []).map(({ original, marker }) => {
+    ...(review ?? []).map(({ original, marker }, index) => {
       const item = document.createElement("li");
       const value = document.createElement("div");
       value.textContent = original;
       const replacement = document.createElement("div");
       replacement.className = "marker";
       replacement.textContent = `→ ${marker}`;
-      item.append(value, replacement);
+      const keep = linkButton("Not sensitive");
+      keep.addEventListener(
+        "click",
+        () =>
+          void act({ type: "review-not-sensitive", index }, view.reviewError),
+      );
+      item.append(value, replacement, keep);
       return item;
     }),
   );
-  fitReview(review?.length ?? 0);
+  fitList(view.reviewItems, view.reviewCount);
   showError(view.reviewError, reviewError);
 }
 
 /**
- * Keep a long review to a few values, scrolling within the panel for the
- * rest.
+ * Make a small text button for a list row.
  *
- * @param count How many values the review has.
+ * @param text The button's text.
+ * @returns The button.
  */
-function fitReview(count: number): void {
-  const scroll = count > REVIEW_VISIBLE;
-  view.reviewItems.classList.toggle("scroll", scroll);
-  view.reviewCount.hidden = !scroll;
-  view.reviewCount.textContent = scroll
+function linkButton(text: string): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "link inline";
+  button.textContent = text;
+  return button;
+}
+
+/**
+ * Show the values remembered as not sensitive, each with Remove.
+ *
+ * @param status The vault's status.
+ */
+function renderWorkspace({ state, notSensitive }: VaultStatus): void {
+  if (state !== "unlocked")
+    view.workspaceNote.textContent =
+      "Unlock your vault to see the values you've marked not sensitive.";
+  else
+    view.workspaceNote.textContent =
+      notSensitive.length === 0 ? "No values marked not sensitive yet." : "";
+  // Values only ever go in as text, never as markup
+  view.notSensitive.replaceChildren(
+    ...notSensitive.map((choice) => {
+      const item = document.createElement("li");
+      const value = document.createElement("div");
+      value.textContent = choice.value;
+      const type = document.createElement("div");
+      type.className = "muted";
+      type.textContent = LABELS[choice.entityType] ?? choice.entityType;
+      const remove = linkButton("Remove");
+      remove.addEventListener("click", () => void clearChoice(choice));
+      item.append(value, type, remove);
+      return item;
+    }),
+  );
+  fitList(view.notSensitive, view.notSensitiveCount);
+  if (state !== "unlocked") showError(view.workspaceError, null);
+}
+
+/**
+ * Replace a value remembered as not sensitive again.
+ *
+ * @param choice The value and its type.
+ */
+async function clearChoice(choice: ValueChoice): Promise<void> {
+  await act({ type: "choice-clear", ...choice }, view.workspaceError);
+}
+
+/**
+ * Keep a long list to a few values, scrolling within the panel for the rest.
+ *
+ * @param list The list.
+ * @param note Where to say the list scrolls.
+ */
+function fitList(list: HTMLUListElement, note: HTMLParagraphElement): void {
+  const count = list.childElementCount;
+  const scroll = count > LIST_VISIBLE;
+  list.classList.toggle("scroll", scroll);
+  note.hidden = !scroll;
+  note.textContent = scroll
     ? `${count} values. Scroll the list to see them all.`
     : "";
   if (!scroll) {
-    view.reviewItems.style.maxHeight = "";
+    list.style.maxHeight = "";
     return;
   }
   // Show the first few in full, and half the next, so the list looks scrollable
   const rows = Array.from(
-    view.reviewItems.children,
+    list.children,
     (row) => row.getBoundingClientRect().height,
   );
   const height =
-    rows.slice(0, REVIEW_VISIBLE).reduce((sum, row) => sum + row, 0) +
-    rows[REVIEW_VISIBLE] / 2;
-  view.reviewItems.style.maxHeight = height > 0 ? `${height}px` : "";
+    rows.slice(0, LIST_VISIBLE).reduce((sum, row) => sum + row, 0) +
+    rows[LIST_VISIBLE] / 2;
+  list.style.maxHeight = height > 0 ? `${height}px` : "";
 }
 
 /**
@@ -369,6 +438,7 @@ async function restoreLatest(): Promise<void> {
 function render(status: VaultStatus): void {
   renderVault(status);
   renderReview(status);
+  renderWorkspace(status);
   renderRestore(status.state);
 }
 
@@ -517,10 +587,16 @@ view.reset.addEventListener("submit", (event) => {
     },
   );
 });
-view.infoToggle.addEventListener("click", () => {
-  view.info.hidden = !view.info.hidden;
-  view.infoToggle.setAttribute("aria-expanded", String(!view.info.hidden));
-});
+// Each info button shows or hides the box it controls
+for (const toggle of document.querySelectorAll<HTMLButtonElement>(
+  "button.icon[aria-controls]",
+)) {
+  const info = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+  toggle.addEventListener("click", () => {
+    info.hidden = !info.hidden;
+    toggle.setAttribute("aria-expanded", String(!info.hidden));
+  });
+}
 view.restoreLatest.addEventListener("click", () => void restoreLatest());
 document.querySelector("#copy-restored")!.addEventListener("click", () => {
   void navigator.clipboard.writeText(restoredText);

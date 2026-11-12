@@ -13,6 +13,7 @@ vi.mock("./detect", () => ({
   countFindings: vi.fn(async () => ({ EMAIL: 1 })),
   redact: vi.fn(async () => ({ text: "[EMAIL]", edits: [] })),
   workspaceFindings: vi.fn(async () => []),
+  skipChoices: vi.fn((scanner: unknown) => scanner),
 }));
 
 // Workers aren't here; the model scanner has its own tests

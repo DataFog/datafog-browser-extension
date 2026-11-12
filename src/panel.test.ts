@@ -21,6 +21,7 @@ const LOCKED: VaultStatus = {
   review: null,
   reviewError: null,
   rememberedUntil: null,
+  notSensitive: [],
 };
 
 let notices: ((message: object) => void)[];
@@ -246,7 +247,11 @@ test("lists each value and its marker, as text", async () => {
     ...LOCKED,
     state: "unlocked",
     review: [
-      { original: "<b>jane@example.com</b>", marker: "[[EMAIL_7KQ4ZM]]" },
+      {
+        entityType: "EMAIL",
+        original: "<b>jane@example.com</b>",
+        marker: "[[EMAIL_7KQ4ZM]]",
+      },
     ],
   }));
 
@@ -256,6 +261,92 @@ test("lists each value and its marker, as text", async () => {
   expect(item.querySelector("b")).toBeNull();
   expect(item.textContent).toContain("<b>jane@example.com</b>");
   expect(item.textContent).toContain("→ [[EMAIL_7KQ4ZM]]");
+});
+
+test("marks a review value not sensitive", async () => {
+  const review = [
+    { entityType: "PERSON", original: "Ann", marker: "[[PERSON_7KQ4ZM]]" },
+  ];
+  let status: VaultStatus = { ...LOCKED, state: "unlocked", review };
+  await start((request) => {
+    if (request.type === "review-not-sensitive") {
+      status = {
+        ...status,
+        review: null,
+        notSensitive: [{ entityType: "PERSON", value: "Ann" }],
+      };
+    }
+    return status;
+  });
+
+  $("#review-items li button").click();
+  await settle();
+
+  expect(sendMessage).toHaveBeenCalledWith({
+    type: "review-not-sensitive",
+    index: 0,
+  });
+  expect($("#not-sensitive").textContent).toContain("Ann");
+});
+
+test("lists not sensitive values as text, and removes one", async () => {
+  const choice = { entityType: "PERSON", value: "<i>Ann</i>" };
+  let status: VaultStatus = {
+    ...LOCKED,
+    state: "unlocked",
+    notSensitive: [choice],
+  };
+  await start((request) => {
+    if (request.type === "choice-clear") {
+      status = { ...status, notSensitive: [] };
+    }
+    return status;
+  });
+
+  const item = document.querySelector("#not-sensitive li")!;
+  expect(item.querySelector("i")).toBeNull();
+  expect(item.textContent).toContain("<i>Ann</i>");
+  expect(item.textContent).toContain("Name");
+
+  item.querySelector("button")!.click();
+  await settle();
+
+  expect(sendMessage).toHaveBeenCalledWith({ type: "choice-clear", ...choice });
+  expect($("#not-sensitive").children).toHaveLength(0);
+  expect($("#workspace-note").textContent).toBe(
+    "No values marked not sensitive yet.",
+  );
+});
+
+test("hides what the workspace does behind its info button", async () => {
+  await start(() => LOCKED);
+  const toggle = $("#workspace-info-toggle");
+
+  expect($("#workspace-info").hidden).toBe(true);
+  toggle.click();
+  expect($("#workspace-info").hidden).toBe(false);
+  expect($("#vault-info").hidden).toBe(true);
+  expect(toggle.getAttribute("aria-expanded")).toBe("true");
+});
+
+test("scrolls a long list of not sensitive values within the panel", async () => {
+  const notSensitive = Array.from({ length: 8 }, (_, index) => ({
+    entityType: "EMAIL",
+    value: `person${index}@example.com`,
+  }));
+  await start(() => ({ ...LOCKED, state: "unlocked", notSensitive }));
+
+  expect($("#not-sensitive").childElementCount).toBe(8);
+  expect($("#not-sensitive").classList.contains("scroll")).toBe(true);
+  expect($("#not-sensitive-count").textContent).toBe(
+    "8 values. Scroll the list to see them all.",
+  );
+});
+
+test("asks to unlock before showing not sensitive values", async () => {
+  await start(() => LOCKED);
+
+  expect($("#workspace-note").textContent).toContain("Unlock your vault");
 });
 
 test("asks to unlock when Pseudonymize is waiting", async () => {
@@ -269,7 +360,13 @@ test("asks to unlock when Pseudonymize is waiting", async () => {
 });
 
 test("approves the review, and explains a changed chat box", async () => {
-  const review = [{ original: "jane@example.com", marker: "[[EMAIL_7KQ4ZM]]" }];
+  const review = [
+    {
+      entityType: "EMAIL",
+      original: "jane@example.com",
+      marker: "[[EMAIL_7KQ4ZM]]",
+    },
+  ];
   let status: VaultStatus = { ...LOCKED, state: "unlocked", review };
   await start((request) => {
     if (request.type !== "review-approve") return status;

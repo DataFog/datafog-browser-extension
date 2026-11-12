@@ -43,6 +43,10 @@ export type PanelRequest =
   | { type: "vault-reset"; password: string }
   | { type: "review-approve" }
   | { type: "review-cancel" }
+  /** Remember the review's value at this index as not sensitive. */
+  | { type: "review-not-sensitive"; index: number }
+  /** Replace a value remembered as not sensitive again. */
+  | { type: "choice-clear"; entityType: string; value: string }
   | { type: "restore-latest"; windowId: number }
   | { type: "hide-originals"; windowId: number };
 
@@ -96,8 +100,15 @@ export type VaultState = "none" | "locked" | "unlocked";
 
 /** One value a review would replace, shown only in the side panel. */
 export interface ReviewItem {
+  entityType: string;
   original: string;
   marker: string;
+}
+
+/** A value the user marked not sensitive; Core leaves it as is. */
+export interface ValueChoice {
+  entityType: string;
+  value: string;
 }
 
 export interface VaultStatus {
@@ -112,6 +123,8 @@ export interface VaultStatus {
   reviewError: string | null;
   /** When this device stops unlocking the vault, or null if not remembered. */
   rememberedUntil: number | null;
+  /** Values marked not sensitive; empty while locked. */
+  notSensitive: ValueChoice[];
 }
 
 /** An unlocked vault, with a new recovery key if remembering needed one. */

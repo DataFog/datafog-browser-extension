@@ -260,6 +260,8 @@ const PANEL_REQUESTS = new Set<string>([
   "device-forget",
   "review-approve",
   "review-cancel",
+  "review-not-sensitive",
+  "choice-clear",
   "restore-latest",
   "hide-originals",
 ]);

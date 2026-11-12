@@ -8,7 +8,13 @@ import { FogVault, randomId } from "@datafog/fogvault-browser";
 import { Workspace } from "@datafog/wasm";
 import { CnnSession } from "@datafog/wasm/cnn";
 
-import { countFindings, ready, redact, workspaceFindings } from "./detect";
+import {
+  countFindings,
+  ready,
+  redact,
+  skipChoices,
+  workspaceFindings,
+} from "./detect";
 import { DeviceKeys } from "./device";
 import {
   toError,
@@ -90,6 +96,9 @@ const host = new VaultHost({
   },
 });
 
+// The badge and Redact skip values remembered as not sensitive, while unlocked
+const scanner = skipChoices(model.scan, () => host.notSensitive());
+
 /**
  * Answer one request forwarded by the service worker.
  *
@@ -116,12 +125,12 @@ async function handle({
         seq: request.seq,
         enabled: settings.enabled,
         counts: settings.enabled
-          ? await countFindings(request.text, settings, model.scan)
+          ? await countFindings(request.text, settings, scanner)
           : {},
         blockSends: blockingSends(settings),
       };
     case "redact":
-      return redact(request.text, settings, model.scan);
+      return redact(request.text, settings, scanner);
     case "vault-status":
       return host.status(routing);
     case "vault-create":
@@ -145,6 +154,15 @@ async function handle({
       return host.approve(settings);
     case "review-cancel":
       host.cancel();
+      return host.status(routing);
+    case "review-not-sensitive":
+      await host.markNotSensitive(request.index);
+      return host.status(routing);
+    case "choice-clear":
+      await host.clearChoice({
+        entityType: request.entityType,
+        value: request.value,
+      });
       return host.status(routing);
     default:
       return { error: "unknown_request" };
