@@ -128,6 +128,17 @@ describe("markers and labels", () => {
   });
 });
 
+describe("labeled values", () => {
+  test("finds labeled account numbers and street addresses by default", async () => {
+    const text =
+      "Account number: 00123456\nShipping address: 12 Willow Road, Anytown";
+    expect(await countFindings(text, settings)).toEqual({
+      ACCOUNT_NUMBER: 1,
+      STREET_ADDRESS: 1,
+    });
+  });
+});
+
 describe("scanConfig", () => {
   test("turns on UUIDs and German types only when chosen", () => {
     expect(scanConfig(["EMAIL"])).toEqual({ entities: ["EMAIL"] });

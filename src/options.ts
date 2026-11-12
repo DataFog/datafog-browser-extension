@@ -17,6 +17,8 @@ const status = document.querySelector<HTMLSpanElement>("#status")!;
 
 /** What a type may get wrong: why it's off by default, or its limits. */
 const HINTS: Record<string, string> = {
+  ACCOUNT_NUMBER: "only after a label such as Account number:",
+  STREET_ADDRESS: "only after a label such as Shipping address:",
   PERSON: "may miss some, or flag well-known names",
   ADDRESS: "may miss some, mostly tuned for statements",
   PHONE: "may flag order or account numbers",
