@@ -22,8 +22,8 @@ const RECOVERY_NOTE =
 const NEW_RECOVERY_NOTE =
   "Remembering this device gave your vault new keys, so your old recovery key no longer works. Save this new one somewhere safe, such as a password manager. DataFog can't show it again.";
 
-/** Values the review shows before its list scrolls. */
-const REVIEW_VISIBLE = 5;
+/** Values a list shows before it scrolls within the panel. */
+const LIST_VISIBLE = 5;
 
 /** Shortest password the vault accepts. */
 const MIN_PASSWORD = 8;
@@ -266,7 +266,7 @@ function renderReview({
       return item;
     }),
   );
-  fitReview(review?.length ?? 0);
+  fitList(view.reviewItems, view.reviewCount);
   showError(view.reviewError, reviewError);
 }
 
@@ -324,31 +324,32 @@ async function clearChoice(choice: ValueChoice): Promise<void> {
 }
 
 /**
- * Keep a long review to a few values, scrolling within the panel for the
- * rest.
+ * Keep a long list to a few values, scrolling within the panel for the rest.
  *
- * @param count How many values the review has.
+ * @param list The list.
+ * @param note Where to say the list scrolls.
  */
-function fitReview(count: number): void {
-  const scroll = count > REVIEW_VISIBLE;
-  view.reviewItems.classList.toggle("scroll", scroll);
-  view.reviewCount.hidden = !scroll;
-  view.reviewCount.textContent = scroll
+function fitList(list: HTMLUListElement, note: HTMLParagraphElement): void {
+  const count = list.childElementCount;
+  const scroll = count > LIST_VISIBLE;
+  list.classList.toggle("scroll", scroll);
+  note.hidden = !scroll;
+  note.textContent = scroll
     ? `${count} values. Scroll the list to see them all.`
     : "";
   if (!scroll) {
-    view.reviewItems.style.maxHeight = "";
+    list.style.maxHeight = "";
     return;
   }
   // Show the first few in full, and half the next, so the list looks scrollable
   const rows = Array.from(
-    view.reviewItems.children,
+    list.children,
     (row) => row.getBoundingClientRect().height,
   );
   const height =
-    rows.slice(0, REVIEW_VISIBLE).reduce((sum, row) => sum + row, 0) +
-    rows[REVIEW_VISIBLE] / 2;
-  view.reviewItems.style.maxHeight = height > 0 ? `${height}px` : "";
+    rows.slice(0, LIST_VISIBLE).reduce((sum, row) => sum + row, 0) +
+    rows[LIST_VISIBLE] / 2;
+  list.style.maxHeight = height > 0 ? `${height}px` : "";
 }
 
 /**
