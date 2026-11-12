@@ -39,7 +39,10 @@ export const OPT_IN_ENTITIES = [
   "UUID",
 ];
 
-/** Core's German identifiers, off by default. Choosing any turns on its German locale. */
+/**
+ * Core's German identifiers. Supported, but not offered in settings for now.
+ * Choosing any turns on Core's German locale.
+ */
 export const GERMAN_ENTITIES = [
   "DE_IBAN",
   "DE_VAT_ID",

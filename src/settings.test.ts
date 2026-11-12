@@ -1,5 +1,6 @@
 /**
- * Every type the settings offer has a plain-language name, and none twice.
+ * Every type the settings offer, or may offer, has a plain-language name, and
+ * none appears twice.
  */
 
 import { expect, test } from "vitest";
