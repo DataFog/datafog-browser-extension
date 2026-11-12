@@ -31,7 +31,13 @@ export const DEFAULT_ENTITIES = [
 ];
 
 /** Supported but off by default: they also match timestamps and IDs. */
-export const OPT_IN_ENTITIES = ["PHONE", "DATE", "ZIP_CODE", "IP_ADDRESS"];
+export const OPT_IN_ENTITIES = [
+  "PHONE",
+  "DATE",
+  "ZIP_CODE",
+  "IP_ADDRESS",
+  "UUID",
+];
 
 /** Plain-language names for non-technical users. */
 export const LABELS: Record<string, string> = {
@@ -53,6 +59,7 @@ export const LABELS: Record<string, string> = {
   DATE: "Date",
   ZIP_CODE: "ZIP code",
   IP_ADDRESS: "IP address",
+  UUID: "UUID",
 };
 
 export interface Settings {

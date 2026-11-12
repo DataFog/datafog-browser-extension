@@ -25,6 +25,7 @@ const HINTS: Record<string, string> = {
   DATE: "may flag timestamps",
   ZIP_CODE: "may flag any 5-digit number",
   IP_ADDRESS: "common in logs and config files",
+  UUID: "common as record and request IDs",
 };
 
 /**

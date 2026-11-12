@@ -139,6 +139,19 @@ describe("labeled values", () => {
   });
 });
 
+describe("UUIDs", () => {
+  const text = "order 123e4567-e89b-12d3-a456-426614174000";
+
+  test("leaves UUIDs alone by default", async () => {
+    expect(await countFindings(text, settings)).toEqual({});
+  });
+
+  test("finds UUIDs once turned on", async () => {
+    const chosen = { ...settings, entities: [...DEFAULT_ENTITIES, "UUID"] };
+    expect(await countFindings(text, chosen)).toEqual({ UUID: 1 });
+  });
+});
+
 describe("scanConfig", () => {
   test("turns on UUIDs and German types only when chosen", () => {
     expect(scanConfig(["EMAIL"])).toEqual({ entities: ["EMAIL"] });
