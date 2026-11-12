@@ -329,6 +329,20 @@ test("hides what the workspace does behind its info button", async () => {
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
 });
 
+test("scrolls a long list of not sensitive values within the panel", async () => {
+  const notSensitive = Array.from({ length: 8 }, (_, index) => ({
+    entityType: "EMAIL",
+    value: `person${index}@example.com`,
+  }));
+  await start(() => ({ ...LOCKED, state: "unlocked", notSensitive }));
+
+  expect($("#not-sensitive").childElementCount).toBe(8);
+  expect($("#not-sensitive").classList.contains("scroll")).toBe(true);
+  expect($("#not-sensitive-count").textContent).toBe(
+    "8 values. Scroll the list to see them all.",
+  );
+});
+
 test("asks to unlock before showing not sensitive values", async () => {
   await start(() => LOCKED);
 

@@ -99,6 +99,9 @@ const view = {
   workspaceNote:
     document.querySelector<HTMLParagraphElement>("#workspace-note")!,
   notSensitive: document.querySelector<HTMLUListElement>("#not-sensitive")!,
+  notSensitiveCount: document.querySelector<HTMLParagraphElement>(
+    "#not-sensitive-count",
+  )!,
   workspaceError:
     document.querySelector<HTMLParagraphElement>("#workspace-error")!,
 };
@@ -311,6 +314,7 @@ function renderWorkspace({ state, notSensitive }: VaultStatus): void {
       return item;
     }),
   );
+  fitList(view.notSensitive, view.notSensitiveCount);
   if (state !== "unlocked") showError(view.workspaceError, null);
 }
 
