@@ -137,6 +137,8 @@ async function handle({
       return host.create(request.password, routing, request.remember);
     case "vault-unlock":
       return host.unlock(request.password, routing, request.remember);
+    case "vault-recover":
+      return host.recover(request.key, request.password, routing);
     case "vault-lock":
       return host.lock(routing, true);
     case "device-forget":
