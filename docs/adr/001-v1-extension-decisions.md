@@ -42,6 +42,20 @@ extension also clears any plaintext previews and restored text it holds.
 The prototype never stored mappings, so there is no legacy backup format to
 import.
 
+### Recovery and reset
+
+Every vault has a recovery key, shown once at creation. "Forgot password?" uses
+FogVault's `recoverAccess` to set a new password with it. FogVault's simpler
+`recover` refuses vaults with a device-capable profile, and every vault here has
+one. The vault keeps its values but gets new keys, so the old password, the old
+recovery key and any remembered device stop working, and a new recovery key is
+shown once.
+
+Reset vault needs only a typed confirmation, not the password. Deleting reveals
+nothing, and anyone with the Chrome profile can already clear the extension's
+data. Requiring the password only trapped someone who lost both it and the
+recovery key, and nothing can open their vault, DataFog included.
+
 ### Remember device
 
 V1 includes an opt-in "Remember this device for 30 days" at unlock. ADR 004

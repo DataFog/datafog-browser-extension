@@ -38,9 +38,11 @@ export type PanelRequest =
   | { type: "vault-status"; autoUnlock?: boolean }
   | { type: "vault-create"; password: string; remember: boolean }
   | { type: "vault-unlock"; password: string; remember: boolean }
+  /** key: the recovery key; password: the new password. */
+  | { type: "vault-recover"; key: string; password: string }
   | { type: "vault-lock" }
   | { type: "device-forget" }
-  | { type: "vault-reset"; password: string }
+  | { type: "vault-reset" }
   | { type: "review-approve" }
   | { type: "review-cancel" }
   /** Remember the review's value at this index as not sensitive. */

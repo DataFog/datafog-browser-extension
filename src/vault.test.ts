@@ -6,6 +6,7 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Workspace, type PreparedWorkspaceChange } from "@datafog/wasm";
+import type { AccessTarget } from "@datafog/fogvault-browser";
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 
 import { ready, scanRules, workspaceFindings } from "./detect";
@@ -234,6 +235,16 @@ beforeEach(() => {
         receipt: RECEIPT,
         key_effect: "FreshRootAndContentKeys" as const,
         recovery_key: new Uint8Array([4, 5, 6]),
+      };
+    }),
+    recoverAccess: vi.fn(async (kit: Uint8Array, target: AccessTarget) => {
+      if (!kit.every((byte) => byte === 7))
+        throw Object.assign(new Error(), { code: "Authentication" });
+      slots = target.devices.map(keyIdOf);
+      return {
+        receipt: RECEIPT,
+        key_effect: "FreshRootAndContentKeys" as const,
+        recovery_key: new Uint8Array([7, 8, 9]),
       };
     }),
     open: vi.fn(async () => ({ opened: true as const })),
@@ -533,25 +544,23 @@ test("locks after a lost save, and settles it at the next unlock", async () => {
   expect(vi.mocked(vault.reconcileLatest)).toHaveBeenCalledWith(requestId);
 });
 
-test("resets the vault only with the right password", async () => {
+test("resets the vault without its password", async () => {
   const routing = await create();
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
 
-  await expect(host.reset("wrong", routing)).rejects.toMatchObject({
-    code: "Integrity",
-  });
-  expect(deleteStore).not.toHaveBeenCalled();
-  expect(host.status(routing)).toMatchObject({
-    state: "locked",
-    review: null,
-  });
+  const status = await host.reset(routing);
 
-  const status = await host.reset("correct horse", routing);
-
+  expect(vi.mocked(vault.unlock)).not.toHaveBeenCalled();
   expect(vi.mocked(vault.close)).toHaveBeenCalled();
   expect(deleteStore).toHaveBeenCalledWith("datafog");
-  expect(status.state).toBe("none");
+  expect(status).toMatchObject({ state: "none", review: null });
   expect(owner.closed).toBe(true);
+});
+
+test("resets a vault that was never unlocked", async () => {
+  const routing = { recordId: "AA==", namespace: "AA==" };
+  expect((await host.reset(routing)).state).toBe("none");
+  expect(deleteStore).toHaveBeenCalledWith("datafog");
 });
 
 test("restores the markers it issued", async () => {
@@ -572,6 +581,58 @@ test("restores the markers it issued", async () => {
     ],
   });
   expect(host.status(routing).state).toBe("unlocked");
+});
+
+/** The fake vault's recovery key, as the user would type it. */
+const KIT = btoa(String.fromCharCode(...new Uint8Array(80).fill(7)));
+
+test("sets a new password with the recovery key, keeping the values", async () => {
+  const routing = await create();
+  await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
+  const { response } = await host.approve(DEFAULT_SETTINGS);
+  await host.lock(routing, true);
+
+  const recovered = await host.recover(
+    `${KIT.slice(0, 40)}\n ${KIT.slice(40)}`,
+    "new password",
+    routing,
+  );
+
+  expect(vi.mocked(vault.recoverAccess)).toHaveBeenCalledWith(
+    new Uint8Array(80),
+    expect.objectContaining({
+      password: "new password",
+      profile: "password-or-device",
+      recovery: true,
+    }),
+  );
+  expect(recovered.recoveryKey).toBe("BwgJ");
+  expect(recovered.status.state).toBe("unlocked");
+  expect(recovered.status.rememberedUntil).toBeNull();
+  expect(host.restore(response.text).restored).toBe(2);
+});
+
+test("refuses a malformed recovery key without trying it", async () => {
+  const routing = await create();
+
+  for (const key of ["not a key!", btoa("short")]) {
+    await expect(
+      host.recover(key, "new password", routing),
+    ).rejects.toMatchObject({ code: "invalid_recovery_key" });
+  }
+  expect(vi.mocked(vault.recoverAccess)).not.toHaveBeenCalled();
+  expect(host.status(routing).state).toBe("unlocked");
+});
+
+test("stays locked when the recovery key is wrong", async () => {
+  const routing = await create();
+  const wrong = btoa(String.fromCharCode(...new Uint8Array(80).fill(1)));
+
+  await expect(
+    host.recover(wrong, "new password", routing),
+  ).rejects.toMatchObject({ code: "Authentication" });
+  expect(host.status(routing).state).toBe("locked");
+  expect(vi.mocked(vault.close)).toHaveBeenCalled();
 });
 
 test("leaves markers it can't restore as they are", async () => {

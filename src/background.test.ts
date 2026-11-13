@@ -258,6 +258,29 @@ test("passes not sensitive choices on from the side panel only", async () => {
   warn.mockRestore();
 });
 
+test("passes recovery on from the side panel only", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const recover = {
+    type: "vault-recover",
+    key: "S2V5",
+    password: "new password",
+  } as const;
+
+  expect(await send(recover)).toEqual({ error: "not_allowed" });
+  expect(sendMessage).not.toHaveBeenCalled();
+
+  sendMessage.mockResolvedValueOnce({
+    status: { state: "unlocked" },
+    recoveryKey: "TmV3",
+  });
+  expect(await send(recover, PANEL)).toEqual({
+    status: { state: "unlocked" },
+    recoveryKey: "TmV3",
+  });
+  expect(sendMessage.mock.calls[0][0].request).toEqual(recover);
+  warn.mockRestore();
+});
+
 test("stores a new vault's routing, and passes on its recovery key", async () => {
   sendMessage.mockResolvedValueOnce({
     status: { state: "unlocked" },
@@ -277,18 +300,16 @@ test("stores a new vault's routing, and passes on its recovery key", async () =>
 test("forgets the vault's routing once it's reset", async () => {
   sendMessage.mockResolvedValueOnce({ state: "none" });
 
-  expect(
-    await send({ type: "vault-reset", password: "correct horse" }, PANEL),
-  ).toEqual({ state: "none" });
+  expect(await send({ type: "vault-reset" }, PANEL)).toEqual({ state: "none" });
   expect(removeStorage).toHaveBeenCalledWith("vault");
 });
 
 test("keeps the routing when a reset fails", async () => {
-  sendMessage.mockResolvedValueOnce({ error: "Authentication" });
+  sendMessage.mockResolvedValueOnce({ error: "reset_failed" });
 
-  expect(await send({ type: "vault-reset", password: "wrong" }, PANEL)).toEqual(
-    { error: "Authentication" },
-  );
+  expect(await send({ type: "vault-reset" }, PANEL)).toEqual({
+    error: "reset_failed",
+  });
   expect(removeStorage).not.toHaveBeenCalled();
 });
 
