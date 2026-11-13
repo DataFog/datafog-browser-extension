@@ -8,10 +8,12 @@
 export const MODEL_ENTITIES = ["PERSON", "ADDRESS"];
 
 /**
- * Detected by default: datafog-mcp's DEFAULT_ENTITIES, plus names and
- * addresses, which Core's model finds in the browser.
+ * Detected by default: datafog-mcp's DEFAULT_ENTITIES, Core's labeled
+ * account numbers and street addresses, and names and addresses, which
+ * Core's model finds in the browser.
  */
 export const DEFAULT_ENTITIES = [
+  "ACCOUNT_NUMBER",
   "API_KEY",
   "BEARER_TOKEN",
   "CREDENTIAL_URI",
@@ -21,6 +23,7 @@ export const DEFAULT_ENTITIES = [
   "NPI",
   "PRIVATE_KEY",
   "SSN",
+  "STREET_ADDRESS",
   "US_ROUTING_NUMBER",
   // Together at the end: the model finds them, with its own caveats
   "PERSON",
@@ -28,10 +31,31 @@ export const DEFAULT_ENTITIES = [
 ];
 
 /** Supported but off by default: they also match timestamps and IDs. */
-export const OPT_IN_ENTITIES = ["PHONE", "DATE", "ZIP_CODE", "IP_ADDRESS"];
+export const OPT_IN_ENTITIES = [
+  "PHONE",
+  "DATE",
+  "ZIP_CODE",
+  "IP_ADDRESS",
+  "UUID",
+];
+
+/**
+ * Core's German identifiers. Supported, but not offered in settings for now.
+ * Choosing any turns on Core's German locale.
+ */
+export const GERMAN_ENTITIES = [
+  "DE_IBAN",
+  "DE_VAT_ID",
+  "DE_TAX_ID",
+  "DE_SOCIAL_SECURITY_NUMBER",
+  "DE_POSTAL_CODE",
+  "DE_PASSPORT_NUMBER",
+  "DE_RESIDENCE_PERMIT_NUMBER",
+];
 
 /** Plain-language names for non-technical users. */
 export const LABELS: Record<string, string> = {
+  ACCOUNT_NUMBER: "Account number",
   ADDRESS: "Mailing address",
   API_KEY: "API key",
   BEARER_TOKEN: "Access token",
@@ -43,11 +67,20 @@ export const LABELS: Record<string, string> = {
   PERSON: "Name",
   PRIVATE_KEY: "Private key",
   SSN: "Social Security number",
+  STREET_ADDRESS: "Street address",
   US_ROUTING_NUMBER: "Bank routing number",
   PHONE: "Phone number",
   DATE: "Date",
   ZIP_CODE: "ZIP code",
   IP_ADDRESS: "IP address",
+  UUID: "UUID",
+  DE_IBAN: "German IBAN",
+  DE_VAT_ID: "German VAT ID",
+  DE_TAX_ID: "German tax ID",
+  DE_SOCIAL_SECURITY_NUMBER: "German social security number",
+  DE_POSTAL_CODE: "German postal code",
+  DE_PASSPORT_NUMBER: "German passport number",
+  DE_RESIDENCE_PERMIT_NUMBER: "German residence permit number",
 };
 
 export interface Settings {

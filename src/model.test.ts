@@ -2,13 +2,16 @@
  * The model scanner opens Core's session when needed, one scan at a time.
  */
 
-import type { Finding } from "@datafog/wasm";
+import type { Finding, ScanConfig } from "@datafog/wasm";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import { scanRules } from "./detect";
 import { ModelScanner, needsModel, type ModelSession } from "./model";
 
-vi.mock("./detect", () => ({ scanRules: vi.fn(async () => []) }));
+vi.mock("./detect", () => ({
+  scanRules: vi.fn(async () => []),
+  scanConfig: (entities: string[]) => ({ entities, detect_uuid: true }),
+}));
 
 const RANGE = { start: 0, end: 3 };
 const NAME: Finding = {
@@ -25,10 +28,15 @@ class FakeSession implements ModelSession {
   status = "ready";
   closed = 0;
   scans: string[] = [];
+  configs: ScanConfig[] = [];
   private finish: (() => void)[] = [];
 
-  async scan(text: string): Promise<{ findings: Finding[] }> {
+  async scan(
+    text: string,
+    config: ScanConfig,
+  ): Promise<{ findings: Finding[] }> {
     this.scans.push(text);
+    this.configs.push(config);
     await new Promise<void>((resolve) => this.finish.push(resolve));
     return { findings: [NAME] };
   }
@@ -84,6 +92,10 @@ test("opens one session and runs one scan at a time", async () => {
 
   sessions[0].next();
   expect(await first).toEqual([NAME]);
+  expect(sessions[0].configs[0]).toEqual({
+    entities: ["PERSON"],
+    detect_uuid: true,
+  });
   await settle();
   expect(sessions[0].scans).toEqual(["one", "two"]);
   sessions[0].next();

@@ -9,12 +9,13 @@ import {
   countFindings as countWith,
   ready,
   redact as redactWith,
+  scanConfig,
   scanRules,
   skipChoices,
   workspaceFindings as findingsWith,
   type Scanner,
 } from "./detect";
-import { DEFAULT_ENTITIES, type Settings } from "./settings";
+import { DEFAULT_ENTITIES, GERMAN_ENTITIES, type Settings } from "./settings";
 
 const settings: Settings = {
   enabled: true,
@@ -124,6 +125,67 @@ describe("markers and labels", () => {
   test("still finds values beside a marker", async () => {
     const text = "[[EMAIL_7KQ4ZM]] and jane@example.com";
     expect(await countFindings(text, settings)).toEqual({ EMAIL: 1 });
+  });
+});
+
+describe("labeled values", () => {
+  test("finds labeled account numbers and street addresses by default", async () => {
+    const text =
+      "Account number: 00123456\nShipping address: 12 Willow Road, Anytown";
+    expect(await countFindings(text, settings)).toEqual({
+      ACCOUNT_NUMBER: 1,
+      STREET_ADDRESS: 1,
+    });
+  });
+});
+
+describe("UUIDs", () => {
+  const text = "order 123e4567-e89b-12d3-a456-426614174000";
+
+  test("leaves UUIDs alone by default", async () => {
+    expect(await countFindings(text, settings)).toEqual({});
+  });
+
+  test("finds UUIDs once turned on", async () => {
+    const chosen = { ...settings, entities: [...DEFAULT_ENTITIES, "UUID"] };
+    expect(await countFindings(text, chosen)).toEqual({ UUID: 1 });
+  });
+});
+
+describe("German identifiers", () => {
+  const text = "IBAN DE44 5001 0517 5407 3249 31, Steuer-ID: 12 345 678 901";
+
+  test("leaves German values alone by default", async () => {
+    expect(await countFindings(text, settings)).toEqual({});
+  });
+
+  test("finds German values once turned on", async () => {
+    const chosen = {
+      ...settings,
+      entities: [...DEFAULT_ENTITIES, ...GERMAN_ENTITIES],
+    };
+    expect(await countFindings(text, chosen)).toEqual({
+      DE_IBAN: 1,
+      DE_TAX_ID: 1,
+    });
+  });
+});
+
+describe("scanConfig", () => {
+  test("turns on UUIDs and German types only when chosen", () => {
+    expect(scanConfig(["EMAIL"])).toEqual({ entities: ["EMAIL"] });
+    expect(scanConfig(["EMAIL", "UUID", "DE_IBAN"])).toEqual({
+      entities: ["EMAIL", "UUID", "DE_IBAN"],
+      detect_uuid: true,
+      locale: "de",
+    });
+  });
+
+  test("finds UUIDs and German values with the rules", async () => {
+    const text =
+      "id 123e4567-e89b-12d3-a456-426614174000, DE44500105175407324931";
+    const found = await scanRules(text, ["UUID", "DE_IBAN"]);
+    expect(found.map((item) => item.entityType)).toEqual(["UUID", "DE_IBAN"]);
   });
 });
 

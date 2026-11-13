@@ -17,22 +17,29 @@ const status = document.querySelector<HTMLSpanElement>("#status")!;
 
 /** What a type may get wrong: why it's off by default, or its limits. */
 const HINTS: Record<string, string> = {
+  ACCOUNT_NUMBER: "only after a label such as Account number:",
+  STREET_ADDRESS: "only after a label such as Shipping address:",
   PERSON: "may miss some, or flag well-known names",
   ADDRESS: "may miss some, mostly tuned for statements",
   PHONE: "may flag order or account numbers",
   DATE: "may flag timestamps",
   ZIP_CODE: "may flag any 5-digit number",
   IP_ADDRESS: "common in logs and config files",
+  UUID: "common as record and request IDs",
 };
 
 /**
  * Add one checkbox per entity type, with a hint on the noisy ones.
  *
+ * @param list Where the checkboxes go.
  * @param types The entity types, in display order.
  * @param selected The types currently on.
  */
-function renderTypes(types: string[], selected: string[]): void {
-  const list = document.getElementById("types")!;
+function renderTypes(
+  list: HTMLElement,
+  types: string[],
+  selected: string[],
+): void {
   for (const type of types) {
     const label = document.createElement("label");
     const box = document.createElement("input");
@@ -57,7 +64,11 @@ async function render(): Promise<void> {
   enabled.checked = settings.enabled;
   blockSends.checked = settings.blockSends;
   allowlist.value = settings.allowlist.join("\n");
-  renderTypes([...DEFAULT_ENTITIES, ...OPT_IN_ENTITIES], settings.entities);
+  renderTypes(
+    document.getElementById("types")!,
+    [...DEFAULT_ENTITIES, ...OPT_IN_ENTITIES],
+    settings.entities,
+  );
 }
 
 /** Save the form. */
