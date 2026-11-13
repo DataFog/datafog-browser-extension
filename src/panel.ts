@@ -81,7 +81,8 @@ const view = {
     document.querySelector<HTMLSpanElement>("#remembered-until")!,
   resetOpen: document.querySelector<HTMLButtonElement>("#reset-open")!,
   reset: document.querySelector<HTMLFormElement>("#reset")!,
-  resetPassword: document.querySelector<HTMLInputElement>("#reset-password")!,
+  resetConfirm: document.querySelector<HTMLInputElement>("#reset-confirm")!,
+  resetSubmit: document.querySelector<HTMLButtonElement>("#reset-submit")!,
   ruleLength: document.querySelector<HTMLLIElement>("#rule-length")!,
   ruleMatch: document.querySelector<HTMLLIElement>("#rule-match")!,
   recovery: document.querySelector<HTMLDivElement>("#recovery")!,
@@ -197,9 +198,19 @@ function renderVault(status: VaultStatus): void {
 function showReset(open: boolean): void {
   resetting = open;
   view.reset.reset();
+  view.resetSubmit.disabled = true;
   showError(view.vaultError, null);
   if (shown) renderVault(shown);
-  if (open) view.resetPassword.focus();
+  if (open) view.resetConfirm.focus();
+}
+
+/**
+ * Whether the user typed the reset confirmation.
+ *
+ * @returns True once RESET is typed, in any case.
+ */
+function resetConfirmed(): boolean {
+  return view.resetConfirm.value.trim().toUpperCase() === "RESET";
 }
 
 /**
@@ -568,24 +579,25 @@ view.resetOpen.addEventListener("click", () => showReset(true));
 document
   .querySelector("#reset-cancel")!
   .addEventListener("click", () => showReset(false));
+view.reset.addEventListener("input", () => {
+  view.resetSubmit.disabled = !resetConfirmed();
+});
 view.reset.addEventListener("submit", (event) => {
   event.preventDefault();
-  const password = view.resetPassword.value;
-  if (password === "") return;
+  if (!resetConfirmed()) return;
   view.reset.reset();
-  void ask<VaultStatus>({ type: "vault-reset", password }).then(
-    async (response) => {
-      if ("error" in response) {
-        // A reset locks the vault before checking the password
-        await refresh();
-        showError(view.vaultError, response.error);
-        return;
-      }
-      resetting = false;
-      showError(view.vaultError, null);
-      render(response);
-    },
-  );
+  view.resetSubmit.disabled = true;
+  void ask<VaultStatus>({ type: "vault-reset" }).then(async (response) => {
+    if ("error" in response) {
+      // A reset locks the vault before deleting it
+      await refresh();
+      showError(view.vaultError, response.error);
+      return;
+    }
+    resetting = false;
+    showError(view.vaultError, null);
+    render(response);
+  });
 });
 // Each info button shows or hides the box it controls
 for (const toggle of document.querySelectorAll<HTMLButtonElement>(

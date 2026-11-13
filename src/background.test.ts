@@ -277,18 +277,16 @@ test("stores a new vault's routing, and passes on its recovery key", async () =>
 test("forgets the vault's routing once it's reset", async () => {
   sendMessage.mockResolvedValueOnce({ state: "none" });
 
-  expect(
-    await send({ type: "vault-reset", password: "correct horse" }, PANEL),
-  ).toEqual({ state: "none" });
+  expect(await send({ type: "vault-reset" }, PANEL)).toEqual({ state: "none" });
   expect(removeStorage).toHaveBeenCalledWith("vault");
 });
 
 test("keeps the routing when a reset fails", async () => {
-  sendMessage.mockResolvedValueOnce({ error: "Authentication" });
+  sendMessage.mockResolvedValueOnce({ error: "reset_failed" });
 
-  expect(await send({ type: "vault-reset", password: "wrong" }, PANEL)).toEqual(
-    { error: "Authentication" },
-  );
+  expect(await send({ type: "vault-reset" }, PANEL)).toEqual({
+    error: "reset_failed",
+  });
   expect(removeStorage).not.toHaveBeenCalled();
 });
 

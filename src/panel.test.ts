@@ -409,13 +409,10 @@ test("shows an unlocked icon once the vault is unlocked", async () => {
   expect($("#vault-state svg")).not.toBeNull();
 });
 
-test("resets the vault with its password", async () => {
+test("resets the vault once RESET is typed, without its password", async () => {
   let status: VaultStatus = { ...LOCKED, state: "unlocked" };
   await start((request) => {
     if (request.type !== "vault-reset") return status;
-    status = { ...LOCKED, state: "locked" };
-    if (request.password !== "correct horse")
-      return { error: "Authentication" };
     status = { ...LOCKED, state: "none" };
     return status;
   });
@@ -423,19 +420,17 @@ test("resets the vault with its password", async () => {
   $("#reset-open").click();
   expect($("#reset").hidden).toBe(false);
   expect($("#unlocked").hidden).toBe(true);
+  expect($("#reset-submit")).toHaveProperty("disabled", true);
 
-  fill("#reset-password", "wrong password");
+  fill("#reset-confirm", "rese");
+  expect($("#reset-submit")).toHaveProperty("disabled", true);
   await submit("#reset");
-  expect($("#vault-error").textContent).toBe("That password isn't right.");
-  expect($("#reset").hidden).toBe(false);
-  expect($("#unlock").hidden).toBe(true);
+  expect(sendMessage).not.toHaveBeenCalledWith({ type: "vault-reset" });
 
-  fill("#reset-password", "correct horse");
+  fill("#reset-confirm", " reset ");
+  expect($("#reset-submit")).toHaveProperty("disabled", false);
   await submit("#reset");
-  expect(sendMessage).toHaveBeenCalledWith({
-    type: "vault-reset",
-    password: "correct horse",
-  });
+  expect(sendMessage).toHaveBeenCalledWith({ type: "vault-reset" });
   expect($("#reset").hidden).toBe(true);
   expect($("#create").hidden).toBe(false);
 });

@@ -374,18 +374,22 @@
       <form id="reset" novalidate hidden>
         <p class="warning">
           Resetting deletes your vault and every original value in it. Markers
-          you've already used can't be restored.
+          you've already used can't be restored. If you've only forgotten your
+          password, use your recovery key instead.
         </p>
         <label>
-          Password
+          Type RESET to confirm
           <input
-            id="reset-password"
-            type="password"
-            autocomplete="current-password"
+            id="reset-confirm"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
           />
         </label>
         <div class="buttons">
-          <button class="danger" type="submit">Reset vault</button>
+          <button class="danger" id="reset-submit" type="submit" disabled>
+            Reset vault
+          </button>
           <button id="reset-cancel" type="button">Cancel</button>
         </div>
       </form>
