@@ -10,7 +10,7 @@
       "installZsh": false
     },
     // Keep "version" in sync with .nvmrc
-    "ghcr.io/datafog/devcontainer-features/node-pinned:1": {
+    "ghcr.io/devcontainers/features/node:1": {
       "version": "24"
     }
   },
