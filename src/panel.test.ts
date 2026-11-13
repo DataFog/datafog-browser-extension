@@ -195,6 +195,9 @@ test("shows the recovery key once, then the unlocked vault", async () => {
   });
   expect($("#recovery").hidden).toBe(false);
   expect($("#recovery-key").textContent).toBe("S2V5");
+  expect($("#recovery-note").textContent).toContain(
+    "If you lose both your password and this key, no one can open your vault",
+  );
   expect($("#unlocked").hidden).toBe(true);
   expect(
     document.querySelector<HTMLInputElement>("#create-password")!.value,

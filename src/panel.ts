@@ -16,11 +16,11 @@ import { LABELS } from "./settings";
 
 /** What the recovery key is for, when the vault is new. */
 const RECOVERY_NOTE =
-  "Your recovery key. Save it somewhere safe, such as a password manager. You'll need it to get back into your vault if you forget your password, and DataFog can't show it again.";
+  "Your recovery key. Save it somewhere safe, such as a password manager. You'll need it to get back into your vault if you forget your password, and DataFog can't show it again. If you lose both your password and this key, no one can open your vault, DataFog included; you can only reset it, which deletes its values.";
 
 /** Why there's a new recovery key, when remembering changed the vault's keys. */
 const NEW_RECOVERY_NOTE =
-  "Remembering this device gave your vault new keys, so your old recovery key no longer works. Save this new one somewhere safe, such as a password manager. DataFog can't show it again.";
+  "Remembering this device gave your vault new keys, so your old recovery key no longer works. Save this new one somewhere safe, such as a password manager. DataFog can't show it again, and without it or your password your vault can't be opened.";
 
 /** Values a list shows before it scrolls within the panel. */
 const LIST_VISIBLE = 5;
