@@ -1,12 +1,19 @@
 {
   "name": "DataFog Browser Extension",
-  "build": {
-    "context": "..",
-    "dockerfile": "Dockerfile"
-  },
+  "image": "ubuntu:24.04",
   "remoteUser": "ubuntu",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
   "workspaceFolder": "/workspace",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "username": "ubuntu",
+      "installZsh": false
+    },
+    // Keep "version" in sync with .nvmrc
+    "ghcr.io/datafog/devcontainer-features/node-pinned:1": {
+      "version": "24"
+    }
+  },
   "customizations": {
     "vscode": {
       "extensions": [
