@@ -71,13 +71,21 @@
         gap: 2px;
         font-size: 13px;
       }
-      input {
+      input,
+      textarea {
         padding: 6px 8px;
         border-radius: 8px;
         border: 1px solid var(--line);
         background: var(--field);
         color: var(--text);
         font: inherit;
+      }
+      textarea {
+        resize: vertical;
+        font:
+          12px ui-monospace,
+          monospace;
+        word-break: break-all;
       }
       button {
         padding: 6px 12px;
@@ -354,6 +362,52 @@
           for 30 days
         </label>
         <button class="primary" type="submit">Unlock</button>
+      </form>
+
+      <button class="link" id="recover-open" type="button" hidden>
+        Forgot password?
+      </button>
+
+      <form id="recover" novalidate hidden>
+        <p class="muted">
+          Enter the recovery key you saved when you created your vault, and
+          choose a new password. Your values stay in your vault.
+        </p>
+        <label>
+          Recovery key
+          <textarea
+            id="recover-key"
+            rows="3"
+            autocomplete="off"
+            spellcheck="false"
+          ></textarea>
+        </label>
+        <label>
+          New password
+          <input
+            id="recover-password"
+            type="password"
+            autocomplete="new-password"
+          />
+        </label>
+        <label>
+          Confirm new password
+          <input
+            id="recover-confirm"
+            type="password"
+            autocomplete="new-password"
+          />
+        </label>
+        <ul class="rules" aria-live="polite">
+          <li id="recover-rule-length">At least 8 characters</li>
+          <li id="recover-rule-match">Passwords match</li>
+        </ul>
+        <div class="buttons">
+          <button class="primary" id="recover-submit" type="submit" disabled>
+            Set new password
+          </button>
+          <button id="recover-cancel" type="button">Cancel</button>
+        </div>
       </form>
 
       <div class="row" id="unlocked" hidden>
