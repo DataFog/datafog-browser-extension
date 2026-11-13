@@ -533,25 +533,23 @@ test("locks after a lost save, and settles it at the next unlock", async () => {
   expect(vi.mocked(vault.reconcileLatest)).toHaveBeenCalledWith(requestId);
 });
 
-test("resets the vault only with the right password", async () => {
+test("resets the vault without its password", async () => {
   const routing = await create();
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
 
-  await expect(host.reset("wrong", routing)).rejects.toMatchObject({
-    code: "Integrity",
-  });
-  expect(deleteStore).not.toHaveBeenCalled();
-  expect(host.status(routing)).toMatchObject({
-    state: "locked",
-    review: null,
-  });
+  const status = await host.reset(routing);
 
-  const status = await host.reset("correct horse", routing);
-
+  expect(vi.mocked(vault.unlock)).not.toHaveBeenCalled();
   expect(vi.mocked(vault.close)).toHaveBeenCalled();
   expect(deleteStore).toHaveBeenCalledWith("datafog");
-  expect(status.state).toBe("none");
+  expect(status).toMatchObject({ state: "none", review: null });
   expect(owner.closed).toBe(true);
+});
+
+test("resets a vault that was never unlocked", async () => {
+  const routing = { recordId: "AA==", namespace: "AA==" };
+  expect((await host.reset(routing)).state).toBe("none");
+  expect(deleteStore).toHaveBeenCalledWith("datafog");
 });
 
 test("restores the markers it issued", async () => {

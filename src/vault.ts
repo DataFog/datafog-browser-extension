@@ -559,25 +559,18 @@ export class VaultHost<V extends Vault = Vault> {
   }
 
   /**
-   * Delete the vault and everything in it, once the password checks out.
-   * The vault is locked first, so a wrong password leaves it locked.
+   * Delete the vault and everything in it. No password is needed: deleting
+   * reveals nothing, and someone who lost both their password and recovery
+   * key must still be able to start over. The side panel asks them to confirm.
    *
-   * @param password The password.
    * @param routing Where the workspace lives.
    * @returns The status, with no vault.
    */
-  async reset(
-    password: string,
-    routing: VaultRouting | null,
-  ): Promise<VaultStatus> {
+  async reset(routing: VaultRouting | null): Promise<VaultStatus> {
     if (!routing) throw failure("no_vault");
     await this.lock(routing);
-    const vault = await this.openVault();
-    await vault.unlock(password);
     // Closing stops FogVault's Worker, releasing the database to delete
-    await vault.close();
-    this.vault = null;
-    this.opened = false;
+    await this.dropVault();
     this.unsettled = null;
     this.error = null;
     await this.deps.deleteStore(VAULT_NAME);

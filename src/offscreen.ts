@@ -142,7 +142,7 @@ async function handle({
     case "device-forget":
       return host.forgetDevice(routing);
     case "vault-reset":
-      return host.reset(request.password, routing);
+      return host.reset(routing);
     case "pseudonymize":
       await host.pseudonymize(request.text, request.tabId, settings);
       return host.status(routing);
