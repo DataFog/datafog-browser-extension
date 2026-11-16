@@ -18,6 +18,7 @@ import {
 } from "./messages";
 import { hideOriginals, MARKER, showOriginals } from "./originals";
 import { clickSend, watchPage } from "./page";
+import { loadSettings } from "./settings";
 import { mountTab } from "./tab";
 
 /** The last redaction or pseudonymization, kept so it can be undone and redone. */
@@ -66,6 +67,14 @@ let warnedText: string | null = null;
 let heldPresses = 0;
 let holdTimer: number | undefined;
 let sending = false;
+/** Whether checking is on. Assumed on if the setting can't be read, so a scan reports why. */
+let enabled = true;
+const settingsLoaded = loadSettings().then(
+  (settings) => {
+    enabled = settings.enabled;
+  },
+  () => {},
+);
 
 const badge = new Badge({
   redact: redactComposer,
@@ -152,7 +161,14 @@ async function ask<T extends object>(
  * @param force Scan even if the text is unchanged.
  */
 async function scanNow(force = false): Promise<void> {
+  await settingsLoaded;
   if (!composer) return;
+  // With checking off there's no badge, and nothing is sent to be checked
+  if (!enabled) {
+    window.clearTimeout(timer);
+    badge.show({ kind: "hidden" });
+    return;
+  }
   const text = readText(composer);
   if (!force && !unchecked && text === lastScanned) return;
   lastScanned = text;
@@ -325,7 +341,7 @@ function schedule(delay: number): void {
   warnedText = null;
   dropHeldSend();
   badge.holdSend(null);
-  if (content.trim()) badge.show({ kind: "checking" });
+  if (enabled && content.trim()) badge.show({ kind: "checking" });
 }
 
 /**

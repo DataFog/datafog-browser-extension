@@ -31,12 +31,20 @@ const PAGE = '<form><textarea id="prompt-textarea"></textarea></form>';
  *
  * @param reply How the stubbed service worker answers each request.
  * @param page The page's markup; its last textarea is the visible chat box.
+ * @param enabled Whether checking is on in the saved settings.
  * @returns The visible chat box.
  */
-async function start(reply: Reply, page = PAGE): Promise<HTMLTextAreaElement> {
+async function start(
+  reply: Reply,
+  page = PAGE,
+  enabled = true,
+): Promise<HTMLTextAreaElement> {
   document.body.innerHTML = page;
   Object.assign(globalThis, {
     chrome: {
+      storage: {
+        local: { get: async () => ({ settings: { enabled } }) },
+      },
       runtime: {
         sendMessage: vi.fn(reply),
         onMessage: {
@@ -520,16 +528,25 @@ test("ignores an answer about text that has since changed", async () => {
   expect(badge().dot.className).toBe("dot checking");
 });
 
-test("stays hidden while typing when checking is off", async () => {
-  const box = await start(async (request) =>
-    request.type === "scan"
-      ? { seq: request.seq, enabled: false, counts: {} }
-      : {},
+test("shows no badge, and checks nothing, while checking is off", async () => {
+  const sent: string[] = [];
+  const box = await start(
+    async (request) => {
+      sent.push(request.type);
+      return {};
+    },
+    PAGE,
+    false,
   );
-  await type(box, "hello");
-  box.value = "hello there";
+  await vi.advanceTimersByTimeAsync(0);
+  expect(badge().dot.className).toBe("dot hidden");
+
+  box.value = "jane@example.com";
   box.dispatchEvent(new Event("input"));
   expect(badge().dot.className).toBe("dot hidden");
+  await vi.advanceTimersByTimeAsync(400);
+  expect(badge().dot.className).toBe("dot hidden");
+  expect(sent).not.toContain("scan");
 });
 
 test("anchors the badge to the form, not the editor inside it", async () => {
