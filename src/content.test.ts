@@ -6,6 +6,7 @@
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+import { OFF_TITLE } from "./badge";
 import {
   NO_CHAT_BOX,
   type RedactResponse,
@@ -24,6 +25,24 @@ type TabListener = (
 /** The content script's listener for the service worker's requests. */
 let tabListener: TabListener;
 
+type StorageListener = (
+  changes: Record<string, { newValue?: unknown }>,
+  area: string,
+) => void;
+
+/** The content script's listener for settings changes. */
+let storageListener: StorageListener;
+
+/**
+ * Save checking on or off, as the settings page would.
+ *
+ * @param enabled Whether checking is on.
+ */
+async function setChecking(enabled: boolean): Promise<void> {
+  storageListener({ settings: { newValue: { enabled } } }, "local");
+  await vi.advanceTimersByTimeAsync(0);
+}
+
 const PAGE = '<form><textarea id="prompt-textarea"></textarea></form>';
 
 /**
@@ -31,12 +50,23 @@ const PAGE = '<form><textarea id="prompt-textarea"></textarea></form>';
  *
  * @param reply How the stubbed service worker answers each request.
  * @param page The page's markup; its last textarea is the visible chat box.
+ * @param enabled Whether checking is on in the saved settings.
  * @returns The visible chat box.
  */
-async function start(reply: Reply, page = PAGE): Promise<HTMLTextAreaElement> {
+async function start(
+  reply: Reply,
+  page = PAGE,
+  enabled = true,
+): Promise<HTMLTextAreaElement> {
   document.body.innerHTML = page;
   Object.assign(globalThis, {
     chrome: {
+      storage: {
+        local: { get: async () => ({ settings: { enabled } }) },
+        onChanged: {
+          addListener: (added: StorageListener) => (storageListener = added),
+        },
+      },
       runtime: {
         sendMessage: vi.fn(reply),
         onMessage: {
@@ -520,16 +550,47 @@ test("ignores an answer about text that has since changed", async () => {
   expect(badge().dot.className).toBe("dot checking");
 });
 
-test("stays hidden while typing when checking is off", async () => {
+test("greys out the badge, and checks nothing, while checking is off", async () => {
+  const sent: string[] = [];
+  const box = await start(
+    async (request) => {
+      sent.push(request.type);
+      return {};
+    },
+    PAGE,
+    false,
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  expect(badge().dot.className).toBe("dot off");
+  expect(badge().dot.title).toBe(OFF_TITLE);
+
+  box.value = "jane@example.com";
+  box.dispatchEvent(new Event("input"));
+  expect(badge().dot.className).toBe("dot off");
+  await vi.advanceTimersByTimeAsync(400);
+  expect(badge().dot.className).toBe("dot off");
+  expect(sent).not.toContain("scan");
+});
+
+test("greys out the badge and closes its panel as soon as checking is turned off", async () => {
   const box = await start(async (request) =>
     request.type === "scan"
-      ? { seq: request.seq, enabled: false, counts: {} }
+      ? { seq: request.seq, enabled: true, counts: { EMAIL: 1 } }
       : {},
   );
-  await type(box, "hello");
-  box.value = "hello there";
-  box.dispatchEvent(new Event("input"));
-  expect(badge().dot.className).toBe("dot hidden");
+  await type(box, "jane@example.com");
+  badge().dot.click();
+  const panel = document
+    .querySelector("datafog-badge")!
+    .shadowRoot!.querySelector<HTMLElement>(".panel")!;
+  expect(panel.hidden).toBe(false);
+
+  await setChecking(false);
+  expect(badge().dot.className).toBe("dot off");
+  expect(panel.hidden).toBe(true);
+
+  await setChecking(true);
+  expect(badge().dot.className).toBe("dot found");
 });
 
 test("anchors the badge to the form, not the editor inside it", async () => {
