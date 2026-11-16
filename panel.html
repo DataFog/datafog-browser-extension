@@ -334,7 +334,7 @@
         </label>
         <p class="muted">
           If you forget your password, no one can open your vault, DataFog
-          included. You can only reset it, which deletes its values.
+          included. You can only delete it and start over.
         </p>
         <button class="primary" id="create-submit" type="submit" disabled>
           Create vault
@@ -373,17 +373,17 @@
       </p>
 
       <button class="link" id="reset-open" type="button" hidden>
-        Reset vault
+        Delete vault
       </button>
 
       <form id="reset" novalidate hidden>
         <p class="warning">
-          Resetting deletes your vault and every original value in it. Markers
-          you've already used can't be restored. If you've forgotten your
-          password, this is the only way to start over.
+          Deleting your vault removes every original value in it. Markers you've
+          already used can't be restored. If you've forgotten your password,
+          this is the only way to start over.
         </p>
         <label>
-          Type RESET to confirm
+          Type DELETE to confirm
           <input
             id="reset-confirm"
             type="text"
@@ -393,7 +393,7 @@
         </label>
         <div class="buttons">
           <button class="danger" id="reset-submit" type="submit" disabled>
-            Reset vault
+            Delete vault
           </button>
           <button id="reset-cancel" type="button">Cancel</button>
         </div>
