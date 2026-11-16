@@ -25,7 +25,6 @@ import type { WorkspaceFinding } from "@datafog/wasm";
 
 import type {
   CreatedVault,
-  UnlockedVault,
   Pseudonymized,
   RestoredValue,
   RestoredWithValues,
@@ -152,18 +151,6 @@ function codeOf(error: unknown): string {
       ? error.code
       : undefined;
   return typeof code === "string" ? code : "datafog_failed";
-}
-
-/**
- * Take a recovery key FogVault handed over, wiping its bytes.
- *
- * @param key The key's bytes, if any.
- * @returns Its base64 text, or an empty string.
- */
-function takeKey(key: Uint8Array | null | undefined): string {
-  const text = key ? toBase64(key) : "";
-  key?.fill(0);
-  return text;
 }
 
 /**
@@ -442,12 +429,13 @@ export class VaultHost<V extends Vault = Vault> {
    * Create the vault and its workspace, leaving it unlocked.
    *
    * Every vault starts with a device slot, so remembering a device later keeps
-   * its keys and recovery key; without Remember, that key is deleted at once.
+   * its keys; without Remember, that key is deleted at once. There's no
+   * recovery key: a forgotten password means deleting the vault.
    *
    * @param password The new password.
    * @param routing Existing routing, if a vault was already created.
    * @param remember Whether to remember this device for 30 days.
-   * @returns The status, the one-time recovery key and the new routing.
+   * @returns The status and the new routing.
    */
   async create(
     password: string,
@@ -457,8 +445,8 @@ export class VaultHost<V extends Vault = Vault> {
     if (routing) throw failure("vault_exists");
     const identity = await this.newDevice();
     const vault = this.ensureVault();
-    const created = await vault.create(VAULT_NAME, password, {
-      recovery: true,
+    await vault.create(VAULT_NAME, password, {
+      recovery: false,
       profile: "password-or-device",
       devices: [identity],
     });
@@ -470,14 +458,13 @@ export class VaultHost<V extends Vault = Vault> {
       namespace: this.deps.randomId(),
     };
     this.owner = await this.deps.createOwner(vault, route);
-    const recoveryKey = takeKey(created.recovery_key);
     const made = {
       recordId: toBase64(route.recordId),
       namespace: toBase64(route.namespace),
     };
     this.touch();
     await this.prepareWaiting();
-    return { status: this.status(made), recoveryKey, routing: made };
+    return { status: this.status(made), routing: made };
   }
 
   /**
@@ -485,45 +472,39 @@ export class VaultHost<V extends Vault = Vault> {
    * this device if asked.
    *
    * A vault made before remember device has no device slot. Adding one
-   * re-encrypts it with new keys, so it comes with a new recovery key.
+   * re-encrypts it with new keys.
    *
    * @param password The password.
    * @param routing Where the workspace lives.
    * @param remember Whether to remember this device for 30 days.
-   * @returns The status, and a new recovery key if the vault needed one.
+   * @returns The status.
    */
   async unlock(
     password: string,
     routing: VaultRouting | null,
     remember: boolean,
-  ): Promise<UnlockedVault> {
+  ): Promise<VaultStatus> {
     if (!routing) throw failure("no_vault");
-    if (this.owner && !this.owner.closed)
-      return { status: this.status(routing), recoveryKey: null };
+    if (this.owner && !this.owner.closed) return this.status(routing);
     const identity = remember ? await this.newDevice() : null;
     const vault = await this.openVault();
     await vault.unlock(password);
     await this.deps.devices.setPaused(false);
-    let recoveryKey: string | null = null;
     if (identity) {
       const source = { kind: "password" as const, password };
       const { profile } = await vault.describeAccess();
       if (profile === "password-or-device")
         await vault.enrollDevice(source, identity);
       else
-        recoveryKey = takeKey(
-          (
-            await vault.protectAccess(source, {
-              password,
-              profile: "password-or-device",
-              devices: [identity],
-              recovery: true,
-            })
-          ).recovery_key,
-        );
+        await vault.protectAccess(source, {
+          password,
+          profile: "password-or-device",
+          devices: [identity],
+          recovery: false,
+        });
     }
     await this.openWorkspace(vault, routing);
-    return { status: this.status(routing), recoveryKey };
+    return this.status(routing);
   }
 
   /**
@@ -566,8 +547,8 @@ export class VaultHost<V extends Vault = Vault> {
 
   /**
    * Delete the vault and everything in it. No password is needed: deleting
-   * reveals nothing, and someone who lost both their password and recovery
-   * key must still be able to start over. The side panel asks them to confirm.
+   * reveals nothing, and someone who forgot their password must still be
+   * able to start over. The side panel asks them to confirm.
    *
    * @param routing Where the workspace lives.
    * @returns The status, with no vault.

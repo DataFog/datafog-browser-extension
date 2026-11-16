@@ -177,11 +177,14 @@ test("hides what the vault does behind the info button", async () => {
   );
 });
 
-test("shows the recovery key once, then the unlocked vault", async () => {
+test("creates the vault, warning that a forgotten password can't be recovered", async () => {
   await start((request) =>
     request.type === "vault-create"
-      ? { status: { ...LOCKED, state: "unlocked" }, recoveryKey: "S2V5" }
+      ? { ...LOCKED, state: "unlocked" }
       : { ...LOCKED, state: "none" },
+  );
+  expect($("#create").textContent).toContain(
+    "If you forget your password, no one can open your vault",
   );
 
   fill("#create-password", "correct horse");
@@ -193,26 +196,11 @@ test("shows the recovery key once, then the unlocked vault", async () => {
     password: "correct horse",
     remember: false,
   });
-  expect($("#recovery").hidden).toBe(false);
-  expect($("#recovery-key").textContent).toBe("S2V5");
-  expect($("#recovery-note").textContent).toContain(
-    "If you lose both your password and this key, no one can open your vault",
-  );
-  expect($("#unlocked").hidden).toBe(true);
+  expect($("#create").hidden).toBe(true);
+  expect($("#unlocked").hidden).toBe(false);
   expect(
     document.querySelector<HTMLInputElement>("#create-password")!.value,
   ).toBe("");
-
-  sendMessage.mockImplementation(async () => ({
-    ...LOCKED,
-    state: "unlocked",
-  }));
-  $("#saved-key").click();
-  await settle();
-
-  expect($("#recovery").hidden).toBe(true);
-  expect($("#recovery-key").textContent).toBe("");
-  expect($("#unlocked").hidden).toBe(false);
 });
 
 test("unlocks with the password, and says when that fails", async () => {
@@ -588,10 +576,7 @@ test("remembers the device when asked, and says until when", async () => {
   const until = new Date(2026, 11, 11).getTime();
   await start((request) =>
     request.type === "vault-unlock"
-      ? {
-          status: { ...LOCKED, state: "unlocked", rememberedUntil: until },
-          recoveryKey: null,
-        }
+      ? { ...LOCKED, state: "unlocked", rememberedUntil: until }
       : LOCKED,
   );
   expect(sendMessage).toHaveBeenCalledWith({
@@ -611,27 +596,6 @@ test("remembers the device when asked, and says until when", async () => {
   expect($("#remembered").hidden).toBe(false);
   expect($("#remembered-until").textContent).toBe(
     `This device is remembered until ${new Date(until).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.`,
-  );
-});
-
-test("shows a new recovery key when remembering changed the vault's keys", async () => {
-  await start((request) =>
-    request.type === "vault-unlock"
-      ? {
-          status: { ...LOCKED, state: "unlocked", rememberedUntil: 1 },
-          recoveryKey: "TkVX",
-        }
-      : LOCKED,
-  );
-
-  fill("#unlock-password", "correct horse");
-  document.querySelector<HTMLInputElement>("#unlock-remember")!.checked = true;
-  await submit("#unlock");
-
-  expect($("#recovery").hidden).toBe(false);
-  expect($("#recovery-key").textContent).toBe("TkVX");
-  expect($("#recovery-note").textContent).toContain(
-    "your old recovery key no longer works",
   );
 });
 

@@ -233,7 +233,7 @@ async function handlePanel(request: PanelRequest): Promise<unknown> {
   if (request.type !== "vault-create") return forwardVault(request);
   const created = await forwardVault<CreatedVault>(request);
   await chrome.storage.local.set({ vault: created.routing });
-  return { status: created.status, recoveryKey: created.recoveryKey };
+  return created.status;
 }
 
 /**

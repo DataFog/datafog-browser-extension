@@ -8,19 +8,10 @@ import type {
   PanelNotice,
   PanelRequest,
   RestoredInPage,
-  UnlockedVault,
   ValueChoice,
   VaultStatus,
 } from "./messages";
 import { LABELS } from "./settings";
-
-/** What the recovery key is for, when the vault is new. */
-const RECOVERY_NOTE =
-  "Your recovery key. Save it somewhere safe, such as a password manager. You'll need it to get back into your vault if you forget your password, and DataFog can't show it again. If you lose both your password and this key, no one can open your vault, DataFog included; you can only reset it, which deletes its values.";
-
-/** Why there's a new recovery key, when remembering changed the vault's keys. */
-const NEW_RECOVERY_NOTE =
-  "Remembering this device gave your vault new keys, so your old recovery key no longer works. Save this new one somewhere safe, such as a password manager. DataFog can't show it again, and without it or your password your vault can't be opened.";
 
 /** Values a list shows before it scrolls within the panel. */
 const LIST_VISIBLE = 5;
@@ -75,7 +66,6 @@ const view = {
   createSubmit: document.querySelector<HTMLButtonElement>("#create-submit")!,
   createRemember: document.querySelector<HTMLInputElement>("#create-remember")!,
   unlockRemember: document.querySelector<HTMLInputElement>("#unlock-remember")!,
-  recoveryNote: document.querySelector<HTMLParagraphElement>("#recovery-note")!,
   remembered: document.querySelector<HTMLParagraphElement>("#remembered")!,
   rememberedUntil:
     document.querySelector<HTMLSpanElement>("#remembered-until")!,
@@ -87,8 +77,6 @@ const view = {
   resetSubmit: document.querySelector<HTMLButtonElement>("#reset-submit")!,
   ruleLength: document.querySelector<HTMLLIElement>("#rule-length")!,
   ruleMatch: document.querySelector<HTMLLIElement>("#rule-match")!,
-  recovery: document.querySelector<HTMLDivElement>("#recovery")!,
-  recoveryKey: document.querySelector<HTMLElement>("#recovery-key")!,
   unlock: document.querySelector<HTMLFormElement>("#unlock")!,
   unlockPassword: document.querySelector<HTMLInputElement>("#unlock-password")!,
   unlocked: document.querySelector<HTMLDivElement>("#unlocked")!,
@@ -110,9 +98,6 @@ const view = {
     "#not-sensitive-error",
   )!,
 };
-
-/** Kept only until the user says they saved it. */
-let recoveryKey: string | null = null;
 
 /** The latest restored answer, kept only for Copy until it's hidden. */
 let restoredText = "";
@@ -163,26 +148,21 @@ async function ask<T>(request: PanelRequest): Promise<T | ErrorResponse> {
 }
 
 /**
- * Show the vault: create, recovery key, unlock or lock.
+ * Show the vault: create, unlock or lock.
  *
  * @param state The vault's state.
  */
 function renderVault(status: VaultStatus): void {
   const { state, rememberedUntil } = status;
-  view.remembered.hidden =
-    state === "none" || rememberedUntil === null || recoveryKey !== null;
+  view.remembered.hidden = state === "none" || rememberedUntil === null;
   view.rememberedUntil.textContent = rememberedUntil
     ? `This device is remembered until ${new Date(rememberedUntil).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.`
     : "";
-  view.create.hidden = state !== "none" || recoveryKey !== null;
-  view.recovery.hidden = recoveryKey === null;
-  view.recoveryKey.textContent = recoveryKey ?? "";
-  if (recoveryKey === null) view.recoveryNote.textContent = RECOVERY_NOTE;
+  view.create.hidden = state !== "none";
   view.unlock.hidden = state !== "locked" || resetting;
   view.forgotPassword.hidden = state !== "locked" || resetting;
-  view.unlocked.hidden =
-    state !== "unlocked" || recoveryKey !== null || resetting;
-  view.resetOpen.hidden = state === "none" || recoveryKey !== null || resetting;
+  view.unlocked.hidden = state !== "unlocked" || resetting;
+  view.resetOpen.hidden = state === "none" || resetting;
   view.reset.hidden = state === "none" || !resetting;
   view.vaultState.hidden = state === "none";
   if (state !== "none") {
@@ -513,12 +493,12 @@ async function act(
 }
 
 /**
- * Create the vault, then show its recovery key once.
+ * Create the vault, leaving it unlocked.
  *
  * @param password The new password.
  */
 async function create(password: string, remember: boolean): Promise<void> {
-  const response = await ask<{ status: VaultStatus; recoveryKey: string }>({
+  const response = await ask<VaultStatus>({
     type: "vault-create",
     password,
     remember,
@@ -528,18 +508,17 @@ async function create(password: string, remember: boolean): Promise<void> {
     return;
   }
   showError(view.vaultError, null);
-  recoveryKey = response.recoveryKey;
-  render(response.status);
+  render(response);
 }
 
 /**
- * Unlock the vault, showing a new recovery key if remembering made one.
+ * Unlock the vault.
  *
  * @param password The password.
  * @param remember Whether to remember this device for 30 days.
  */
 async function unlock(password: string, remember: boolean): Promise<void> {
-  const response = await ask<UnlockedVault>({
+  const response = await ask<VaultStatus>({
     type: "vault-unlock",
     password,
     remember,
@@ -550,11 +529,7 @@ async function unlock(password: string, remember: boolean): Promise<void> {
     return;
   }
   showError(view.vaultError, null);
-  if (response.recoveryKey) {
-    recoveryKey = response.recoveryKey;
-    view.recoveryNote.textContent = NEW_RECOVERY_NOTE;
-  }
-  render(response.status);
+  render(response);
 }
 
 view.create.addEventListener("submit", (event) => {
@@ -644,13 +619,6 @@ document.querySelector("#copy-restored")!.addEventListener("click", () => {
 document
   .querySelector("#hide-originals")!
   .addEventListener("click", () => void hideInPage());
-document.querySelector("#copy-key")!.addEventListener("click", () => {
-  if (recoveryKey) void navigator.clipboard.writeText(recoveryKey);
-});
-document.querySelector("#saved-key")!.addEventListener("click", () => {
-  recoveryKey = null;
-  void refresh();
-});
 document
   .querySelector("#settings")!
   .addEventListener("click", () => chrome.runtime.openOptionsPage());

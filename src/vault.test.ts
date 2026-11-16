@@ -34,7 +34,6 @@ let vault: Vault;
 let notify: ReturnType<typeof vi.fn<() => void>>;
 let deleteStore: ReturnType<typeof vi.fn<(name: string) => Promise<void>>>;
 let host: VaultHost;
-let recoveryKey: Uint8Array;
 let devices: FakeDevices;
 let now: number;
 /** Holds finding values back until resolved, as a slow model would. */
@@ -191,7 +190,6 @@ function keyIdOf(identity: { keyId: Uint8Array }): string {
 }
 
 beforeEach(() => {
-  recoveryKey = new Uint8Array([1, 2, 3]);
   devices = new FakeDevices();
   now = 1_000_000;
   slots = [];
@@ -199,15 +197,11 @@ beforeEach(() => {
   vault = {
     create: vi.fn(async (_name, _password, options) => {
       slots = (options?.devices ?? []).map(keyIdOf);
-      return {
-        created: true as const,
-        receipt: RECEIPT,
-        recovery_key: recoveryKey,
-      };
+      return { created: true as const, receipt: RECEIPT };
     }),
     describeAccess: vi.fn(async () => ({
       profile,
-      recovery: true,
+      recovery: false,
       rootEpoch: 0n,
       devices: slots.map((keyId) => ({
         slotId: new Uint8Array(16).fill(keyId.charCodeAt(0)),
@@ -233,7 +227,6 @@ beforeEach(() => {
       return {
         receipt: RECEIPT,
         key_effect: "FreshRootAndContentKeys" as const,
-        recovery_key: new Uint8Array([4, 5, 6]),
       };
     }),
     open: vi.fn(async () => ({ opened: true as const })),
@@ -279,19 +272,17 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-test("creates an unlocked vault, handing over the recovery key once", async () => {
+test("creates an unlocked vault without a recovery key", async () => {
   const created = await host.create("correct horse", null, false);
 
   expect(vi.mocked(vault.create)).toHaveBeenCalledWith(
     "datafog",
     "correct horse",
     expect.objectContaining({
-      recovery: true,
+      recovery: false,
       profile: "password-or-device",
     }),
   );
-  expect(created.recoveryKey).toBe("AQID");
-  expect(recoveryKey).toEqual(new Uint8Array(3));
   expect(created.status.state).toBe("unlocked");
   expect(atob(created.routing.namespace)).toHaveLength(16);
 });
@@ -425,7 +416,7 @@ test("waits for an unlock, then prepares the review", async () => {
   });
   expect(host.status(routing).state).toBe("locked");
 
-  const { status } = await host.unlock("correct horse", routing, false);
+  const status = await host.unlock("correct horse", routing, false);
   expect(status.state).toBe("unlocked");
   expect(status.waiting).toBe(false);
   expect(status.review).toHaveLength(2);
@@ -675,8 +666,7 @@ test("remembers the device at unlock, keeping the vault's keys", async () => {
 
   expect(vi.mocked(vault.enrollDevice)).toHaveBeenCalled();
   expect(vi.mocked(vault.protectAccess)).not.toHaveBeenCalled();
-  expect(unlocked.recoveryKey).toBeNull();
-  expect(unlocked.status.rememberedUntil).toBe(now + REMEMBER_MS);
+  expect(unlocked.rememberedUntil).toBe(now + REMEMBER_MS);
 });
 
 test("gives an older password-only vault new keys to remember a device", async () => {
@@ -688,10 +678,9 @@ test("gives an older password-only vault new keys to remember a device", async (
 
   expect(vi.mocked(vault.protectAccess)).toHaveBeenCalledWith(
     { kind: "password", password: "correct horse" },
-    expect.objectContaining({ profile: "password-or-device", recovery: true }),
+    expect.objectContaining({ profile: "password-or-device", recovery: false }),
   );
-  expect(unlocked.recoveryKey).toBe("BAUG");
-  expect(unlocked.status.state).toBe("unlocked");
+  expect(unlocked.state).toBe("unlocked");
 });
 
 test("forgets the device, and stays locked when its key fails", async () => {

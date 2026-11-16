@@ -4,7 +4,7 @@
  *
  * FogVault holds the vault's seed wrapped under this key. Forgetting the
  * device deletes the key, which leaves its slot in the vault unusable, so
- * the vault's keys and recovery key never change. FogVault needs every slot's
+ * the vault's keys never change. FogVault needs every slot's
  * identity registered to open the vault, so forgotten identities are kept,
  * with no key.
  */

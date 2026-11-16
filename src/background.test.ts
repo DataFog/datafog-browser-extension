@@ -258,10 +258,9 @@ test("passes not sensitive choices on from the side panel only", async () => {
   warn.mockRestore();
 });
 
-test("stores a new vault's routing, and passes on its recovery key", async () => {
+test("stores a new vault's routing, and passes on its status", async () => {
   sendMessage.mockResolvedValueOnce({
     status: { state: "unlocked" },
-    recoveryKey: "S2V5",
     routing: ROUTING,
   });
 
@@ -270,7 +269,7 @@ test("stores a new vault's routing, and passes on its recovery key", async () =>
       { type: "vault-create", password: "correct horse", remember: false },
       PANEL,
     ),
-  ).toEqual({ status: { state: "unlocked" }, recoveryKey: "S2V5" });
+  ).toEqual({ state: "unlocked" });
   expect(setStorage).toHaveBeenCalledWith({ vault: ROUTING });
 });
 

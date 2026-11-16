@@ -332,21 +332,14 @@
           <input id="create-remember" type="checkbox" /> Remember this device
           for 30 days
         </label>
+        <p class="muted">
+          If you forget your password, no one can open your vault, DataFog
+          included. You can only reset it, which deletes its values.
+        </p>
         <button class="primary" id="create-submit" type="submit" disabled>
           Create vault
         </button>
       </form>
-
-      <div class="row" id="recovery" hidden>
-        <p class="muted" id="recovery-note"></p>
-        <code id="recovery-key"></code>
-        <div class="buttons">
-          <button id="copy-key" type="button">Copy</button>
-          <button id="saved-key" class="primary" type="button">
-            I saved it
-          </button>
-        </div>
-      </div>
 
       <form id="unlock" novalidate hidden>
         <label>

@@ -127,16 +127,8 @@ export interface VaultStatus {
   notSensitive: ValueChoice[];
 }
 
-/** An unlocked vault, with a new recovery key if remembering needed one. */
-export interface UnlockedVault {
-  status: VaultStatus;
-  recoveryKey: string | null;
-}
-
 export interface CreatedVault {
   status: VaultStatus;
-  /** Shown once; the vault keeps no copy it can show again. */
-  recoveryKey: string;
   routing: VaultRouting;
 }
 
