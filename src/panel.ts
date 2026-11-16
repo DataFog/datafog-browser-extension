@@ -52,6 +52,7 @@ const STATE_ICONS: Record<"locked" | "unlocked", [string, string]> = {
 };
 
 const view = {
+  update: document.querySelector<HTMLDivElement>("#update")!,
   review: document.querySelector<HTMLElement>("#review")!,
   reviewNote: document.querySelector<HTMLParagraphElement>("#review-note")!,
   reviewCount: document.querySelector<HTMLParagraphElement>("#review-count")!,
@@ -457,6 +458,12 @@ function render(status: VaultStatus): void {
   renderRestore(status.state);
 }
 
+/** Offer Update now while a downloaded update waits to install. */
+async function checkUpdate(): Promise<void> {
+  const response = await ask<{ ready?: boolean }>({ type: "update-status" });
+  view.update.hidden = "error" in response || response.ready !== true;
+}
+
 /**
  * Fetch the status and show it.
  *
@@ -618,10 +625,16 @@ document
 document
   .querySelector("#settings")!
   .addEventListener("click", () => chrome.runtime.openOptionsPage());
+// Reloading installs the waiting update, and closes this panel
+document
+  .querySelector("#update-now")!
+  .addEventListener("click", () => chrome.runtime.reload());
 
 // The vault tells the panel when it locks or a review arrives
 chrome.runtime.onMessage.addListener((message: PanelNotice | object) => {
-  if ("target" in message && message.target === "panel") void refresh();
+  if (!("target" in message) || message.target !== "panel") return false;
+  if (message.type === "update-ready") void checkUpdate();
+  else void refresh();
   return false;
 });
 
@@ -636,3 +649,4 @@ export async function connect(): Promise<void> {
 
 void connect();
 void refresh(true);
+void checkUpdate();
