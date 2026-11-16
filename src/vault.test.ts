@@ -522,6 +522,28 @@ test("locks after 15 minutes without use", async () => {
   expect(notify).toHaveBeenCalled();
 });
 
+test("stays unlocked without use while the device is remembered", async () => {
+  vi.useFakeTimers();
+  const routing = (await host.create("correct horse", null, true)).routing;
+
+  await vi.advanceTimersByTimeAsync(IDLE_LOCK_MS * 4);
+  expect(host.status(routing).state).toBe("unlocked");
+
+  // Locks once the 30 days are up
+  now += REMEMBER_MS;
+  await vi.advanceTimersByTimeAsync(REMEMBER_MS);
+  expect(host.status(routing).state).toBe("locked");
+});
+
+test("locks after idling again once the device is forgotten", async () => {
+  vi.useFakeTimers();
+  const routing = (await host.create("correct horse", null, true)).routing;
+
+  await host.forgetDevice(routing);
+  await vi.advanceTimersByTimeAsync(IDLE_LOCK_MS);
+  expect(host.status(routing).state).toBe("locked");
+});
+
 test("locks after a lost save, and settles it at the next unlock", async () => {
   const routing = await create();
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);

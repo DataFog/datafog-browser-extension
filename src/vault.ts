@@ -7,7 +7,8 @@
  * and this document.
  *
  * A remembered device unlocks the vault without the password for 30 days, on
- * use. A manual lock pauses that until the next password unlock.
+ * use, and keeps it from locking after idling. A manual lock pauses that until
+ * the next password unlock.
  */
 
 import type {
@@ -41,8 +42,11 @@ import type { Devices } from "./device";
 /** The vault's name in IndexedDB. */
 export const VAULT_NAME = "datafog";
 
-/** Lock after this long without use, as the ADR sets. */
+/** Lock after this long without use, unless the device is remembered. */
 export const IDLE_LOCK_MS = 15 * 60_000;
+
+/** The longest delay setTimeout keeps; a longer one fires at once. */
+const MAX_TIMEOUT_MS = 2 ** 31 - 1;
 
 /** The parts of FogVault the host uses. */
 export type Vault = Pick<
@@ -596,6 +600,8 @@ export class VaultHost<V extends Vault = Vault> {
    */
   async forgetDevice(routing: VaultRouting | null): Promise<VaultStatus> {
     await this.deps.devices.forget();
+    // Without the device, an open vault locks after idling again
+    if (this.owner && !this.owner.closed) this.touch();
     return this.status(routing);
   }
 
@@ -838,8 +844,20 @@ export class VaultHost<V extends Vault = Vault> {
   /** Restart the idle timer. */
   private touch(): void {
     clearTimeout(this.idle);
+    // A remembered device keeps the vault open until its 30 days end
+    const now = this.deps.now();
+    const until = this.deps.devices.active(now)
+      ? this.deps.devices.rememberedUntil(now)
+      : null;
+    const delay =
+      until === null ? IDLE_LOCK_MS : Math.min(until - now, MAX_TIMEOUT_MS);
     this.idle = setTimeout(() => {
+      // A long wait comes in parts; lock once the device is no longer active
+      if (until !== null && this.deps.devices.active(this.deps.now())) {
+        this.touch();
+        return;
+      }
       void this.lock(null).finally(() => this.deps.notify());
-    }, IDLE_LOCK_MS);
+    }, delay);
   }
 }
