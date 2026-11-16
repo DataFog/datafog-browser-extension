@@ -409,7 +409,7 @@ test("shows an unlocked icon once the vault is unlocked", async () => {
   expect($("#vault-state svg")).not.toBeNull();
 });
 
-test("resets the vault once RESET is typed, without its password", async () => {
+test("resets the vault once DELETE is typed, without its password", async () => {
   let status: VaultStatus = { ...LOCKED, state: "unlocked" };
   await start((request) => {
     if (request.type !== "vault-reset") return status;
@@ -422,12 +422,14 @@ test("resets the vault once RESET is typed, without its password", async () => {
   expect($("#unlocked").hidden).toBe(true);
   expect($("#reset-submit")).toHaveProperty("disabled", true);
 
-  fill("#reset-confirm", "rese");
-  expect($("#reset-submit")).toHaveProperty("disabled", true);
-  await submit("#reset");
-  expect(sendMessage).not.toHaveBeenCalledWith({ type: "vault-reset" });
+  for (const confirmation of ["RESET", "DELET", "DELETEE"]) {
+    fill("#reset-confirm", confirmation);
+    expect($("#reset-submit")).toHaveProperty("disabled", true);
+    await submit("#reset");
+    expect(sendMessage).not.toHaveBeenCalledWith({ type: "vault-reset" });
+  }
 
-  fill("#reset-confirm", " reset ");
+  fill("#reset-confirm", " delete ");
   expect($("#reset-submit")).toHaveProperty("disabled", false);
   await submit("#reset");
   expect(sendMessage).toHaveBeenCalledWith({ type: "vault-reset" });

@@ -71,6 +71,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   document.documentElement.replaceChildren(
     document.createElement("head"),
@@ -138,4 +139,42 @@ test("shows Dismiss, Pseudonymize and Redact only when values are found", () => 
     "Pseudonymize",
     "Redact",
   ]);
+});
+
+test.each([
+  {
+    name: "clamps a narrow viewport and opens below a badge near the top",
+    width: 333,
+    height: 533,
+    dot: { top: 51, right: 254, bottom: 75, left: 230 },
+    left: "8px",
+    top: "83px",
+  },
+  {
+    name: "keeps the popup aligned above the badge when there is room",
+    width: 1024,
+    height: 768,
+    dot: { top: 414, right: 932, bottom: 438, left: 908 },
+    left: "626px",
+    top: "218px",
+  },
+])("$name", ({ width, height, dot, left, top }) => {
+  vi.stubGlobal("innerWidth", width);
+  vi.stubGlobal("innerHeight", height);
+  const { badge, box, scroller, wrap } = mount();
+  setBox(scroller, { top: 0, right: width, bottom: height, left: 0 });
+  setBox(box, { top: 100, right: width - 12, bottom: 200, left: 20 });
+  const button = wrap.querySelector<HTMLButtonElement>(".dot")!;
+  const panel = wrap.querySelector<HTMLElement>(".panel")!;
+  setBox(button, dot);
+  setBox(panel, { top: 0, right: 306, bottom: 188, left: 0 });
+  badge.show({ kind: "found", counts: { EMAIL: 1 } });
+  const badgeRight = wrap.style.right;
+
+  button.click();
+
+  expect(panel.hidden).toBe(false);
+  expect(panel.style.left).toBe(left);
+  expect(panel.style.top).toBe(top);
+  expect(wrap.style.right).toBe(badgeRight);
 });

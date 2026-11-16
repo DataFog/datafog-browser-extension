@@ -240,10 +240,10 @@ function showReset(open: boolean): void {
 /**
  * Whether the user typed the reset confirmation.
  *
- * @returns True once RESET is typed, in any case.
+ * @returns True once DELETE is typed, in any case.
  */
 function resetConfirmed(): boolean {
-  return view.resetConfirm.value.trim().toUpperCase() === "RESET";
+  return view.resetConfirm.value.trim().toUpperCase() === "DELETE";
 }
 
 /**
