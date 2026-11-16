@@ -435,66 +435,15 @@ test("resets the vault once RESET is typed, without its password", async () => {
   expect($("#create").hidden).toBe(false);
 });
 
-test("sets a new password with the recovery key, then shows the new key", async () => {
-  await start((request) =>
-    request.type === "vault-recover"
-      ? { status: { ...LOCKED, state: "unlocked" }, recoveryKey: "TmV3" }
-      : LOCKED,
-  );
-
-  expect($("#recover").hidden).toBe(true);
-  $("#recover-open").click();
-  expect($("#recover").hidden).toBe(false);
-  expect($("#unlock").hidden).toBe(true);
-  expect($("#reset-open").hidden).toBe(true);
-
-  fill("#recover-key", "S2V5");
-  fill("#recover-password", "new password");
-  expect($("#recover-submit")).toHaveProperty("disabled", true);
-  fill("#recover-confirm", "new password");
-  expect($("#recover-submit")).toHaveProperty("disabled", false);
-  await submit("#recover");
-
-  expect(sendMessage).toHaveBeenCalledWith({
-    type: "vault-recover",
-    key: "S2V5",
-    password: "new password",
-  });
-  expect($("#recover").hidden).toBe(true);
-  expect($("#recovery-key").textContent).toBe("TmV3");
-  expect($("#recovery-note").textContent).toContain(
-    "Your new password is set.",
-  );
-  expect(
-    document.querySelector<HTMLTextAreaElement>("#recover-key")!.value,
-  ).toBe("");
-});
-
-test("says plainly when the recovery key is wrong", async () => {
-  await start((request) =>
-    request.type === "vault-recover" ? { error: "Integrity" } : LOCKED,
-  );
-
-  $("#recover-open").click();
-  fill("#recover-key", "S2V5");
-  fill("#recover-password", "new password");
-  fill("#recover-confirm", "new password");
-  await submit("#recover");
-
-  expect($("#vault-error").textContent).toBe(
-    "That recovery key doesn't open this vault.",
-  );
-  expect($("#recover").hidden).toBe(false);
-});
-
-test("closes the recovery form on Cancel", async () => {
+test("offers Reset when the password is forgotten", async () => {
   await start(() => LOCKED);
 
-  $("#recover-open").click();
-  $("#recover-cancel").click();
+  $("#forgot-password").click();
 
-  expect($("#recover").hidden).toBe(true);
-  expect($("#unlock").hidden).toBe(false);
+  expect($("#reset").hidden).toBe(false);
+  expect($("#unlock").hidden).toBe(true);
+  expect($("#forgot-password").hidden).toBe(true);
+  expect($("#reset").textContent).toContain("the only way to start over");
 });
 
 test("closes the reset form on Cancel", async () => {

@@ -25,17 +25,6 @@ const NEW_RECOVERY_NOTE =
 /** Values a list shows before it scrolls within the panel. */
 const LIST_VISIBLE = 5;
 
-/** Why there's a new recovery key, after setting a new password with one. */
-const RECOVERED_NOTE =
-  "Your new password is set. Your vault has new keys, so your old recovery key no longer works, and a remembered device needs remembering again. Save this new key somewhere safe, such as a password manager. DataFog can't show it again.";
-
-/** FogVault's codes for a recovery key that doesn't open this vault. */
-const WRONG_KEY_CODES = new Set([
-  "InvalidInput",
-  "Integrity",
-  "Authentication",
-]);
-
 /** Shortest password the vault accepts. */
 const MIN_PASSWORD = 8;
 
@@ -52,9 +41,6 @@ const EXPLAINED: Record<string, string> = {
   no_chat: "Open a ChatGPT chat in this tab to restore its latest answer.",
   no_answer: "There's no answer in this chat yet.",
   vault_locked: "Unlock your vault to restore.",
-  invalid_recovery_key:
-    "That isn't a whole recovery key. Copy all of it and try again.",
-  wrong_recovery_key: "That recovery key doesn't open this vault.",
   no_markers: "There are no markers in ChatGPT's latest answer.",
 };
 
@@ -95,19 +81,8 @@ const view = {
     document.querySelector<HTMLSpanElement>("#remembered-until")!,
   resetOpen: document.querySelector<HTMLButtonElement>("#reset-open")!,
   reset: document.querySelector<HTMLFormElement>("#reset")!,
-  recoverOpen: document.querySelector<HTMLButtonElement>("#recover-open")!,
-  recover: document.querySelector<HTMLFormElement>("#recover")!,
-  recoverKey: document.querySelector<HTMLTextAreaElement>("#recover-key")!,
-  recoverPassword:
-    document.querySelector<HTMLInputElement>("#recover-password")!,
-  recoverConfirm: document.querySelector<HTMLInputElement>("#recover-confirm")!,
-  recoverRuleLength: document.querySelector<HTMLLIElement>(
-    "#recover-rule-length",
-  )!,
-  recoverRuleMatch: document.querySelector<HTMLLIElement>(
-    "#recover-rule-match",
-  )!,
-  recoverSubmit: document.querySelector<HTMLButtonElement>("#recover-submit")!,
+  forgotPassword:
+    document.querySelector<HTMLButtonElement>("#forgot-password")!,
   resetConfirm: document.querySelector<HTMLInputElement>("#reset-confirm")!,
   resetSubmit: document.querySelector<HTMLButtonElement>("#reset-submit")!,
   ruleLength: document.querySelector<HTMLLIElement>("#rule-length")!,
@@ -144,9 +119,6 @@ let restoredText = "";
 
 /** Whether the reset form is open. */
 let resetting = false;
-
-/** Whether the recovery form is open. */
-let recovering = false;
 
 /** The last status shown, to redraw after opening or closing the reset form. */
 let shown: VaultStatus | null = null;
@@ -206,13 +178,11 @@ function renderVault(status: VaultStatus): void {
   view.recovery.hidden = recoveryKey === null;
   view.recoveryKey.textContent = recoveryKey ?? "";
   if (recoveryKey === null) view.recoveryNote.textContent = RECOVERY_NOTE;
-  view.unlock.hidden = state !== "locked" || resetting || recovering;
-  view.recoverOpen.hidden = state !== "locked" || resetting || recovering;
-  view.recover.hidden = state !== "locked" || !recovering;
+  view.unlock.hidden = state !== "locked" || resetting;
+  view.forgotPassword.hidden = state !== "locked" || resetting;
   view.unlocked.hidden =
     state !== "unlocked" || recoveryKey !== null || resetting;
-  view.resetOpen.hidden =
-    state === "none" || recoveryKey !== null || resetting || recovering;
+  view.resetOpen.hidden = state === "none" || recoveryKey !== null || resetting;
   view.reset.hidden = state === "none" || !resetting;
   view.vaultState.hidden = state === "none";
   if (state !== "none") {
@@ -246,37 +216,6 @@ function showReset(open: boolean): void {
  */
 function resetConfirmed(): boolean {
   return view.resetConfirm.value.trim().toUpperCase() === "RESET";
-}
-
-/**
- * Open or close the recovery form.
- *
- * @param open Whether to open it.
- */
-function showRecover(open: boolean): void {
-  recovering = open;
-  view.recover.reset();
-  checkRecover();
-  showError(view.vaultError, null);
-  if (shown) renderVault(shown);
-  if (open) view.recoverKey.focus();
-}
-
-/**
- * Check the recovery form: a key, and a new password that meets the rules.
- *
- * @returns Whether it can be sent.
- */
-function checkRecover(): boolean {
-  const ready =
-    checkRules(
-      view.recoverPassword.value,
-      view.recoverConfirm.value,
-      view.recoverRuleLength,
-      view.recoverRuleMatch,
-    ) && view.recoverKey.value.trim() !== "";
-  view.recoverSubmit.disabled = !ready;
-  return ready;
 }
 
 /**
@@ -618,35 +557,6 @@ async function unlock(password: string, remember: boolean): Promise<void> {
   render(response.status);
 }
 
-/**
- * Set a new password with the recovery key, then show the new key once.
- *
- * @param key The recovery key.
- * @param password The new password.
- */
-async function recover(key: string, password: string): Promise<void> {
-  const response = await ask<UnlockedVault>({
-    type: "vault-recover",
-    key,
-    password,
-  });
-  if ("error" in response) {
-    await refresh();
-    showError(
-      view.vaultError,
-      WRONG_KEY_CODES.has(response.error)
-        ? "wrong_recovery_key"
-        : response.error,
-    );
-    return;
-  }
-  recovering = false;
-  showError(view.vaultError, null);
-  recoveryKey = response.recoveryKey;
-  view.recoveryNote.textContent = RECOVERED_NOTE;
-  render(response.status);
-}
-
 view.create.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!checkPassword()) return;
@@ -692,20 +602,7 @@ document
     "click",
     () => void act({ type: "review-cancel" }, view.reviewError),
   );
-view.recoverOpen.addEventListener("click", () => showRecover(true));
-document
-  .querySelector("#recover-cancel")!
-  .addEventListener("click", () => showRecover(false));
-view.recover.addEventListener("input", () => void checkRecover());
-view.recover.addEventListener("submit", (event) => {
-  event.preventDefault();
-  if (!checkRecover()) return;
-  const key = view.recoverKey.value;
-  const password = view.recoverPassword.value;
-  view.recover.reset();
-  checkRecover();
-  void recover(key, password);
-});
+view.forgotPassword.addEventListener("click", () => showReset(true));
 view.resetOpen.addEventListener("click", () => showReset(true));
 document
   .querySelector("#reset-cancel")!

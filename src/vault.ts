@@ -61,7 +61,6 @@ export type Vault = Pick<
   | "unlockDevice"
   | "enrollDevice"
   | "protectAccess"
-  | "recoverAccess"
 >;
 
 /** The parts of Core's adapter the host uses. */
@@ -185,27 +184,6 @@ export function toBase64(bytes: Uint8Array): string {
  */
 function fromBase64(text: string): Uint8Array {
   return Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
-}
-
-/** A FogVault recovery key's length, in bytes. */
-const RECOVERY_KEY_BYTES = 80;
-
-/**
- * Read a recovery key as the user typed or pasted it.
- *
- * @param text The key's base64 text; spaces and line breaks are ignored.
- * @returns Its bytes.
- */
-function readRecoveryKey(text: string): Uint8Array {
-  let bytes: Uint8Array;
-  try {
-    bytes = fromBase64(text.replaceAll(/\s/g, ""));
-  } catch {
-    throw failure("invalid_recovery_key");
-  }
-  if (bytes.length !== RECOVERY_KEY_BYTES)
-    throw failure("invalid_recovery_key");
-  return bytes;
 }
 
 /**
@@ -544,50 +522,6 @@ export class VaultHost<V extends Vault = Vault> {
           ).recovery_key,
         );
     }
-    await this.openWorkspace(vault, routing);
-    return { status: this.status(routing), recoveryKey };
-  }
-
-  /**
-   * Set a new password with the recovery key, keeping the vault's values.
-   * FogVault re-encrypts the vault with new keys, so the old password, the old
-   * recovery key and any remembered device stop working, and there's a new
-   * recovery key to show once.
-   *
-   * @param key The recovery key, as shown when it was made.
-   * @param password The new password.
-   * @param routing Where the workspace lives.
-   * @returns The unlocked status and the new recovery key.
-   */
-  async recover(
-    key: string,
-    password: string,
-    routing: VaultRouting | null,
-  ): Promise<UnlockedVault> {
-    if (!routing) throw failure("no_vault");
-    const kit = readRecoveryKey(key);
-    await this.lock(routing);
-    // Every vault keeps a device slot, as when it was made
-    const identity = await this.newDevice();
-    const vault = await this.openVault();
-    let result;
-    try {
-      result = await vault.recoverAccess(kit, {
-        password,
-        profile: "password-or-device",
-        devices: [identity],
-        recovery: true,
-      });
-    } catch (error) {
-      // FogVault stops its Worker when recovery fails
-      await this.dropVault();
-      throw error;
-    } finally {
-      kit.fill(0);
-      await this.deps.devices.forget();
-    }
-    await this.deps.devices.setPaused(false);
-    const recoveryKey = takeKey(result.recovery_key);
     await this.openWorkspace(vault, routing);
     return { status: this.status(routing), recoveryKey };
   }

@@ -364,51 +364,9 @@
         <button class="primary" type="submit">Unlock</button>
       </form>
 
-      <button class="link" id="recover-open" type="button" hidden>
+      <button class="link" id="forgot-password" type="button" hidden>
         Forgot password?
       </button>
-
-      <form id="recover" novalidate hidden>
-        <p class="muted">
-          Enter the recovery key you saved when you created your vault, and
-          choose a new password. Your values stay in your vault.
-        </p>
-        <label>
-          Recovery key
-          <textarea
-            id="recover-key"
-            rows="3"
-            autocomplete="off"
-            spellcheck="false"
-          ></textarea>
-        </label>
-        <label>
-          New password
-          <input
-            id="recover-password"
-            type="password"
-            autocomplete="new-password"
-          />
-        </label>
-        <label>
-          Confirm new password
-          <input
-            id="recover-confirm"
-            type="password"
-            autocomplete="new-password"
-          />
-        </label>
-        <ul class="rules" aria-live="polite">
-          <li id="recover-rule-length">At least 8 characters</li>
-          <li id="recover-rule-match">Passwords match</li>
-        </ul>
-        <div class="buttons">
-          <button class="primary" id="recover-submit" type="submit" disabled>
-            Set new password
-          </button>
-          <button id="recover-cancel" type="button">Cancel</button>
-        </div>
-      </form>
 
       <div class="row" id="unlocked" hidden>
         <button id="lock" type="button">Lock</button>
@@ -428,8 +386,8 @@
       <form id="reset" novalidate hidden>
         <p class="warning">
           Resetting deletes your vault and every original value in it. Markers
-          you've already used can't be restored. If you've only forgotten your
-          password, use your recovery key instead.
+          you've already used can't be restored. If you've forgotten your
+          password, this is the only way to start over.
         </p>
         <label>
           Type RESET to confirm
