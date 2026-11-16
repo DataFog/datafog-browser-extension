@@ -19,14 +19,21 @@ decisions on top of it, including one change to ADR 004's scope.
 
 ### Vault
 
-The extension uses FogVault through Core's adapter, pinned exactly:
+The extension uses FogVault through Core's adapter, with the same version
+ranges the adapter declares:
 
-- `@datafog/wasm` 1.1.0
-- `@datafog/fogvault-browser` 0.1.0
-- `@datafog/core-fogvault-browser` 1.1.0
+- `@datafog/wasm` ^1.5.0
+- `@datafog/core-fogvault-browser` ^1.5.0
+- `@datafog/fogvault-browser` 0.1.0, exactly
 
-Core 1.1.0 adds `prepareForget` for mapping TTL. It was first pinned as
-1.1.0-rc.1, which has the same runtime.
+Core packages take a floor rather than an exact pin, so a qualified Core minor
+can land with `npm update` and no pre-release pin blocks updates. The lockfile
+still fixes the exact build, so each update is a reviewed change. Core minors
+can change what is found, so an update reruns the tests and the browser checks.
+FogVault stays exact, as the adapter requires.
+
+Core 1.1.0 added `prepareForget` for mapping TTL. Core 1.5.0 corrects detection
+and transform edge cases without changing the browser APIs the extension uses.
 
 Core, the FogVault Worker and the model run in an offscreen document, not the
 service worker, which Chrome stops when idle and which can't start Workers. The
@@ -107,7 +114,7 @@ mapping, so this depends on a Core addition, proposed separately.
 
 ### Model
 
-V1 finds names and addresses with the statements CNN bundled in Core 1.1.0
+V1 finds names and addresses with the statements CNN bundled in Core 1.1.0 and later
 (about 1 MB of weights, compiled into Core's WebAssembly), in its own Worker in
 the offscreen document. It replaces the earlier plan to ship GLiNER2.5 Small
 (about 297 MB): it's bundled, needs no download, and is fast enough to run on
