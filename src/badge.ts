@@ -14,8 +14,14 @@ const REPORT_URL =
   "https://github.com/DataFog/datafog-browser-extension/issues";
 const HELP_EMAIL = "help@datafog.ai";
 
+/** Why the badge is greyed out, on hover. */
+export const OFF_TITLE =
+  "DataFog is off. Turn on Check prompts on ChatGPT in DataFog's settings.";
+
 export type BadgeState =
   | { kind: "hidden" }
+  /** Checking is turned off in settings. */
+  | { kind: "off" }
   | { kind: "idle" }
   | { kind: "checking" }
   | { kind: "clean" }
@@ -54,6 +60,7 @@ const STYLE = `
     background: #d93025; color: #fff; font-weight: 700; font-size: 12px;
     box-shadow: 0 1px 4px rgba(217, 48, 37, 0.45);
   }
+  .dot.off { filter: grayscale(1); opacity: 0.4; cursor: default; }
   .dot.failed {
     background: #b06000; color: #fff; font-weight: 700; font-size: 13px;
     box-shadow: 0 1px 4px rgba(176, 96, 0, 0.45);
@@ -239,7 +246,9 @@ export class Badge {
     this.actions = root.querySelector(".actions")!;
 
     this.dot.addEventListener("click", () => {
-      if (this.kind !== "checking") this.panel.hidden = !this.panel.hidden;
+      // Checking dots and the off badge have nothing to show in the panel
+      if (this.kind !== "checking" && this.kind !== "off")
+        this.panel.hidden = !this.panel.hidden;
     });
     this.buttons = {
       redact: root.querySelector(".redact")!,
@@ -289,7 +298,10 @@ export class Badge {
     // an open panel steady too, and don't bring back a badge the user turned off
     if (
       state.kind === "checking" &&
-      (this.kind === "found" || this.kind === "hidden" || !this.panel.hidden)
+      (this.kind === "found" ||
+        this.kind === "hidden" ||
+        this.kind === "off" ||
+        !this.panel.hidden)
     )
       return;
     this.kind = state.kind;
@@ -319,6 +331,7 @@ export class Badge {
     } else {
       this.dot.innerHTML = state.kind === "checking" ? DOTS : LOGO;
       if (state.kind === "checking") this.dot.title = "DataFog is checking";
+      else if (state.kind === "off") this.dot.title = OFF_TITLE;
       else
         this.dot.title =
           state.kind === "clean"
@@ -329,7 +342,8 @@ export class Badge {
           ? "No sensitive data found"
           : "DataFog is checking this chat box";
       this.list.replaceChildren();
-      if (state.kind === "hidden") this.panel.hidden = true;
+      if (state.kind === "hidden" || state.kind === "off")
+        this.panel.hidden = true;
     }
 
     if (state.kind === "failed" && state.code === "extension_reloaded") {
@@ -365,7 +379,8 @@ export class Badge {
   warnFiles(attached: boolean): void {
     const warned = !this.files.hidden;
     this.files.hidden = !attached;
-    if (attached) this.panel.hidden = this.kind === "hidden";
+    if (attached)
+      this.panel.hidden = this.kind === "hidden" || this.kind === "off";
     else if (warned) this.panel.hidden = true;
   }
 

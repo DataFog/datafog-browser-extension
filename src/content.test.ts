@@ -6,6 +6,7 @@
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
+import { OFF_TITLE } from "./badge";
 import {
   NO_CHAT_BOX,
   type RedactResponse,
@@ -549,7 +550,7 @@ test("ignores an answer about text that has since changed", async () => {
   expect(badge().dot.className).toBe("dot checking");
 });
 
-test("shows no badge, and checks nothing, while checking is off", async () => {
+test("greys out the badge, and checks nothing, while checking is off", async () => {
   const sent: string[] = [];
   const box = await start(
     async (request) => {
@@ -560,17 +561,18 @@ test("shows no badge, and checks nothing, while checking is off", async () => {
     false,
   );
   await vi.advanceTimersByTimeAsync(0);
-  expect(badge().dot.className).toBe("dot hidden");
+  expect(badge().dot.className).toBe("dot off");
+  expect(badge().dot.title).toBe(OFF_TITLE);
 
   box.value = "jane@example.com";
   box.dispatchEvent(new Event("input"));
-  expect(badge().dot.className).toBe("dot hidden");
+  expect(badge().dot.className).toBe("dot off");
   await vi.advanceTimersByTimeAsync(400);
-  expect(badge().dot.className).toBe("dot hidden");
+  expect(badge().dot.className).toBe("dot off");
   expect(sent).not.toContain("scan");
 });
 
-test("hides the badge and its panel as soon as checking is turned off", async () => {
+test("greys out the badge and closes its panel as soon as checking is turned off", async () => {
   const box = await start(async (request) =>
     request.type === "scan"
       ? { seq: request.seq, enabled: true, counts: { EMAIL: 1 } }
@@ -584,7 +586,7 @@ test("hides the badge and its panel as soon as checking is turned off", async ()
   expect(panel.hidden).toBe(false);
 
   await setChecking(false);
-  expect(badge().dot.className).toBe("dot hidden");
+  expect(badge().dot.className).toBe("dot off");
   expect(panel.hidden).toBe(true);
 
   await setChecking(true);

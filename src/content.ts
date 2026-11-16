@@ -163,10 +163,10 @@ async function ask<T extends object>(
 async function scanNow(force = false): Promise<void> {
   await settingsLoaded;
   if (!composer) return;
-  // With checking off there's no badge, and nothing is sent to be checked
+  // With checking off the badge is greyed out, and nothing is sent to be checked
   if (!enabled) {
     window.clearTimeout(timer);
-    badge.show({ kind: "hidden" });
+    badge.show({ kind: "off" });
     return;
   }
   const text = readText(composer);
@@ -203,7 +203,7 @@ async function scanNow(force = false): Promise<void> {
   lastCounts = response.counts;
   const found = Object.keys(response.counts).length > 0;
   foundText = found ? text : null;
-  if (!response.enabled) badge.show({ kind: "hidden" });
+  if (!response.enabled) badge.show({ kind: "off" });
   // A dismissed warning falls back to the plain logo until the text changes
   else if (text === dismissedText) badge.show({ kind: "idle" });
   else
@@ -760,7 +760,7 @@ chrome.runtime.onMessage.addListener(
   },
 );
 
-// Turning checking off hides the badge and its panel at once; turning it on
+// Turning checking off greys out the badge and closes its panel at once; turning it on
 // checks the chat box as it stands
 chrome.storage.onChanged.addListener((changes, area) => {
   const next = (changes.settings?.newValue ?? {}) as { enabled?: unknown };
