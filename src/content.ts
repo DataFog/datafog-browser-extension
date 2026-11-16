@@ -760,6 +760,16 @@ chrome.runtime.onMessage.addListener(
   },
 );
 
+// Turning checking off hides the badge and its panel at once; turning it on
+// checks the chat box as it stands
+chrome.storage.onChanged.addListener((changes, area) => {
+  const next = (changes.settings?.newValue ?? {}) as { enabled?: unknown };
+  if (area !== "local" || typeof next.enabled !== "boolean") return;
+  if (next.enabled === enabled) return;
+  enabled = next.enabled;
+  void scanNow(true);
+});
+
 // The page tab opens or closes the side panel; send right away, within the click
 const warnTab = mountTab(() => void togglePanel());
 
