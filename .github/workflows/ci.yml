@@ -79,10 +79,11 @@ jobs:
         run: npm run test:integration
 
       - name: Upload browser report and failure traces
-        if: ${{ !cancelled() }}
+        if: ${{ failure() && !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: extension-integration-${{ matrix.os }}
+          retention-days: 7
           path: |
             playwright-report/
             test-results/
