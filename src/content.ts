@@ -514,7 +514,7 @@ function replaceValues(
     selection.addRange(range);
     typeLines(element, edit.replacement);
   }
-  return readText(element) === response.text;
+  return sameText(readText(element), response.text);
 }
 
 /** Redact the chat box's sensitive values in place. */
