@@ -26,7 +26,7 @@ Click the DataFog tab on the right edge of chatgpt.com, or the toolbar icon, to 
 ## How it works
 
 - `src/content.ts` watches the chat box. It scans 400 ms after you stop typing, and right away on paste. Stale results are dropped.
-- `src/background.ts` opens an offscreen document and passes the content script's requests to it, with the current settings.
+- `src/background.ts` opens an offscreen document and passes the content script's requests to it, with the current settings. It also saves the version of an update Chrome has downloaded, which `src/update.ts` reads to offer Update now when the chat box can't be found.
 - `src/offscreen.ts` runs Core and answers with counts by type. It stays loaded while the side panel is closed, unlike the service worker, which Chrome stops when idle. Counts come from Core's `transform`, so a value two detectors match counts once.
 - `src/detect.ts` sets Core's `detect_uuid` switch or German locale when UUID or a German type is chosen, since choosing the type alone doesn't turn it on in Core. Settings offer every type Core finds in text except the German identifiers, which are supported but not yet offered.
 - `src/model.ts` finds names and mailing addresses with the model bundled in Core, in its own Worker, one scan at a time. It runs only while Name or Mailing address is selected; every other type uses Core's rules.
