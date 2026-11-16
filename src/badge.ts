@@ -15,8 +15,7 @@ const REPORT_URL =
 const HELP_EMAIL = "help@datafog.ai";
 
 /** Why the badge is greyed out, on hover. */
-export const OFF_TITLE =
-  "DataFog is off. Turn on Check prompts on ChatGPT in DataFog's settings.";
+export const OFF_TITLE = "DataFog is disabled in the settings for this site.";
 
 export type BadgeState =
   | { kind: "hidden" }
