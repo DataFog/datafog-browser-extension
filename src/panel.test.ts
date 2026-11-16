@@ -321,7 +321,7 @@ test("lists not sensitive values as text, and removes one", async () => {
   );
 });
 
-test("hides what the workspace does behind its info button", async () => {
+test("hides what not sensitive values do behind an info button", async () => {
   await start(() => LOCKED);
   const toggle = $("#workspace-info-toggle");
 
