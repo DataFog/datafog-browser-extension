@@ -86,7 +86,7 @@ const host = new VaultHost({
       const request = indexedDB.deleteDatabase(name);
       request.addEventListener("success", () => resolve());
       request.addEventListener("error", () =>
-        reject(Object.assign(new Error(), { code: "reset_failed" })),
+        reject(Object.assign(new Error(), { code: "delete_failed" })),
       );
     }),
   notify: () => {
@@ -137,14 +137,12 @@ async function handle({
       return host.create(request.password, routing, request.remember);
     case "vault-unlock":
       return host.unlock(request.password, routing, request.remember);
-    case "vault-recover":
-      return host.recover(request.key, request.password, routing);
     case "vault-lock":
       return host.lock(routing, true);
     case "device-forget":
       return host.forgetDevice(routing);
-    case "vault-reset":
-      return host.reset(routing);
+    case "vault-delete":
+      return host.deleteVault(routing);
     case "pseudonymize":
       await host.pseudonymize(request.text, request.tabId, settings);
       return host.status(routing);

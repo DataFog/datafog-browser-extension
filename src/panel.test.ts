@@ -131,7 +131,7 @@ test("offers to create a vault when there isn't one", async () => {
   await start(() => ({ ...LOCKED, state: "none" }));
 
   expect($("#vault-state").hidden).toBe(true);
-  expect($("#reset-open").hidden).toBe(true);
+  expect($("#delete-open").hidden).toBe(true);
   expect($("#create").hidden).toBe(false);
   expect($("#unlock").hidden).toBe(true);
   expect($("#review").hidden).toBe(true);
@@ -177,11 +177,14 @@ test("hides what the vault does behind the info button", async () => {
   );
 });
 
-test("shows the recovery key once, then the unlocked vault", async () => {
+test("creates the vault, warning that a forgotten password can't be recovered", async () => {
   await start((request) =>
     request.type === "vault-create"
-      ? { status: { ...LOCKED, state: "unlocked" }, recoveryKey: "S2V5" }
+      ? { ...LOCKED, state: "unlocked" }
       : { ...LOCKED, state: "none" },
+  );
+  expect($("#create").textContent).toContain(
+    "If you forget your password, no one can open your vault",
   );
 
   fill("#create-password", "correct horse");
@@ -193,26 +196,11 @@ test("shows the recovery key once, then the unlocked vault", async () => {
     password: "correct horse",
     remember: false,
   });
-  expect($("#recovery").hidden).toBe(false);
-  expect($("#recovery-key").textContent).toBe("S2V5");
-  expect($("#recovery-note").textContent).toContain(
-    "If you lose both your password and this key, no one can open your vault",
-  );
-  expect($("#unlocked").hidden).toBe(true);
+  expect($("#create").hidden).toBe(true);
+  expect($("#unlocked").hidden).toBe(false);
   expect(
     document.querySelector<HTMLInputElement>("#create-password")!.value,
   ).toBe("");
-
-  sendMessage.mockImplementation(async () => ({
-    ...LOCKED,
-    state: "unlocked",
-  }));
-  $("#saved-key").click();
-  await settle();
-
-  expect($("#recovery").hidden).toBe(true);
-  expect($("#recovery-key").textContent).toBe("");
-  expect($("#unlocked").hidden).toBe(false);
 });
 
 test("unlocks with the password, and says when that fails", async () => {
@@ -409,104 +397,53 @@ test("shows an unlocked icon once the vault is unlocked", async () => {
   expect($("#vault-state svg")).not.toBeNull();
 });
 
-test("resets the vault once RESET is typed, without its password", async () => {
+test("deletes the vault once DELETE is typed, without its password", async () => {
   let status: VaultStatus = { ...LOCKED, state: "unlocked" };
   await start((request) => {
-    if (request.type !== "vault-reset") return status;
+    if (request.type !== "vault-delete") return status;
     status = { ...LOCKED, state: "none" };
     return status;
   });
 
-  $("#reset-open").click();
-  expect($("#reset").hidden).toBe(false);
+  $("#delete-open").click();
+  expect($("#delete").hidden).toBe(false);
   expect($("#unlocked").hidden).toBe(true);
-  expect($("#reset-submit")).toHaveProperty("disabled", true);
+  expect($("#delete-submit")).toHaveProperty("disabled", true);
 
-  fill("#reset-confirm", "rese");
-  expect($("#reset-submit")).toHaveProperty("disabled", true);
-  await submit("#reset");
-  expect(sendMessage).not.toHaveBeenCalledWith({ type: "vault-reset" });
+  fill("#delete-confirm", "delet");
+  expect($("#delete-submit")).toHaveProperty("disabled", true);
+  await submit("#delete");
+  expect(sendMessage).not.toHaveBeenCalledWith({ type: "vault-delete" });
 
-  fill("#reset-confirm", " reset ");
-  expect($("#reset-submit")).toHaveProperty("disabled", false);
-  await submit("#reset");
-  expect(sendMessage).toHaveBeenCalledWith({ type: "vault-reset" });
-  expect($("#reset").hidden).toBe(true);
+  fill("#delete-confirm", " delete ");
+  expect($("#delete-submit")).toHaveProperty("disabled", false);
+  await submit("#delete");
+  expect(sendMessage).toHaveBeenCalledWith({ type: "vault-delete" });
+  expect($("#delete").hidden).toBe(true);
   expect($("#create").hidden).toBe(false);
 });
 
-test("sets a new password with the recovery key, then shows the new key", async () => {
-  await start((request) =>
-    request.type === "vault-recover"
-      ? { status: { ...LOCKED, state: "unlocked" }, recoveryKey: "TmV3" }
-      : LOCKED,
-  );
+test("points a forgotten password to Delete vault", async () => {
+  await start(() => LOCKED);
 
-  expect($("#recover").hidden).toBe(true);
-  $("#recover-open").click();
-  expect($("#recover").hidden).toBe(false);
+  expect(document.querySelector("#forgot-password")).toBeNull();
+  $("#delete-open").click();
+
+  expect($("#delete").hidden).toBe(false);
   expect($("#unlock").hidden).toBe(true);
-  expect($("#reset-open").hidden).toBe(true);
-
-  fill("#recover-key", "S2V5");
-  fill("#recover-password", "new password");
-  expect($("#recover-submit")).toHaveProperty("disabled", true);
-  fill("#recover-confirm", "new password");
-  expect($("#recover-submit")).toHaveProperty("disabled", false);
-  await submit("#recover");
-
-  expect(sendMessage).toHaveBeenCalledWith({
-    type: "vault-recover",
-    key: "S2V5",
-    password: "new password",
-  });
-  expect($("#recover").hidden).toBe(true);
-  expect($("#recovery-key").textContent).toBe("TmV3");
-  expect($("#recovery-note").textContent).toContain(
-    "Your new password is set.",
-  );
-  expect(
-    document.querySelector<HTMLTextAreaElement>("#recover-key")!.value,
-  ).toBe("");
+  expect($("#delete").textContent).toContain("the only way to start over");
 });
 
-test("says plainly when the recovery key is wrong", async () => {
-  await start((request) =>
-    request.type === "vault-recover" ? { error: "Integrity" } : LOCKED,
-  );
-
-  $("#recover-open").click();
-  fill("#recover-key", "S2V5");
-  fill("#recover-password", "new password");
-  fill("#recover-confirm", "new password");
-  await submit("#recover");
-
-  expect($("#vault-error").textContent).toBe(
-    "That recovery key doesn't open this vault.",
-  );
-  expect($("#recover").hidden).toBe(false);
-});
-
-test("closes the recovery form on Cancel", async () => {
+test("closes the delete form on Cancel", async () => {
   await start(() => LOCKED);
 
-  $("#recover-open").click();
-  $("#recover-cancel").click();
+  $("#delete-open").click();
+  $("#delete-cancel").click();
 
-  expect($("#recover").hidden).toBe(true);
-  expect($("#unlock").hidden).toBe(false);
-});
-
-test("closes the reset form on Cancel", async () => {
-  await start(() => LOCKED);
-
-  $("#reset-open").click();
-  $("#reset-cancel").click();
-
-  expect($("#reset").hidden).toBe(true);
+  expect($("#delete").hidden).toBe(true);
   expect($("#unlock").hidden).toBe(false);
   expect(sendMessage).not.toHaveBeenCalledWith(
-    expect.objectContaining({ type: "vault-reset" }),
+    expect.objectContaining({ type: "vault-delete" }),
   );
 });
 
@@ -639,10 +576,7 @@ test("remembers the device when asked, and says until when", async () => {
   const until = new Date(2026, 11, 11).getTime();
   await start((request) =>
     request.type === "vault-unlock"
-      ? {
-          status: { ...LOCKED, state: "unlocked", rememberedUntil: until },
-          recoveryKey: null,
-        }
+      ? { ...LOCKED, state: "unlocked", rememberedUntil: until }
       : LOCKED,
   );
   expect(sendMessage).toHaveBeenCalledWith({
@@ -662,27 +596,6 @@ test("remembers the device when asked, and says until when", async () => {
   expect($("#remembered").hidden).toBe(false);
   expect($("#remembered-until").textContent).toBe(
     `This device is remembered until ${new Date(until).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.`,
-  );
-});
-
-test("shows a new recovery key when remembering changed the vault's keys", async () => {
-  await start((request) =>
-    request.type === "vault-unlock"
-      ? {
-          status: { ...LOCKED, state: "unlocked", rememberedUntil: 1 },
-          recoveryKey: "TkVX",
-        }
-      : LOCKED,
-  );
-
-  fill("#unlock-password", "correct horse");
-  document.querySelector<HTMLInputElement>("#unlock-remember")!.checked = true;
-  await submit("#unlock");
-
-  expect($("#recovery").hidden).toBe(false);
-  expect($("#recovery-key").textContent).toBe("TkVX");
-  expect($("#recovery-note").textContent).toContain(
-    "your old recovery key no longer works",
   );
 });
 

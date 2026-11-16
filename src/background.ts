@@ -225,7 +225,7 @@ async function handlePanel(request: PanelRequest): Promise<unknown> {
   if (request.type === "review-approve") return approveReview();
   if (request.type === "restore-latest") return restoreLatest(request.windowId);
   if (request.type === "hide-originals") return hideInTab(request.windowId);
-  if (request.type === "vault-reset") {
+  if (request.type === "vault-delete") {
     const status = await forwardVault<VaultStatus>(request);
     await chrome.storage.local.remove("vault");
     return status;
@@ -233,7 +233,7 @@ async function handlePanel(request: PanelRequest): Promise<unknown> {
   if (request.type !== "vault-create") return forwardVault(request);
   const created = await forwardVault<CreatedVault>(request);
   await chrome.storage.local.set({ vault: created.routing });
-  return { status: created.status, recoveryKey: created.recoveryKey };
+  return created.status;
 }
 
 /**
@@ -255,9 +255,8 @@ const PANEL_REQUESTS = new Set<string>([
   "vault-status",
   "vault-create",
   "vault-unlock",
-  "vault-recover",
   "vault-lock",
-  "vault-reset",
+  "vault-delete",
   "device-forget",
   "review-approve",
   "review-cancel",
