@@ -1,6 +1,6 @@
 /**
- * Side panel: the vault, the Pseudonymize review, the workspace's not
- * sensitive values, and restoring answers.
+ * Side panel: the vault, the Pseudonymize review, the values marked not
+ * sensitive, and restoring answers.
  */
 
 import type {
@@ -124,14 +124,16 @@ const view = {
   restoredSummary:
     document.querySelector<HTMLParagraphElement>("#restored-summary")!,
   restoreError: document.querySelector<HTMLParagraphElement>("#restore-error")!,
-  workspaceNote:
-    document.querySelector<HTMLParagraphElement>("#workspace-note")!,
+  notSensitiveNote: document.querySelector<HTMLParagraphElement>(
+    "#not-sensitive-note",
+  )!,
   notSensitive: document.querySelector<HTMLUListElement>("#not-sensitive")!,
   notSensitiveCount: document.querySelector<HTMLParagraphElement>(
     "#not-sensitive-count",
   )!,
-  workspaceError:
-    document.querySelector<HTMLParagraphElement>("#workspace-error")!,
+  notSensitiveError: document.querySelector<HTMLParagraphElement>(
+    "#not-sensitive-error",
+  )!,
 };
 
 /** Kept only until the user says they saved it. */
@@ -389,12 +391,12 @@ function linkButton(text: string): HTMLButtonElement {
  *
  * @param status The vault's status.
  */
-function renderWorkspace({ state, notSensitive }: VaultStatus): void {
+function renderNotSensitive({ state, notSensitive }: VaultStatus): void {
   if (state !== "unlocked")
-    view.workspaceNote.textContent =
+    view.notSensitiveNote.textContent =
       "Unlock your vault to see the values you've marked not sensitive.";
   else
-    view.workspaceNote.textContent =
+    view.notSensitiveNote.textContent =
       notSensitive.length === 0 ? "No values marked not sensitive yet." : "";
   // Values only ever go in as text, never as markup
   view.notSensitive.replaceChildren(
@@ -412,7 +414,7 @@ function renderWorkspace({ state, notSensitive }: VaultStatus): void {
     }),
   );
   fitList(view.notSensitive, view.notSensitiveCount);
-  if (state !== "unlocked") showError(view.workspaceError, null);
+  if (state !== "unlocked") showError(view.notSensitiveError, null);
 }
 
 /**
@@ -421,7 +423,7 @@ function renderWorkspace({ state, notSensitive }: VaultStatus): void {
  * @param choice The value and its type.
  */
 async function clearChoice(choice: ValueChoice): Promise<void> {
-  await act({ type: "choice-clear", ...choice }, view.workspaceError);
+  await act({ type: "choice-clear", ...choice }, view.notSensitiveError);
 }
 
 /**
@@ -535,7 +537,7 @@ async function restoreLatest(): Promise<void> {
 function render(status: VaultStatus): void {
   renderVault(status);
   renderReview(status);
-  renderWorkspace(status);
+  renderNotSensitive(status);
   renderRestore(status.state);
 }
 

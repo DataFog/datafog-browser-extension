@@ -38,8 +38,9 @@ and transform edge cases without changing the browser APIs the extension uses.
 Core, the FogVault Worker and the model run in an offscreen document, not the
 service worker, which Chrome stops when idle and which can't start Workers. The
 offscreen document stays loaded while the side panel is closed, so checking and
-pseudonymization keep working. The side panel is the UI for the vault and
-workspace; it stays open beside the chat, unlike a full tab.
+pseudonymization keep working. The side panel is the UI for the vault, reviews
+and values marked not sensitive; it stays open beside the chat, unlike a full
+tab.
 
 If the device isn't remembered, the vault locks when Chrome closes or after 15
 minutes without use. The adapter allows one prepared change at a time, so the UI discards
@@ -83,9 +84,9 @@ FogVault's device slots.
 
 The review offers one per-value choice: "Not sensitive". It saves Core's
 `not_sensitive` policy choice for that type and value in the vault's workspace,
-and the review is prepared again without it. The workspace section of the side
-panel lists these values, each with Remove, which clears the choice so the
-value gets a new marker next time.
+and the review is prepared again without it. The side panel's "Values marked
+not sensitive" section lists them, each with Remove, which clears the choice so
+the value gets a new marker next time.
 
 - Core refuses `keep` ("send as is") for every protected type, which covers
   every type the extension checks, so V1 doesn't offer it.
