@@ -6,6 +6,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 import {
   NO_CHAT_BOX,
+  NO_CHAT_BOX_UPDATE,
   type OffscreenRequest,
   type PanelNotice,
   type PanelRequest,
@@ -49,6 +50,8 @@ const tabMessage = vi.fn(
 const setStorage = vi.fn(async (_items: object) => {});
 const removeStorage = vi.fn(async (_keys: string) => {});
 const queryTabs = vi.fn(async (_query: object) => [{ id: 7 }]);
+const requestUpdateCheck = vi.fn(async () => ({ status: "no_update" }));
+let updateAvailable: (details: { version: string }) => void = () => {};
 let stored: object;
 
 const PANEL: Sender = {
@@ -116,6 +119,13 @@ beforeEach(async () => {
             listener = added;
           },
         },
+        onUpdateAvailable: {
+          addListener: (added: typeof updateAvailable) => {
+            updateAvailable = added;
+          },
+        },
+        requestUpdateCheck,
+        getManifest: () => ({ version: "0.1.0" }),
         sendMessage,
         id: "datafog",
         getURL: (path: string) => `chrome-extension://datafog/${path}`,
@@ -149,12 +159,59 @@ test("forwards scans with the settings, opening one offscreen document", async (
 });
 
 test("sets the toolbar badge itself", async () => {
-  await send({ type: "protection", protected: false });
+  expect(await send({ type: "protection", protected: false })).toEqual({
+    updateReady: false,
+  });
 
   expect(setBadgeText).toHaveBeenCalledWith({ tabId: 7, text: "!" });
   expect(setTitle).toHaveBeenCalledWith({ tabId: 7, title: NO_CHAT_BOX });
+  expect(requestUpdateCheck).toHaveBeenCalled();
   expect(createDocument).not.toHaveBeenCalled();
   expect(sendMessage).not.toHaveBeenCalled();
+});
+
+test("says an update may fix a missing chat box when one is waiting", async () => {
+  stored = { pendingUpdate: "0.2.0" };
+
+  expect(await send({ type: "protection", protected: false })).toEqual({
+    updateReady: true,
+  });
+  expect(setTitle).toHaveBeenCalledWith({
+    tabId: 7,
+    title: NO_CHAT_BOX_UPDATE,
+  });
+  expect(requestUpdateCheck).not.toHaveBeenCalled();
+});
+
+test("ignores a saved update once it's the version running", async () => {
+  stored = { pendingUpdate: "0.1.0" };
+
+  expect(await send({ type: "update-status" }, PANEL)).toEqual({
+    ready: false,
+  });
+});
+
+test("saves a waiting update's version, and tells the side panel", async () => {
+  updateAvailable({ version: "0.2.0" });
+
+  expect(setStorage).toHaveBeenCalledWith({ pendingUpdate: "0.2.0" });
+  expect(sendMessage).toHaveBeenCalledWith({
+    target: "panel",
+    type: "update-ready",
+  });
+});
+
+test("answers the update status for the side panel only", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  stored = { pendingUpdate: "0.2.0" };
+
+  expect(await send({ type: "update-status" })).toEqual({
+    error: "not_allowed",
+  });
+  expect(await send({ type: "update-status" }, PANEL)).toEqual({
+    ready: true,
+  });
+  warn.mockRestore();
 });
 
 test("answers and logs a code when the offscreen document fails", async () => {

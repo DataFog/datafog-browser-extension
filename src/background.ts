@@ -6,6 +6,7 @@
 
 import {
   NO_CHAT_BOX,
+  NO_CHAT_BOX_UPDATE,
   toError,
   type CreatedVault,
   type ErrorResponse,
@@ -23,6 +24,7 @@ import {
   type VaultStatus,
 } from "./messages";
 import { blockingSends, loadSettings } from "./settings";
+import { PENDING_UPDATE, updateWaiting } from "./update";
 
 let opening: Promise<void> | undefined;
 
@@ -225,6 +227,7 @@ async function handlePanel(request: PanelRequest): Promise<unknown> {
   if (request.type === "review-approve") return approveReview();
   if (request.type === "restore-latest") return restoreLatest(request.windowId);
   if (request.type === "hide-originals") return hideInTab(request.windowId);
+  if (request.type === "update-status") return { ready: await updateWaiting() };
   if (request.type === "vault-delete") {
     const status = await forwardVault<VaultStatus>(request);
     await chrome.storage.local.remove("vault");
@@ -253,6 +256,7 @@ function fromExtensionPage(sender: chrome.runtime.MessageSender): boolean {
 
 const PANEL_REQUESTS = new Set<string>([
   "vault-status",
+  "update-status",
   "vault-create",
   "vault-unlock",
   "vault-lock",
@@ -305,6 +309,8 @@ async function handle(
     return {};
   }
   if (request.type === "protection") {
+    // A broken page may be fixed by an update that's waiting to install
+    const updateReady = !request.protected && (await updateWaiting());
     // Toolbar "!" when the chat box can't be found (the page isn't protected)
     await chrome.action.setBadgeText({
       tabId,
@@ -312,9 +318,13 @@ async function handle(
     });
     await chrome.action.setTitle({
       tabId,
-      title: request.protected ? "Open DataFog" : NO_CHAT_BOX,
+      title: request.protected
+        ? "Open DataFog"
+        : updateReady
+          ? NO_CHAT_BOX_UPDATE
+          : NO_CHAT_BOX,
     });
-    return {};
+    return { updateReady };
   }
 
   if (request.type === "block-sends") {
@@ -355,6 +365,14 @@ chrome.runtime.onMessage.addListener(
     return true;
   },
 );
+
+// Saved for pages and the side panel, since this worker may stop before they ask
+chrome.runtime.onUpdateAvailable.addListener(({ version }) => {
+  void chrome.storage.local.set({ [PENDING_UPDATE]: version });
+  const notice: PanelNotice = { target: "panel", type: "update-ready" };
+  // No panel open means no one to tell
+  chrome.runtime.sendMessage(notice).catch(() => {});
+});
 
 // A panel connects when it opens, naming its window, and drops when it closes
 chrome.runtime.onConnect.addListener((port) => {

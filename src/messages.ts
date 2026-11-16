@@ -12,6 +12,10 @@ import type { Settings } from "./settings";
 export const NO_CHAT_BOX =
   "DataFog can't find the chat box, so this page isn't being checked. Try reloading it.";
 
+/** The same, when a DataFog update is waiting that may fix it. */
+export const NO_CHAT_BOX_UPDATE =
+  "DataFog can't find the chat box, so this page isn't being checked. A DataFog update is ready and may fix this: open DataFog and choose Update now.";
+
 export type Request =
   | { type: "scan"; seq: number; text: string }
   | { type: "redact"; text: string }
@@ -36,6 +40,7 @@ export type CoreRequest = Exclude<
 export type PanelRequest =
   /** autoUnlock: the panel just opened, so a remembered device may unlock. */
   | { type: "vault-status"; autoUnlock?: boolean }
+  | { type: "update-status" }
   | { type: "vault-create"; password: string; remember: boolean }
   | { type: "vault-unlock"; password: string; remember: boolean }
   | { type: "vault-lock" }
@@ -84,7 +89,7 @@ export type TabRequest =
 /** Tells an open side panel the vault or its review changed. */
 export interface PanelNotice {
   target: "panel";
-  type: "vault-changed";
+  type: "vault-changed" | "update-ready";
 }
 
 /**
