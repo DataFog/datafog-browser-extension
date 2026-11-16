@@ -676,6 +676,19 @@ test("undoes and redoes a redaction from the panel", async () => {
   expect(panelButton("undo").disabled).toBe(false);
 });
 
+test("keeps offering undo when the editor redraws line breaks", async () => {
+  const box = await start(coreForTwoEmails);
+  await type(box, TWO_EMAILS);
+  await press("redact");
+
+  // As ChatGPT's editor does around a link, innerText gains a line break
+  await type(box, REDACTED.replace("or ", "or\n"));
+
+  expect(panelButton("undo").disabled).toBe(false);
+  await press("undo");
+  expect(box.value).toBe(TWO_EMAILS);
+});
+
 test("undoes a rich-text redaction with one edit per value", async () => {
   const exec = stubEditing();
   await start(
