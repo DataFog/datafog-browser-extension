@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { OFF_TITLE } from "./badge";
 import {
   NO_CHAT_BOX,
+  NO_CHAT_BOX_UPDATE,
   type RedactResponse,
   type Request,
   type TabRequest,
@@ -452,6 +453,23 @@ test("offers ways to report a failure, but not an update", async () => {
   code = "extension_reloaded";
   await type(box, "jane@example.org");
   expect(report.hidden).toBe(true);
+});
+
+test("says an update may fix a missing chat box once one is waiting", async () => {
+  let updateReady = false;
+  await start(
+    async (request) => (request.type === "protection" ? { updateReady } : {}),
+    "<main></main>",
+  );
+  await vi.advanceTimersByTimeAsync(10_000);
+  const tab = document.querySelector("datafog-tab")!.shadowRoot!;
+  const button = tab.querySelector("button")!;
+  expect(button.title).toBe(NO_CHAT_BOX);
+
+  updateReady = true;
+  storageListener({ pendingUpdate: { newValue: "0.2.0" } }, "local");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(button.title).toBe(NO_CHAT_BOX_UPDATE);
 });
 
 test("warns on the page tab until a chat box appears", async () => {

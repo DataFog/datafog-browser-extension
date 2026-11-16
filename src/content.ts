@@ -9,6 +9,7 @@
 import { Badge } from "./badge";
 import {
   NO_CHAT_BOX,
+  NO_CHAT_BOX_UPDATE,
   type BlockSendsResponse,
   type ErrorResponse,
   type RedactResponse,
@@ -20,6 +21,7 @@ import { hideOriginals, MARKER, showOriginals } from "./originals";
 import { clickSend, watchPage } from "./page";
 import { loadSettings } from "./settings";
 import { mountTab } from "./tab";
+import { PENDING_UPDATE } from "./update";
 
 /** The last redaction or pseudonymization, kept so it can be undone and redone. */
 interface Redaction {
@@ -781,15 +783,35 @@ chrome.runtime.onMessage.addListener(
 // Turning checking off greys out the badge and closes its panel at once; turning it on
 // checks the chat box as it stands
 chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  // An update downloaded while the chat box is missing may fix it
+  if (PENDING_UPDATE in changes && missing && !composer) void warnMissing();
   const next = (changes.settings?.newValue ?? {}) as { enabled?: unknown };
-  if (area !== "local" || typeof next.enabled !== "boolean") return;
-  if (next.enabled === enabled) return;
+  if (typeof next.enabled !== "boolean" || next.enabled === enabled) return;
   enabled = next.enabled;
   void scanNow(true);
 });
 
 // The page tab opens or closes the side panel; send right away, within the click
 const warnTab = mountTab(() => void togglePanel());
+
+/** Whether the chat box went unfound for the whole wait. */
+let missing = false;
+
+/**
+ * Warn that the chat box is missing, and that an update may fix it if one is
+ * waiting.
+ */
+async function warnMissing(): Promise<void> {
+  const response = await ask<{ updateReady?: boolean }>({
+    type: "protection",
+    protected: false,
+  });
+  // Found while asking
+  if (composer) return;
+  const ready = !("error" in response) && response.updateReady === true;
+  warnTab(ready ? NO_CHAT_BOX_UPDATE : NO_CHAT_BOX);
+}
 
 watchPage(() => composer, {
   send: allowSend,
@@ -801,6 +823,7 @@ if (initial) bind(initial);
 
 window.setTimeout(() => {
   if (composer) return;
-  void ask({ type: "protection", protected: false });
+  missing = true;
   warnTab(NO_CHAT_BOX);
+  void warnMissing();
 }, FIND_TIMEOUT_MS);
