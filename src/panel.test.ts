@@ -316,18 +316,18 @@ test("lists not sensitive values as text, and removes one", async () => {
 
   expect(sendMessage).toHaveBeenCalledWith({ type: "choice-clear", ...choice });
   expect($("#not-sensitive").children).toHaveLength(0);
-  expect($("#workspace-note").textContent).toBe(
+  expect($("#not-sensitive-note").textContent).toBe(
     "No values marked not sensitive yet.",
   );
 });
 
 test("hides what not sensitive values do behind an info button", async () => {
   await start(() => LOCKED);
-  const toggle = $("#workspace-info-toggle");
+  const toggle = $("#not-sensitive-info-toggle");
 
-  expect($("#workspace-info").hidden).toBe(true);
+  expect($("#not-sensitive-info").hidden).toBe(true);
   toggle.click();
-  expect($("#workspace-info").hidden).toBe(false);
+  expect($("#not-sensitive-info").hidden).toBe(false);
   expect($("#vault-info").hidden).toBe(true);
   expect(toggle.getAttribute("aria-expanded")).toBe("true");
 });
@@ -349,7 +349,7 @@ test("scrolls a long list of not sensitive values within the panel", async () =>
 test("asks to unlock before showing not sensitive values", async () => {
   await start(() => LOCKED);
 
-  expect($("#workspace-note").textContent).toContain("Unlock your vault");
+  expect($("#not-sensitive-note").textContent).toContain("Unlock your vault");
 });
 
 test("asks to unlock when Pseudonymize is waiting", async () => {
