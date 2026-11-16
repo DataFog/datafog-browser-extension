@@ -71,8 +71,6 @@ const view = {
     document.querySelector<HTMLSpanElement>("#remembered-until")!,
   deleteOpen: document.querySelector<HTMLButtonElement>("#delete-open")!,
   deleteForm: document.querySelector<HTMLFormElement>("#delete")!,
-  forgotPassword:
-    document.querySelector<HTMLButtonElement>("#forgot-password")!,
   deleteConfirm: document.querySelector<HTMLInputElement>("#delete-confirm")!,
   deleteSubmit: document.querySelector<HTMLButtonElement>("#delete-submit")!,
   ruleLength: document.querySelector<HTMLLIElement>("#rule-length")!,
@@ -160,7 +158,6 @@ function renderVault(status: VaultStatus): void {
     : "";
   view.create.hidden = state !== "none";
   view.unlock.hidden = state !== "locked" || deleting;
-  view.forgotPassword.hidden = state !== "locked" || deleting;
   view.unlocked.hidden = state !== "unlocked" || deleting;
   view.deleteOpen.hidden = state === "none" || deleting;
   view.deleteForm.hidden = state === "none" || !deleting;
@@ -577,7 +574,6 @@ document
     "click",
     () => void act({ type: "review-cancel" }, view.reviewError),
   );
-view.forgotPassword.addEventListener("click", () => showDelete(true));
 view.deleteOpen.addEventListener("click", () => showDelete(true));
 document
   .querySelector("#delete-cancel")!

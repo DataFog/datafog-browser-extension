@@ -423,14 +423,14 @@ test("deletes the vault once DELETE is typed, without its password", async () =>
   expect($("#create").hidden).toBe(false);
 });
 
-test("offers Delete vault when the password is forgotten", async () => {
+test("points a forgotten password to Delete vault", async () => {
   await start(() => LOCKED);
 
-  $("#forgot-password").click();
+  expect(document.querySelector("#forgot-password")).toBeNull();
+  $("#delete-open").click();
 
   expect($("#delete").hidden).toBe(false);
   expect($("#unlock").hidden).toBe(true);
-  expect($("#forgot-password").hidden).toBe(true);
   expect($("#delete").textContent).toContain("the only way to start over");
 });
 
