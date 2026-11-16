@@ -336,7 +336,7 @@ export class Extension {
     if (!panel) throw new Error("Native side panel target was not attached");
     await expect(
       panel
-        .locator("#create, #unlock, #unlocked, #recovery")
+        .locator("#create, #unlock, #unlocked")
         .filter({ visible: true })
         .first(),
     ).toBeVisible();

@@ -7,7 +7,8 @@
  * and this document.
  *
  * A remembered device unlocks the vault without the password for 30 days, on
- * use. A manual lock pauses that until the next password unlock.
+ * use, and keeps it from locking after idling. A manual lock pauses that until
+ * the next password unlock.
  */
 
 import type {
@@ -24,7 +25,6 @@ import type { WorkspaceFinding } from "@datafog/wasm";
 
 import type {
   CreatedVault,
-  UnlockedVault,
   Pseudonymized,
   RestoredValue,
   RestoredWithValues,
@@ -41,8 +41,11 @@ import type { Devices } from "./device";
 /** The vault's name in IndexedDB. */
 export const VAULT_NAME = "datafog";
 
-/** Lock after this long without use, as the ADR sets. */
+/** Lock after this long without use, unless the device is remembered. */
 export const IDLE_LOCK_MS = 15 * 60_000;
+
+/** The longest delay setTimeout keeps; a longer one fires at once. */
+const MAX_TIMEOUT_MS = 2 ** 31 - 1;
 
 /** The parts of FogVault the host uses. */
 export type Vault = Pick<
@@ -57,7 +60,6 @@ export type Vault = Pick<
   | "unlockDevice"
   | "enrollDevice"
   | "protectAccess"
-  | "recoverAccess"
 >;
 
 /** The parts of Core's adapter the host uses. */
@@ -152,18 +154,6 @@ function codeOf(error: unknown): string {
 }
 
 /**
- * Take a recovery key FogVault handed over, wiping its bytes.
- *
- * @param key The key's bytes, if any.
- * @returns Its base64 text, or an empty string.
- */
-function takeKey(key: Uint8Array | null | undefined): string {
-  const text = key ? toBase64(key) : "";
-  key?.fill(0);
-  return text;
-}
-
-/**
  * Encode bytes as base64.
  *
  * @param bytes The bytes.
@@ -181,27 +171,6 @@ export function toBase64(bytes: Uint8Array): string {
  */
 function fromBase64(text: string): Uint8Array {
   return Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
-}
-
-/** A FogVault recovery key's length, in bytes. */
-const RECOVERY_KEY_BYTES = 80;
-
-/**
- * Read a recovery key as the user typed or pasted it.
- *
- * @param text The key's base64 text; spaces and line breaks are ignored.
- * @returns Its bytes.
- */
-function readRecoveryKey(text: string): Uint8Array {
-  let bytes: Uint8Array;
-  try {
-    bytes = fromBase64(text.replaceAll(/\s/g, ""));
-  } catch {
-    throw failure("invalid_recovery_key");
-  }
-  if (bytes.length !== RECOVERY_KEY_BYTES)
-    throw failure("invalid_recovery_key");
-  return bytes;
 }
 
 /**
@@ -460,12 +429,13 @@ export class VaultHost<V extends Vault = Vault> {
    * Create the vault and its workspace, leaving it unlocked.
    *
    * Every vault starts with a device slot, so remembering a device later keeps
-   * its keys and recovery key; without Remember, that key is deleted at once.
+   * its keys; without Remember, that key is deleted at once. There's no
+   * recovery key: a forgotten password means deleting the vault.
    *
    * @param password The new password.
    * @param routing Existing routing, if a vault was already created.
    * @param remember Whether to remember this device for 30 days.
-   * @returns The status, the one-time recovery key and the new routing.
+   * @returns The status and the new routing.
    */
   async create(
     password: string,
@@ -475,8 +445,8 @@ export class VaultHost<V extends Vault = Vault> {
     if (routing) throw failure("vault_exists");
     const identity = await this.newDevice();
     const vault = this.ensureVault();
-    const created = await vault.create(VAULT_NAME, password, {
-      recovery: true,
+    await vault.create(VAULT_NAME, password, {
+      recovery: false,
       profile: "password-or-device",
       devices: [identity],
     });
@@ -488,14 +458,13 @@ export class VaultHost<V extends Vault = Vault> {
       namespace: this.deps.randomId(),
     };
     this.owner = await this.deps.createOwner(vault, route);
-    const recoveryKey = takeKey(created.recovery_key);
     const made = {
       recordId: toBase64(route.recordId),
       namespace: toBase64(route.namespace),
     };
     this.touch();
     await this.prepareWaiting();
-    return { status: this.status(made), recoveryKey, routing: made };
+    return { status: this.status(made), routing: made };
   }
 
   /**
@@ -503,89 +472,39 @@ export class VaultHost<V extends Vault = Vault> {
    * this device if asked.
    *
    * A vault made before remember device has no device slot. Adding one
-   * re-encrypts it with new keys, so it comes with a new recovery key.
+   * re-encrypts it with new keys.
    *
    * @param password The password.
    * @param routing Where the workspace lives.
    * @param remember Whether to remember this device for 30 days.
-   * @returns The status, and a new recovery key if the vault needed one.
+   * @returns The status.
    */
   async unlock(
     password: string,
     routing: VaultRouting | null,
     remember: boolean,
-  ): Promise<UnlockedVault> {
+  ): Promise<VaultStatus> {
     if (!routing) throw failure("no_vault");
-    if (this.owner && !this.owner.closed)
-      return { status: this.status(routing), recoveryKey: null };
+    if (this.owner && !this.owner.closed) return this.status(routing);
     const identity = remember ? await this.newDevice() : null;
     const vault = await this.openVault();
     await vault.unlock(password);
     await this.deps.devices.setPaused(false);
-    let recoveryKey: string | null = null;
     if (identity) {
       const source = { kind: "password" as const, password };
       const { profile } = await vault.describeAccess();
       if (profile === "password-or-device")
         await vault.enrollDevice(source, identity);
       else
-        recoveryKey = takeKey(
-          (
-            await vault.protectAccess(source, {
-              password,
-              profile: "password-or-device",
-              devices: [identity],
-              recovery: true,
-            })
-          ).recovery_key,
-        );
+        await vault.protectAccess(source, {
+          password,
+          profile: "password-or-device",
+          devices: [identity],
+          recovery: false,
+        });
     }
     await this.openWorkspace(vault, routing);
-    return { status: this.status(routing), recoveryKey };
-  }
-
-  /**
-   * Set a new password with the recovery key, keeping the vault's values.
-   * FogVault re-encrypts the vault with new keys, so the old password, the old
-   * recovery key and any remembered device stop working, and there's a new
-   * recovery key to show once.
-   *
-   * @param key The recovery key, as shown when it was made.
-   * @param password The new password.
-   * @param routing Where the workspace lives.
-   * @returns The unlocked status and the new recovery key.
-   */
-  async recover(
-    key: string,
-    password: string,
-    routing: VaultRouting | null,
-  ): Promise<UnlockedVault> {
-    if (!routing) throw failure("no_vault");
-    const kit = readRecoveryKey(key);
-    await this.lock(routing);
-    // Every vault keeps a device slot, as when it was made
-    const identity = await this.newDevice();
-    const vault = await this.openVault();
-    let result;
-    try {
-      result = await vault.recoverAccess(kit, {
-        password,
-        profile: "password-or-device",
-        devices: [identity],
-        recovery: true,
-      });
-    } catch (error) {
-      // FogVault stops its Worker when recovery fails
-      await this.dropVault();
-      throw error;
-    } finally {
-      kit.fill(0);
-      await this.deps.devices.forget();
-    }
-    await this.deps.devices.setPaused(false);
-    const recoveryKey = takeKey(result.recovery_key);
-    await this.openWorkspace(vault, routing);
-    return { status: this.status(routing), recoveryKey };
+    return this.status(routing);
   }
 
   /**
@@ -596,6 +515,8 @@ export class VaultHost<V extends Vault = Vault> {
    */
   async forgetDevice(routing: VaultRouting | null): Promise<VaultStatus> {
     await this.deps.devices.forget();
+    // Without the device, an open vault locks after idling again
+    if (this.owner && !this.owner.closed) this.touch();
     return this.status(routing);
   }
 
@@ -626,13 +547,13 @@ export class VaultHost<V extends Vault = Vault> {
 
   /**
    * Delete the vault and everything in it. No password is needed: deleting
-   * reveals nothing, and someone who lost both their password and recovery
-   * key must still be able to start over. The side panel asks them to confirm.
+   * reveals nothing, and someone who forgot their password must still be
+   * able to start over. The side panel asks them to confirm.
    *
    * @param routing Where the workspace lives.
    * @returns The status, with no vault.
    */
-  async reset(routing: VaultRouting | null): Promise<VaultStatus> {
+  async deleteVault(routing: VaultRouting | null): Promise<VaultStatus> {
     if (!routing) throw failure("no_vault");
     await this.lock(routing);
     // Closing stops FogVault's Worker, releasing the database to delete
@@ -838,8 +759,20 @@ export class VaultHost<V extends Vault = Vault> {
   /** Restart the idle timer. */
   private touch(): void {
     clearTimeout(this.idle);
+    // A remembered device keeps the vault open until its 30 days end
+    const now = this.deps.now();
+    const until = this.deps.devices.active(now)
+      ? this.deps.devices.rememberedUntil(now)
+      : null;
+    const delay =
+      until === null ? IDLE_LOCK_MS : Math.min(until - now, MAX_TIMEOUT_MS);
     this.idle = setTimeout(() => {
+      // A long wait comes in parts; lock once the device is no longer active
+      if (until !== null && this.deps.devices.active(this.deps.now())) {
+        this.touch();
+        return;
+      }
       void this.lock(null).finally(() => this.deps.notify());
-    }, IDLE_LOCK_MS);
+    }, delay);
   }
 }

@@ -1,6 +1,6 @@
 /**
- * Side panel: the vault, the Pseudonymize review, the workspace's not
- * sensitive values, and restoring answers.
+ * Side panel: the vault, the Pseudonymize review, the values marked not
+ * sensitive, and restoring answers.
  */
 
 import type {
@@ -8,33 +8,13 @@ import type {
   PanelNotice,
   PanelRequest,
   RestoredInPage,
-  UnlockedVault,
   ValueChoice,
   VaultStatus,
 } from "./messages";
 import { LABELS } from "./settings";
 
-/** What the recovery key is for, when the vault is new. */
-const RECOVERY_NOTE =
-  "Your recovery key. Save it somewhere safe, such as a password manager. You'll need it to get back into your vault if you forget your password, and DataFog can't show it again. If you lose both your password and this key, no one can open your vault, DataFog included; you can only reset it, which deletes its values.";
-
-/** Why there's a new recovery key, when remembering changed the vault's keys. */
-const NEW_RECOVERY_NOTE =
-  "Remembering this device gave your vault new keys, so your old recovery key no longer works. Save this new one somewhere safe, such as a password manager. DataFog can't show it again, and without it or your password your vault can't be opened.";
-
 /** Values a list shows before it scrolls within the panel. */
 const LIST_VISIBLE = 5;
-
-/** Why there's a new recovery key, after setting a new password with one. */
-const RECOVERED_NOTE =
-  "Your new password is set. Your vault has new keys, so your old recovery key no longer works, and a remembered device needs remembering again. Save this new key somewhere safe, such as a password manager. DataFog can't show it again.";
-
-/** FogVault's codes for a recovery key that doesn't open this vault. */
-const WRONG_KEY_CODES = new Set([
-  "InvalidInput",
-  "Integrity",
-  "Authentication",
-]);
 
 /** Shortest password the vault accepts. */
 const MIN_PASSWORD = 8;
@@ -52,9 +32,6 @@ const EXPLAINED: Record<string, string> = {
   no_chat: "Open a ChatGPT chat in this tab to restore its latest answer.",
   no_answer: "There's no answer in this chat yet.",
   vault_locked: "Unlock your vault to restore.",
-  invalid_recovery_key:
-    "That isn't a whole recovery key. Copy all of it and try again.",
-  wrong_recovery_key: "That recovery key doesn't open this vault.",
   no_markers: "There are no markers in ChatGPT's latest answer.",
 };
 
@@ -89,31 +66,15 @@ const view = {
   createSubmit: document.querySelector<HTMLButtonElement>("#create-submit")!,
   createRemember: document.querySelector<HTMLInputElement>("#create-remember")!,
   unlockRemember: document.querySelector<HTMLInputElement>("#unlock-remember")!,
-  recoveryNote: document.querySelector<HTMLParagraphElement>("#recovery-note")!,
   remembered: document.querySelector<HTMLParagraphElement>("#remembered")!,
   rememberedUntil:
     document.querySelector<HTMLSpanElement>("#remembered-until")!,
-  resetOpen: document.querySelector<HTMLButtonElement>("#reset-open")!,
-  reset: document.querySelector<HTMLFormElement>("#reset")!,
-  recoverOpen: document.querySelector<HTMLButtonElement>("#recover-open")!,
-  recover: document.querySelector<HTMLFormElement>("#recover")!,
-  recoverKey: document.querySelector<HTMLTextAreaElement>("#recover-key")!,
-  recoverPassword:
-    document.querySelector<HTMLInputElement>("#recover-password")!,
-  recoverConfirm: document.querySelector<HTMLInputElement>("#recover-confirm")!,
-  recoverRuleLength: document.querySelector<HTMLLIElement>(
-    "#recover-rule-length",
-  )!,
-  recoverRuleMatch: document.querySelector<HTMLLIElement>(
-    "#recover-rule-match",
-  )!,
-  recoverSubmit: document.querySelector<HTMLButtonElement>("#recover-submit")!,
-  resetConfirm: document.querySelector<HTMLInputElement>("#reset-confirm")!,
-  resetSubmit: document.querySelector<HTMLButtonElement>("#reset-submit")!,
+  deleteOpen: document.querySelector<HTMLButtonElement>("#delete-open")!,
+  deleteForm: document.querySelector<HTMLFormElement>("#delete")!,
+  deleteConfirm: document.querySelector<HTMLInputElement>("#delete-confirm")!,
+  deleteSubmit: document.querySelector<HTMLButtonElement>("#delete-submit")!,
   ruleLength: document.querySelector<HTMLLIElement>("#rule-length")!,
   ruleMatch: document.querySelector<HTMLLIElement>("#rule-match")!,
-  recovery: document.querySelector<HTMLDivElement>("#recovery")!,
-  recoveryKey: document.querySelector<HTMLElement>("#recovery-key")!,
   unlock: document.querySelector<HTMLFormElement>("#unlock")!,
   unlockPassword: document.querySelector<HTMLInputElement>("#unlock-password")!,
   unlocked: document.querySelector<HTMLDivElement>("#unlocked")!,
@@ -124,29 +85,25 @@ const view = {
   restoredSummary:
     document.querySelector<HTMLParagraphElement>("#restored-summary")!,
   restoreError: document.querySelector<HTMLParagraphElement>("#restore-error")!,
-  workspaceNote:
-    document.querySelector<HTMLParagraphElement>("#workspace-note")!,
+  notSensitiveNote: document.querySelector<HTMLParagraphElement>(
+    "#not-sensitive-note",
+  )!,
   notSensitive: document.querySelector<HTMLUListElement>("#not-sensitive")!,
   notSensitiveCount: document.querySelector<HTMLParagraphElement>(
     "#not-sensitive-count",
   )!,
-  workspaceError:
-    document.querySelector<HTMLParagraphElement>("#workspace-error")!,
+  notSensitiveError: document.querySelector<HTMLParagraphElement>(
+    "#not-sensitive-error",
+  )!,
 };
-
-/** Kept only until the user says they saved it. */
-let recoveryKey: string | null = null;
 
 /** The latest restored answer, kept only for Copy until it's hidden. */
 let restoredText = "";
 
-/** Whether the reset form is open. */
-let resetting = false;
+/** Whether the delete form is open. */
+let deleting = false;
 
-/** Whether the recovery form is open. */
-let recovering = false;
-
-/** The last status shown, to redraw after opening or closing the reset form. */
+/** The last status shown, to redraw after opening or closing the delete form. */
 let shown: VaultStatus | null = null;
 
 /**
@@ -189,29 +146,21 @@ async function ask<T>(request: PanelRequest): Promise<T | ErrorResponse> {
 }
 
 /**
- * Show the vault: create, recovery key, unlock or lock.
+ * Show the vault: create, unlock or lock.
  *
  * @param state The vault's state.
  */
 function renderVault(status: VaultStatus): void {
   const { state, rememberedUntil } = status;
-  view.remembered.hidden =
-    state === "none" || rememberedUntil === null || recoveryKey !== null;
+  view.remembered.hidden = state === "none" || rememberedUntil === null;
   view.rememberedUntil.textContent = rememberedUntil
     ? `This device is remembered until ${new Date(rememberedUntil).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.`
     : "";
-  view.create.hidden = state !== "none" || recoveryKey !== null;
-  view.recovery.hidden = recoveryKey === null;
-  view.recoveryKey.textContent = recoveryKey ?? "";
-  if (recoveryKey === null) view.recoveryNote.textContent = RECOVERY_NOTE;
-  view.unlock.hidden = state !== "locked" || resetting || recovering;
-  view.recoverOpen.hidden = state !== "locked" || resetting || recovering;
-  view.recover.hidden = state !== "locked" || !recovering;
-  view.unlocked.hidden =
-    state !== "unlocked" || recoveryKey !== null || resetting;
-  view.resetOpen.hidden =
-    state === "none" || recoveryKey !== null || resetting || recovering;
-  view.reset.hidden = state === "none" || !resetting;
+  view.create.hidden = state !== "none";
+  view.unlock.hidden = state !== "locked" || deleting;
+  view.unlocked.hidden = state !== "unlocked" || deleting;
+  view.deleteOpen.hidden = state === "none" || deleting;
+  view.deleteForm.hidden = state === "none" || !deleting;
   view.vaultState.hidden = state === "none";
   if (state !== "none") {
     const [label, paths] = STATE_ICONS[state];
@@ -224,57 +173,26 @@ function renderVault(status: VaultStatus): void {
 }
 
 /**
- * Open or close the reset form.
+ * Open or close the delete form.
  *
  * @param open Whether to open it.
  */
-function showReset(open: boolean): void {
-  resetting = open;
-  view.reset.reset();
-  view.resetSubmit.disabled = true;
+function showDelete(open: boolean): void {
+  deleting = open;
+  view.deleteForm.reset();
+  view.deleteSubmit.disabled = true;
   showError(view.vaultError, null);
   if (shown) renderVault(shown);
-  if (open) view.resetConfirm.focus();
+  if (open) view.deleteConfirm.focus();
 }
 
 /**
- * Whether the user typed the reset confirmation.
+ * Whether the user typed the delete confirmation.
  *
  * @returns True once DELETE is typed, in any case.
  */
-function resetConfirmed(): boolean {
-  return view.resetConfirm.value.trim().toUpperCase() === "DELETE";
-}
-
-/**
- * Open or close the recovery form.
- *
- * @param open Whether to open it.
- */
-function showRecover(open: boolean): void {
-  recovering = open;
-  view.recover.reset();
-  checkRecover();
-  showError(view.vaultError, null);
-  if (shown) renderVault(shown);
-  if (open) view.recoverKey.focus();
-}
-
-/**
- * Check the recovery form: a key, and a new password that meets the rules.
- *
- * @returns Whether it can be sent.
- */
-function checkRecover(): boolean {
-  const ready =
-    checkRules(
-      view.recoverPassword.value,
-      view.recoverConfirm.value,
-      view.recoverRuleLength,
-      view.recoverRuleMatch,
-    ) && view.recoverKey.value.trim() !== "";
-  view.recoverSubmit.disabled = !ready;
-  return ready;
+function deleteConfirmed(): boolean {
+  return view.deleteConfirm.value.trim().toUpperCase() === "DELETE";
 }
 
 /**
@@ -389,12 +307,12 @@ function linkButton(text: string): HTMLButtonElement {
  *
  * @param status The vault's status.
  */
-function renderWorkspace({ state, notSensitive }: VaultStatus): void {
+function renderNotSensitive({ state, notSensitive }: VaultStatus): void {
   if (state !== "unlocked")
-    view.workspaceNote.textContent =
+    view.notSensitiveNote.textContent =
       "Unlock your vault to see the values you've marked not sensitive.";
   else
-    view.workspaceNote.textContent =
+    view.notSensitiveNote.textContent =
       notSensitive.length === 0 ? "No values marked not sensitive yet." : "";
   // Values only ever go in as text, never as markup
   view.notSensitive.replaceChildren(
@@ -412,7 +330,7 @@ function renderWorkspace({ state, notSensitive }: VaultStatus): void {
     }),
   );
   fitList(view.notSensitive, view.notSensitiveCount);
-  if (state !== "unlocked") showError(view.workspaceError, null);
+  if (state !== "unlocked") showError(view.notSensitiveError, null);
 }
 
 /**
@@ -421,7 +339,7 @@ function renderWorkspace({ state, notSensitive }: VaultStatus): void {
  * @param choice The value and its type.
  */
 async function clearChoice(choice: ValueChoice): Promise<void> {
-  await act({ type: "choice-clear", ...choice }, view.workspaceError);
+  await act({ type: "choice-clear", ...choice }, view.notSensitiveError);
 }
 
 /**
@@ -535,7 +453,7 @@ async function restoreLatest(): Promise<void> {
 function render(status: VaultStatus): void {
   renderVault(status);
   renderReview(status);
-  renderWorkspace(status);
+  renderNotSensitive(status);
   renderRestore(status.state);
 }
 
@@ -572,12 +490,12 @@ async function act(
 }
 
 /**
- * Create the vault, then show its recovery key once.
+ * Create the vault, leaving it unlocked.
  *
  * @param password The new password.
  */
 async function create(password: string, remember: boolean): Promise<void> {
-  const response = await ask<{ status: VaultStatus; recoveryKey: string }>({
+  const response = await ask<VaultStatus>({
     type: "vault-create",
     password,
     remember,
@@ -587,18 +505,17 @@ async function create(password: string, remember: boolean): Promise<void> {
     return;
   }
   showError(view.vaultError, null);
-  recoveryKey = response.recoveryKey;
-  render(response.status);
+  render(response);
 }
 
 /**
- * Unlock the vault, showing a new recovery key if remembering made one.
+ * Unlock the vault.
  *
  * @param password The password.
  * @param remember Whether to remember this device for 30 days.
  */
 async function unlock(password: string, remember: boolean): Promise<void> {
-  const response = await ask<UnlockedVault>({
+  const response = await ask<VaultStatus>({
     type: "vault-unlock",
     password,
     remember,
@@ -609,40 +526,7 @@ async function unlock(password: string, remember: boolean): Promise<void> {
     return;
   }
   showError(view.vaultError, null);
-  if (response.recoveryKey) {
-    recoveryKey = response.recoveryKey;
-    view.recoveryNote.textContent = NEW_RECOVERY_NOTE;
-  }
-  render(response.status);
-}
-
-/**
- * Set a new password with the recovery key, then show the new key once.
- *
- * @param key The recovery key.
- * @param password The new password.
- */
-async function recover(key: string, password: string): Promise<void> {
-  const response = await ask<UnlockedVault>({
-    type: "vault-recover",
-    key,
-    password,
-  });
-  if ("error" in response) {
-    await refresh();
-    showError(
-      view.vaultError,
-      WRONG_KEY_CODES.has(response.error)
-        ? "wrong_recovery_key"
-        : response.error,
-    );
-    return;
-  }
-  recovering = false;
-  showError(view.vaultError, null);
-  recoveryKey = response.recoveryKey;
-  view.recoveryNote.textContent = RECOVERED_NOTE;
-  render(response.status);
+  render(response);
 }
 
 view.create.addEventListener("submit", (event) => {
@@ -690,40 +574,26 @@ document
     "click",
     () => void act({ type: "review-cancel" }, view.reviewError),
   );
-view.recoverOpen.addEventListener("click", () => showRecover(true));
+view.deleteOpen.addEventListener("click", () => showDelete(true));
 document
-  .querySelector("#recover-cancel")!
-  .addEventListener("click", () => showRecover(false));
-view.recover.addEventListener("input", () => void checkRecover());
-view.recover.addEventListener("submit", (event) => {
-  event.preventDefault();
-  if (!checkRecover()) return;
-  const key = view.recoverKey.value;
-  const password = view.recoverPassword.value;
-  view.recover.reset();
-  checkRecover();
-  void recover(key, password);
+  .querySelector("#delete-cancel")!
+  .addEventListener("click", () => showDelete(false));
+view.deleteForm.addEventListener("input", () => {
+  view.deleteSubmit.disabled = !deleteConfirmed();
 });
-view.resetOpen.addEventListener("click", () => showReset(true));
-document
-  .querySelector("#reset-cancel")!
-  .addEventListener("click", () => showReset(false));
-view.reset.addEventListener("input", () => {
-  view.resetSubmit.disabled = !resetConfirmed();
-});
-view.reset.addEventListener("submit", (event) => {
+view.deleteForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  if (!resetConfirmed()) return;
-  view.reset.reset();
-  view.resetSubmit.disabled = true;
-  void ask<VaultStatus>({ type: "vault-reset" }).then(async (response) => {
+  if (!deleteConfirmed()) return;
+  view.deleteForm.reset();
+  view.deleteSubmit.disabled = true;
+  void ask<VaultStatus>({ type: "vault-delete" }).then(async (response) => {
     if ("error" in response) {
-      // A reset locks the vault before deleting it
+      // Deleting locks the vault first
       await refresh();
       showError(view.vaultError, response.error);
       return;
     }
-    resetting = false;
+    deleting = false;
     showError(view.vaultError, null);
     render(response);
   });
@@ -745,13 +615,6 @@ document.querySelector("#copy-restored")!.addEventListener("click", () => {
 document
   .querySelector("#hide-originals")!
   .addEventListener("click", () => void hideInPage());
-document.querySelector("#copy-key")!.addEventListener("click", () => {
-  if (recoveryKey) void navigator.clipboard.writeText(recoveryKey);
-});
-document.querySelector("#saved-key")!.addEventListener("click", () => {
-  recoveryKey = null;
-  void refresh();
-});
 document
   .querySelector("#settings")!
   .addEventListener("click", () => chrome.runtime.openOptionsPage());

@@ -296,11 +296,13 @@
         <p>
           Pseudonymize swaps each value for a marker such as [[EMAIL_7KQ4ZM]],
           and keeps the original encrypted in this vault, on this device. The
-          vault locks after 15 minutes without use, or when Chrome closes.
+          vault locks when Chrome closes, or after 15 minutes without use unless
+          this device is remembered.
         </p>
         <p>
-          A remembered device unlocks the vault without your password for 30
-          days. Locking by hand asks for your password next time.
+          A remembered device keeps the vault unlocked, and unlocks it without
+          your password, for 30 days. Locking by hand asks for your password
+          next time. If you forget your password, you can only delete the vault.
         </p>
         <a href="https://docs.datafog.ai" target="_blank" rel="noreferrer"
           >Learn more</a
@@ -332,21 +334,14 @@
           <input id="create-remember" type="checkbox" /> Remember this device
           for 30 days
         </label>
+        <p class="muted">
+          If you forget your password, no one can open your vault, DataFog
+          included. You can only delete it and start over.
+        </p>
         <button class="primary" id="create-submit" type="submit" disabled>
           Create vault
         </button>
       </form>
-
-      <div class="row" id="recovery" hidden>
-        <p class="muted" id="recovery-note"></p>
-        <code id="recovery-key"></code>
-        <div class="buttons">
-          <button id="copy-key" type="button">Copy</button>
-          <button id="saved-key" class="primary" type="button">
-            I saved it
-          </button>
-        </div>
-      </div>
 
       <form id="unlock" novalidate hidden>
         <label>
@@ -364,52 +359,6 @@
         <button class="primary" type="submit">Unlock</button>
       </form>
 
-      <button class="link" id="recover-open" type="button" hidden>
-        Forgot password?
-      </button>
-
-      <form id="recover" novalidate hidden>
-        <p class="muted">
-          Enter the recovery key you saved when you created your vault, and
-          choose a new password. Your values stay in your vault.
-        </p>
-        <label>
-          Recovery key
-          <textarea
-            id="recover-key"
-            rows="3"
-            autocomplete="off"
-            spellcheck="false"
-          ></textarea>
-        </label>
-        <label>
-          New password
-          <input
-            id="recover-password"
-            type="password"
-            autocomplete="new-password"
-          />
-        </label>
-        <label>
-          Confirm new password
-          <input
-            id="recover-confirm"
-            type="password"
-            autocomplete="new-password"
-          />
-        </label>
-        <ul class="rules" aria-live="polite">
-          <li id="recover-rule-length">At least 8 characters</li>
-          <li id="recover-rule-match">Passwords match</li>
-        </ul>
-        <div class="buttons">
-          <button class="primary" id="recover-submit" type="submit" disabled>
-            Set new password
-          </button>
-          <button id="recover-cancel" type="button">Cancel</button>
-        </div>
-      </form>
-
       <div class="row" id="unlocked" hidden>
         <button id="lock" type="button">Lock</button>
       </div>
@@ -421,30 +370,30 @@
         </button>
       </p>
 
-      <button class="link" id="reset-open" type="button" hidden>
-        Reset vault
+      <button class="link" id="delete-open" type="button" hidden>
+        Delete vault
       </button>
 
-      <form id="reset" novalidate hidden>
+      <form id="delete" novalidate hidden>
         <p class="warning">
-          Resetting deletes your vault and every original value in it. Markers
-          you've already used can't be restored. If you've only forgotten your
-          password, use your recovery key instead.
+          Deleting your vault removes every original value in it. Markers you've
+          already used can't be restored. If you've forgotten your password,
+          this is the only way to start over.
         </p>
         <label>
           Type DELETE to confirm
           <input
-            id="reset-confirm"
+            id="delete-confirm"
             type="text"
             autocomplete="off"
             spellcheck="false"
           />
         </label>
         <div class="buttons">
-          <button class="danger" id="reset-submit" type="submit" disabled>
-            Reset vault
+          <button class="danger" id="delete-submit" type="submit" disabled>
+            Delete vault
           </button>
-          <button id="reset-cancel" type="button">Cancel</button>
+          <button id="delete-cancel" type="button">Cancel</button>
         </div>
       </form>
 
@@ -467,15 +416,15 @@
       <p class="error" id="restore-error" hidden></p>
     </section>
 
-    <section id="workspace">
+    <section id="not-sensitive-section">
       <div class="heading">
-        <h2>Workspace</h2>
+        <h2>Values marked not sensitive</h2>
         <button
           class="icon"
-          id="workspace-info-toggle"
+          id="not-sensitive-info-toggle"
           type="button"
-          aria-label="About the workspace"
-          aria-controls="workspace-info"
+          aria-label="About values marked not sensitive"
+          aria-controls="not-sensitive-info"
           aria-expanded="false"
         >
           <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
@@ -489,7 +438,7 @@
           </svg>
         </button>
       </div>
-      <div class="info" id="workspace-info" hidden>
+      <div class="info" id="not-sensitive-info" hidden>
         <p>
           Mark a value Not sensitive in a review, and DataFog leaves it as is
           from then on. It's left out of reviews and, while the vault is
@@ -500,10 +449,10 @@
           have DataFog replace it again.
         </p>
       </div>
-      <p class="muted" id="workspace-note"></p>
+      <p class="muted" id="not-sensitive-note"></p>
       <p class="muted" id="not-sensitive-count" hidden></p>
       <ul id="not-sensitive"></ul>
-      <p class="error" id="workspace-error" hidden></p>
+      <p class="error" id="not-sensitive-error" hidden></p>
     </section>
 
     <button id="settings" type="button">Settings</button>

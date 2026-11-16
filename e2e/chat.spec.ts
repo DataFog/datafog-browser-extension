@@ -405,7 +405,7 @@ test("settings: exact allowlist survives reopening and Redact preserves allowed 
   await found(badge, 1);
 });
 
-test("settings: off hides the badge and disabling checks also disables send blocking", async ({
+test("settings: off greys out the badge and disabling checks also disables send blocking", async ({
   chat,
   badge,
   extension,
@@ -417,8 +417,8 @@ test("settings: off hides the badge and disabling checks also disables send bloc
   await chat.reload();
   await chat.locator("#prompt-textarea").fill(SAMPLE);
   await expect
-    .poll(() => badge.state(".wrap").then((state) => state.visible))
-    .toBe(false);
+    .poll(() => badge.state(".dot").then((state) => state.title))
+    .toContain("disabled");
   await chat.locator('[data-testid="send-button"]').click();
   await expect(chat.locator("#sent-count")).toHaveText("1");
 

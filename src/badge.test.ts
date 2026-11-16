@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { Badge } from "./badge";
+import { Badge, OFF_TITLE } from "./badge";
 
 /**
  * Give an element a fixed box, since happy-dom does no layout.
@@ -177,4 +177,21 @@ test.each([
   expect(panel.style.left).toBe(left);
   expect(panel.style.top).toBe(top);
   expect(wrap.style.right).toBe(badgeRight);
+});
+
+test("greys out while checking is off, explaining why, with its panel kept shut", () => {
+  const { badge, wrap } = mount();
+  const dot = wrap.querySelector<HTMLButtonElement>(".dot")!;
+  const panel = wrap.querySelector<HTMLElement>(".panel")!;
+
+  badge.show({ kind: "off" });
+  expect(wrap.hidden).toBe(false);
+  expect(dot.className).toBe("dot off");
+  expect(dot.title).toBe(OFF_TITLE);
+
+  dot.click();
+  badge.warnFiles(true);
+  badge.show({ kind: "checking" });
+  expect(panel.hidden).toBe(true);
+  expect(dot.className).toBe("dot off");
 });

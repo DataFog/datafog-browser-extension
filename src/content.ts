@@ -18,6 +18,7 @@ import {
 } from "./messages";
 import { hideOriginals, MARKER, showOriginals } from "./originals";
 import { clickSend, watchPage } from "./page";
+import { loadSettings } from "./settings";
 import { mountTab } from "./tab";
 
 /** The last redaction or pseudonymization, kept so it can be undone and redone. */
@@ -66,6 +67,14 @@ let warnedText: string | null = null;
 let heldPresses = 0;
 let holdTimer: number | undefined;
 let sending = false;
+/** Whether checking is on. Assumed on if the setting can't be read, so a scan reports why. */
+let enabled = true;
+const settingsLoaded = loadSettings().then(
+  (settings) => {
+    enabled = settings.enabled;
+  },
+  () => {},
+);
 
 const badge = new Badge({
   redact: redactComposer,
@@ -106,6 +115,22 @@ function readText(element: HTMLElement): string {
   return element instanceof HTMLTextAreaElement
     ? element.value
     : element.innerText;
+}
+
+/**
+ * Whether two readings of the chat box hold the same text. innerText follows
+ * layout, so it gains or loses line breaks as an editor redraws, as ChatGPT's
+ * does around a link; whitespace alone doesn't count as a change.
+ *
+ * @param text One reading.
+ * @param other The other, if there is one.
+ * @returns Whether they match, ignoring whitespace.
+ */
+function sameText(text: string, other: string | undefined): boolean {
+  return (
+    other !== undefined &&
+    text.replace(/\s+/g, "") === other.replace(/\s+/g, "")
+  );
 }
 
 /**
@@ -152,15 +177,22 @@ async function ask<T extends object>(
  * @param force Scan even if the text is unchanged.
  */
 async function scanNow(force = false): Promise<void> {
+  await settingsLoaded;
   if (!composer) return;
+  // With checking off the badge is greyed out, and nothing is sent to be checked
+  if (!enabled) {
+    window.clearTimeout(timer);
+    badge.show({ kind: "off" });
+    return;
+  }
   const text = readText(composer);
   if (!force && !unchecked && text === lastScanned) return;
   lastScanned = text;
   unchecked = false;
   // Anything typed since means the redaction no longer lines up with the text
   badge.offer({
-    undo: text === redaction?.after,
-    redo: text === redaction?.before,
+    undo: sameText(text, redaction?.after),
+    redo: sameText(text, redaction?.before),
   });
 
   if (!text.trim()) {
@@ -187,7 +219,7 @@ async function scanNow(force = false): Promise<void> {
   lastCounts = response.counts;
   const found = Object.keys(response.counts).length > 0;
   foundText = found ? text : null;
-  if (!response.enabled) badge.show({ kind: "hidden" });
+  if (!response.enabled) badge.show({ kind: "off" });
   // A dismissed warning falls back to the plain logo until the text changes
   else if (text === dismissedText) badge.show({ kind: "idle" });
   else
@@ -325,7 +357,7 @@ function schedule(delay: number): void {
   warnedText = null;
   dropHeldSend();
   badge.holdSend(null);
-  if (content.trim()) badge.show({ kind: "checking" });
+  if (enabled && content.trim()) badge.show({ kind: "checking" });
 }
 
 /**
@@ -482,7 +514,7 @@ function replaceValues(
     selection.addRange(range);
     typeLines(element, edit.replacement);
   }
-  return readText(element) === response.text;
+  return sameText(readText(element), response.text);
 }
 
 /** Redact the chat box's sensitive values in place. */
@@ -673,14 +705,16 @@ function restoring(text: string, response: RedactResponse): RedactResponse {
 
 /** Put back the values the last redaction replaced. */
 function undoRedaction(): void {
-  if (!composer || readText(composer) !== redaction?.after) return;
+  if (!composer || !redaction) return;
+  if (!sameText(readText(composer), redaction.after)) return;
   applyEdits(composer, redaction.after, redaction.restore);
   void scanNow(true);
 }
 
 /** Redact the same values again. */
 function redoRedaction(): void {
-  if (!composer || readText(composer) !== redaction?.before) return;
+  if (!composer || !redaction) return;
+  if (!sameText(readText(composer), redaction.before)) return;
   applyEdits(composer, redaction.before, redaction.redact);
   void scanNow(true);
 }
@@ -743,6 +777,16 @@ chrome.runtime.onMessage.addListener(
     return true;
   },
 );
+
+// Turning checking off greys out the badge and closes its panel at once; turning it on
+// checks the chat box as it stands
+chrome.storage.onChanged.addListener((changes, area) => {
+  const next = (changes.settings?.newValue ?? {}) as { enabled?: unknown };
+  if (area !== "local" || typeof next.enabled !== "boolean") return;
+  if (next.enabled === enabled) return;
+  enabled = next.enabled;
+  void scanNow(true);
+});
 
 // The page tab opens or closes the side panel; send right away, within the click
 const warnTab = mountTab(() => void togglePanel());

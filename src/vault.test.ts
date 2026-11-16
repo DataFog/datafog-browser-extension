@@ -6,7 +6,6 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Workspace, type PreparedWorkspaceChange } from "@datafog/wasm";
-import type { AccessTarget } from "@datafog/fogvault-browser";
 import { afterEach, beforeAll, beforeEach, expect, test, vi } from "vitest";
 
 import { ready, scanRules, workspaceFindings } from "./detect";
@@ -35,7 +34,6 @@ let vault: Vault;
 let notify: ReturnType<typeof vi.fn<() => void>>;
 let deleteStore: ReturnType<typeof vi.fn<(name: string) => Promise<void>>>;
 let host: VaultHost;
-let recoveryKey: Uint8Array;
 let devices: FakeDevices;
 let now: number;
 /** Holds finding values back until resolved, as a slow model would. */
@@ -192,7 +190,6 @@ function keyIdOf(identity: { keyId: Uint8Array }): string {
 }
 
 beforeEach(() => {
-  recoveryKey = new Uint8Array([1, 2, 3]);
   devices = new FakeDevices();
   now = 1_000_000;
   slots = [];
@@ -200,15 +197,11 @@ beforeEach(() => {
   vault = {
     create: vi.fn(async (_name, _password, options) => {
       slots = (options?.devices ?? []).map(keyIdOf);
-      return {
-        created: true as const,
-        receipt: RECEIPT,
-        recovery_key: recoveryKey,
-      };
+      return { created: true as const, receipt: RECEIPT };
     }),
     describeAccess: vi.fn(async () => ({
       profile,
-      recovery: true,
+      recovery: false,
       rootEpoch: 0n,
       devices: slots.map((keyId) => ({
         slotId: new Uint8Array(16).fill(keyId.charCodeAt(0)),
@@ -234,17 +227,6 @@ beforeEach(() => {
       return {
         receipt: RECEIPT,
         key_effect: "FreshRootAndContentKeys" as const,
-        recovery_key: new Uint8Array([4, 5, 6]),
-      };
-    }),
-    recoverAccess: vi.fn(async (kit: Uint8Array, target: AccessTarget) => {
-      if (!kit.every((byte) => byte === 7))
-        throw Object.assign(new Error(), { code: "Authentication" });
-      slots = target.devices.map(keyIdOf);
-      return {
-        receipt: RECEIPT,
-        key_effect: "FreshRootAndContentKeys" as const,
-        recovery_key: new Uint8Array([7, 8, 9]),
       };
     }),
     open: vi.fn(async () => ({ opened: true as const })),
@@ -290,19 +272,17 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-test("creates an unlocked vault, handing over the recovery key once", async () => {
+test("creates an unlocked vault without a recovery key", async () => {
   const created = await host.create("correct horse", null, false);
 
   expect(vi.mocked(vault.create)).toHaveBeenCalledWith(
     "datafog",
     "correct horse",
     expect.objectContaining({
-      recovery: true,
+      recovery: false,
       profile: "password-or-device",
     }),
   );
-  expect(created.recoveryKey).toBe("AQID");
-  expect(recoveryKey).toEqual(new Uint8Array(3));
   expect(created.status.state).toBe("unlocked");
   expect(atob(created.routing.namespace)).toHaveLength(16);
 });
@@ -436,7 +416,7 @@ test("waits for an unlock, then prepares the review", async () => {
   });
   expect(host.status(routing).state).toBe("locked");
 
-  const { status } = await host.unlock("correct horse", routing, false);
+  const status = await host.unlock("correct horse", routing, false);
   expect(status.state).toBe("unlocked");
   expect(status.waiting).toBe(false);
   expect(status.review).toHaveLength(2);
@@ -522,6 +502,28 @@ test("locks after 15 minutes without use", async () => {
   expect(notify).toHaveBeenCalled();
 });
 
+test("stays unlocked without use while the device is remembered", async () => {
+  vi.useFakeTimers();
+  const routing = (await host.create("correct horse", null, true)).routing;
+
+  await vi.advanceTimersByTimeAsync(IDLE_LOCK_MS * 4);
+  expect(host.status(routing).state).toBe("unlocked");
+
+  // Locks once the 30 days are up
+  now += REMEMBER_MS;
+  await vi.advanceTimersByTimeAsync(REMEMBER_MS);
+  expect(host.status(routing).state).toBe("locked");
+});
+
+test("locks after idling again once the device is forgotten", async () => {
+  vi.useFakeTimers();
+  const routing = (await host.create("correct horse", null, true)).routing;
+
+  await host.forgetDevice(routing);
+  await vi.advanceTimersByTimeAsync(IDLE_LOCK_MS);
+  expect(host.status(routing).state).toBe("locked");
+});
+
 test("locks after a lost save, and settles it at the next unlock", async () => {
   const routing = await create();
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
@@ -544,11 +546,11 @@ test("locks after a lost save, and settles it at the next unlock", async () => {
   expect(vi.mocked(vault.reconcileLatest)).toHaveBeenCalledWith(requestId);
 });
 
-test("resets the vault without its password", async () => {
+test("deletes the vault without its password", async () => {
   const routing = await create();
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
 
-  const status = await host.reset(routing);
+  const status = await host.deleteVault(routing);
 
   expect(vi.mocked(vault.unlock)).not.toHaveBeenCalled();
   expect(vi.mocked(vault.close)).toHaveBeenCalled();
@@ -557,9 +559,9 @@ test("resets the vault without its password", async () => {
   expect(owner.closed).toBe(true);
 });
 
-test("resets a vault that was never unlocked", async () => {
+test("deletes a vault that was never unlocked", async () => {
   const routing = { recordId: "AA==", namespace: "AA==" };
-  expect((await host.reset(routing)).state).toBe("none");
+  expect((await host.deleteVault(routing)).state).toBe("none");
   expect(deleteStore).toHaveBeenCalledWith("datafog");
 });
 
@@ -581,58 +583,6 @@ test("restores the markers it issued", async () => {
     ],
   });
   expect(host.status(routing).state).toBe("unlocked");
-});
-
-/** The fake vault's recovery key, as the user would type it. */
-const KIT = btoa(String.fromCharCode(...new Uint8Array(80).fill(7)));
-
-test("sets a new password with the recovery key, keeping the values", async () => {
-  const routing = await create();
-  await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
-  const { response } = await host.approve(DEFAULT_SETTINGS);
-  await host.lock(routing, true);
-
-  const recovered = await host.recover(
-    `${KIT.slice(0, 40)}\n ${KIT.slice(40)}`,
-    "new password",
-    routing,
-  );
-
-  expect(vi.mocked(vault.recoverAccess)).toHaveBeenCalledWith(
-    new Uint8Array(80),
-    expect.objectContaining({
-      password: "new password",
-      profile: "password-or-device",
-      recovery: true,
-    }),
-  );
-  expect(recovered.recoveryKey).toBe("BwgJ");
-  expect(recovered.status.state).toBe("unlocked");
-  expect(recovered.status.rememberedUntil).toBeNull();
-  expect(host.restore(response.text).restored).toBe(2);
-});
-
-test("refuses a malformed recovery key without trying it", async () => {
-  const routing = await create();
-
-  for (const key of ["not a key!", btoa("short")]) {
-    await expect(
-      host.recover(key, "new password", routing),
-    ).rejects.toMatchObject({ code: "invalid_recovery_key" });
-  }
-  expect(vi.mocked(vault.recoverAccess)).not.toHaveBeenCalled();
-  expect(host.status(routing).state).toBe("unlocked");
-});
-
-test("stays locked when the recovery key is wrong", async () => {
-  const routing = await create();
-  const wrong = btoa(String.fromCharCode(...new Uint8Array(80).fill(1)));
-
-  await expect(
-    host.recover(wrong, "new password", routing),
-  ).rejects.toMatchObject({ code: "Authentication" });
-  expect(host.status(routing).state).toBe("locked");
-  expect(vi.mocked(vault.close)).toHaveBeenCalled();
 });
 
 test("leaves markers it can't restore as they are", async () => {
@@ -716,8 +666,7 @@ test("remembers the device at unlock, keeping the vault's keys", async () => {
 
   expect(vi.mocked(vault.enrollDevice)).toHaveBeenCalled();
   expect(vi.mocked(vault.protectAccess)).not.toHaveBeenCalled();
-  expect(unlocked.recoveryKey).toBeNull();
-  expect(unlocked.status.rememberedUntil).toBe(now + REMEMBER_MS);
+  expect(unlocked.rememberedUntil).toBe(now + REMEMBER_MS);
 });
 
 test("gives an older password-only vault new keys to remember a device", async () => {
@@ -729,10 +678,9 @@ test("gives an older password-only vault new keys to remember a device", async (
 
   expect(vi.mocked(vault.protectAccess)).toHaveBeenCalledWith(
     { kind: "password", password: "correct horse" },
-    expect.objectContaining({ profile: "password-or-device", recovery: true }),
+    expect.objectContaining({ profile: "password-or-device", recovery: false }),
   );
-  expect(unlocked.recoveryKey).toBe("BAUG");
-  expect(unlocked.status.state).toBe("unlocked");
+  expect(unlocked.state).toBe("unlocked");
 });
 
 test("forgets the device, and stays locked when its key fails", async () => {

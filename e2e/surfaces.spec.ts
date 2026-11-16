@@ -8,8 +8,6 @@ async function createVault(panel: Page): Promise<void> {
   await panel.locator("#create-password").fill("surface test password");
   await panel.locator("#create-confirm").fill("surface test password");
   await panel.locator("#create-submit").click();
-  await expect(panel.locator("#recovery-key")).not.toHaveText("");
-  await panel.locator("#saved-key").click();
   await expect(panel.locator("#lock")).toBeVisible();
 }
 

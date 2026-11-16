@@ -111,8 +111,8 @@ test("live: allowlist and global off apply to the real composer", async ({
   await saveOptions(settings);
   await composer.fill(`${SAMPLE} checking disabled`);
   await expect
-    .poll(async () => (await badge.state(".wrap")).visible)
-    .toBe(false);
+    .poll(async () => (await badge.state(".dot")).title)
+    .toContain("disabled");
 });
 
 test("live: Pseudonymize reviews, replaces and undoes in ChatGPT", async ({

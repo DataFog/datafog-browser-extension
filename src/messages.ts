@@ -38,11 +38,9 @@ export type PanelRequest =
   | { type: "vault-status"; autoUnlock?: boolean }
   | { type: "vault-create"; password: string; remember: boolean }
   | { type: "vault-unlock"; password: string; remember: boolean }
-  /** key: the recovery key; password: the new password. */
-  | { type: "vault-recover"; key: string; password: string }
   | { type: "vault-lock" }
   | { type: "device-forget" }
-  | { type: "vault-reset" }
+  | { type: "vault-delete" }
   | { type: "review-approve" }
   | { type: "review-cancel" }
   /** Remember the review's value at this index as not sensitive. */
@@ -129,16 +127,8 @@ export interface VaultStatus {
   notSensitive: ValueChoice[];
 }
 
-/** An unlocked vault, with a new recovery key if remembering needed one. */
-export interface UnlockedVault {
-  status: VaultStatus;
-  recoveryKey: string | null;
-}
-
 export interface CreatedVault {
   status: VaultStatus;
-  /** Shown once; the vault keeps no copy it can show again. */
-  recoveryKey: string;
   routing: VaultRouting;
 }
 

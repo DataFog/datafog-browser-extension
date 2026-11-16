@@ -38,8 +38,9 @@ and transform edge cases without changing the browser APIs the extension uses.
 Core, the FogVault Worker and the model run in an offscreen document, not the
 service worker, which Chrome stops when idle and which can't start Workers. The
 offscreen document stays loaded while the side panel is closed, so checking and
-pseudonymization keep working. The side panel is the UI for the vault and
-workspace; it stays open beside the chat, unlike a full tab.
+pseudonymization keep working. The side panel is the UI for the vault, reviews
+and values marked not sensitive; it stays open beside the chat, unlike a full
+tab.
 
 If the device isn't remembered, the vault locks when Chrome closes or after 15
 minutes without use. The adapter allows one prepared change at a time, so the UI discards
@@ -49,19 +50,17 @@ extension also clears any plaintext previews and restored text it holds.
 The prototype never stored mappings, so there is no legacy backup format to
 import.
 
-### Recovery and reset
+### Forgotten password and deleting the vault
 
-Every vault has a recovery key, shown once at creation. "Forgot password?" uses
-FogVault's `recoverAccess` to set a new password with it. FogVault's simpler
-`recover` refuses vaults with a device-capable profile, and every vault here has
-one. The vault keeps its values but gets new keys, so the old password, the old
-recovery key and any remembered device stop working, and a new recovery key is
-shown once.
+Vaults have no recovery key. FogVault can issue one, but the team judged it
+more than V1 needs. Creating a vault says that a forgotten password can't be
+recovered, and Delete vault is the only way to start over. There's no "Forgot
+password?" link, since it would only lead to Delete vault.
 
-Reset vault needs only a typed confirmation, not the password. Deleting reveals
+Delete vault needs only a typed confirmation, not the password. Deleting reveals
 nothing, and anyone with the Chrome profile can already clear the extension's
-data. Requiring the password only trapped someone who lost both it and the
-recovery key, and nothing can open their vault, DataFog included.
+data. Requiring the password would trap someone who forgot it, and nothing can
+open their vault, DataFog included.
 
 ### Remember device
 
@@ -83,9 +82,9 @@ FogVault's device slots.
 
 The review offers one per-value choice: "Not sensitive". It saves Core's
 `not_sensitive` policy choice for that type and value in the vault's workspace,
-and the review is prepared again without it. The workspace section of the side
-panel lists these values, each with Remove, which clears the choice so the
-value gets a new marker next time.
+and the review is prepared again without it. The side panel's "Values marked
+not sensitive" section lists them, each with Remove, which clears the choice so
+the value gets a new marker next time.
 
 - Core refuses `keep` ("send as is") for every protected type, which covers
   every type the extension checks, so V1 doesn't offer it.
