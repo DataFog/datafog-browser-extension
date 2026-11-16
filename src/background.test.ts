@@ -273,18 +273,20 @@ test("stores a new vault's routing, and passes on its status", async () => {
   expect(setStorage).toHaveBeenCalledWith({ vault: ROUTING });
 });
 
-test("forgets the vault's routing once it's reset", async () => {
+test("forgets the vault's routing once it's deleted", async () => {
   sendMessage.mockResolvedValueOnce({ state: "none" });
 
-  expect(await send({ type: "vault-reset" }, PANEL)).toEqual({ state: "none" });
+  expect(await send({ type: "vault-delete" }, PANEL)).toEqual({
+    state: "none",
+  });
   expect(removeStorage).toHaveBeenCalledWith("vault");
 });
 
-test("keeps the routing when a reset fails", async () => {
-  sendMessage.mockResolvedValueOnce({ error: "reset_failed" });
+test("keeps the routing when deleting fails", async () => {
+  sendMessage.mockResolvedValueOnce({ error: "delete_failed" });
 
-  expect(await send({ type: "vault-reset" }, PANEL)).toEqual({
-    error: "reset_failed",
+  expect(await send({ type: "vault-delete" }, PANEL)).toEqual({
+    error: "delete_failed",
   });
   expect(removeStorage).not.toHaveBeenCalled();
 });

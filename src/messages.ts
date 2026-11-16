@@ -40,7 +40,7 @@ export type PanelRequest =
   | { type: "vault-unlock"; password: string; remember: boolean }
   | { type: "vault-lock" }
   | { type: "device-forget" }
-  | { type: "vault-reset" }
+  | { type: "vault-delete" }
   | { type: "review-approve" }
   | { type: "review-cancel" }
   /** Remember the review's value at this index as not sensitive. */

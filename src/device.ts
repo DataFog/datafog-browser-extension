@@ -50,7 +50,7 @@ export interface Devices {
   /** Whether a manual lock has paused device unlock until a password unlock. */
   paused(): boolean;
   setPaused(paused: boolean): Promise<void>;
-  /** Delete everything, for a reset vault. */
+  /** Delete everything, for a deleted vault. */
   clear(): Promise<void>;
 }
 

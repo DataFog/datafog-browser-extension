@@ -372,11 +372,11 @@
         </button>
       </p>
 
-      <button class="link" id="reset-open" type="button" hidden>
+      <button class="link" id="delete-open" type="button" hidden>
         Delete vault
       </button>
 
-      <form id="reset" novalidate hidden>
+      <form id="delete" novalidate hidden>
         <p class="warning">
           Deleting your vault removes every original value in it. Markers you've
           already used can't be restored. If you've forgotten your password,
@@ -385,17 +385,17 @@
         <label>
           Type DELETE to confirm
           <input
-            id="reset-confirm"
+            id="delete-confirm"
             type="text"
             autocomplete="off"
             spellcheck="false"
           />
         </label>
         <div class="buttons">
-          <button class="danger" id="reset-submit" type="submit" disabled>
+          <button class="danger" id="delete-submit" type="submit" disabled>
             Delete vault
           </button>
-          <button id="reset-cancel" type="button">Cancel</button>
+          <button id="delete-cancel" type="button">Cancel</button>
         </div>
       </form>
 

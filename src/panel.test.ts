@@ -131,7 +131,7 @@ test("offers to create a vault when there isn't one", async () => {
   await start(() => ({ ...LOCKED, state: "none" }));
 
   expect($("#vault-state").hidden).toBe(true);
-  expect($("#reset-open").hidden).toBe(true);
+  expect($("#delete-open").hidden).toBe(true);
   expect($("#create").hidden).toBe(false);
   expect($("#unlock").hidden).toBe(true);
   expect($("#review").hidden).toBe(true);
@@ -400,26 +400,26 @@ test("shows an unlocked icon once the vault is unlocked", async () => {
 test("deletes the vault once DELETE is typed, without its password", async () => {
   let status: VaultStatus = { ...LOCKED, state: "unlocked" };
   await start((request) => {
-    if (request.type !== "vault-reset") return status;
+    if (request.type !== "vault-delete") return status;
     status = { ...LOCKED, state: "none" };
     return status;
   });
 
-  $("#reset-open").click();
-  expect($("#reset").hidden).toBe(false);
+  $("#delete-open").click();
+  expect($("#delete").hidden).toBe(false);
   expect($("#unlocked").hidden).toBe(true);
-  expect($("#reset-submit")).toHaveProperty("disabled", true);
+  expect($("#delete-submit")).toHaveProperty("disabled", true);
 
-  fill("#reset-confirm", "delet");
-  expect($("#reset-submit")).toHaveProperty("disabled", true);
-  await submit("#reset");
-  expect(sendMessage).not.toHaveBeenCalledWith({ type: "vault-reset" });
+  fill("#delete-confirm", "delet");
+  expect($("#delete-submit")).toHaveProperty("disabled", true);
+  await submit("#delete");
+  expect(sendMessage).not.toHaveBeenCalledWith({ type: "vault-delete" });
 
-  fill("#reset-confirm", " delete ");
-  expect($("#reset-submit")).toHaveProperty("disabled", false);
-  await submit("#reset");
-  expect(sendMessage).toHaveBeenCalledWith({ type: "vault-reset" });
-  expect($("#reset").hidden).toBe(true);
+  fill("#delete-confirm", " delete ");
+  expect($("#delete-submit")).toHaveProperty("disabled", false);
+  await submit("#delete");
+  expect(sendMessage).toHaveBeenCalledWith({ type: "vault-delete" });
+  expect($("#delete").hidden).toBe(true);
   expect($("#create").hidden).toBe(false);
 });
 
@@ -428,22 +428,22 @@ test("offers Delete vault when the password is forgotten", async () => {
 
   $("#forgot-password").click();
 
-  expect($("#reset").hidden).toBe(false);
+  expect($("#delete").hidden).toBe(false);
   expect($("#unlock").hidden).toBe(true);
   expect($("#forgot-password").hidden).toBe(true);
-  expect($("#reset").textContent).toContain("the only way to start over");
+  expect($("#delete").textContent).toContain("the only way to start over");
 });
 
-test("closes the reset form on Cancel", async () => {
+test("closes the delete form on Cancel", async () => {
   await start(() => LOCKED);
 
-  $("#reset-open").click();
-  $("#reset-cancel").click();
+  $("#delete-open").click();
+  $("#delete-cancel").click();
 
-  expect($("#reset").hidden).toBe(true);
+  expect($("#delete").hidden).toBe(true);
   expect($("#unlock").hidden).toBe(false);
   expect(sendMessage).not.toHaveBeenCalledWith(
-    expect.objectContaining({ type: "vault-reset" }),
+    expect.objectContaining({ type: "vault-delete" }),
   );
 });
 

@@ -553,7 +553,7 @@ export class VaultHost<V extends Vault = Vault> {
    * @param routing Where the workspace lives.
    * @returns The status, with no vault.
    */
-  async reset(routing: VaultRouting | null): Promise<VaultStatus> {
+  async deleteVault(routing: VaultRouting | null): Promise<VaultStatus> {
     if (!routing) throw failure("no_vault");
     await this.lock(routing);
     // Closing stops FogVault's Worker, releasing the database to delete

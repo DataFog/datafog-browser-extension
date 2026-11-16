@@ -69,12 +69,12 @@ const view = {
   remembered: document.querySelector<HTMLParagraphElement>("#remembered")!,
   rememberedUntil:
     document.querySelector<HTMLSpanElement>("#remembered-until")!,
-  resetOpen: document.querySelector<HTMLButtonElement>("#reset-open")!,
-  reset: document.querySelector<HTMLFormElement>("#reset")!,
+  deleteOpen: document.querySelector<HTMLButtonElement>("#delete-open")!,
+  deleteForm: document.querySelector<HTMLFormElement>("#delete")!,
   forgotPassword:
     document.querySelector<HTMLButtonElement>("#forgot-password")!,
-  resetConfirm: document.querySelector<HTMLInputElement>("#reset-confirm")!,
-  resetSubmit: document.querySelector<HTMLButtonElement>("#reset-submit")!,
+  deleteConfirm: document.querySelector<HTMLInputElement>("#delete-confirm")!,
+  deleteSubmit: document.querySelector<HTMLButtonElement>("#delete-submit")!,
   ruleLength: document.querySelector<HTMLLIElement>("#rule-length")!,
   ruleMatch: document.querySelector<HTMLLIElement>("#rule-match")!,
   unlock: document.querySelector<HTMLFormElement>("#unlock")!,
@@ -102,10 +102,10 @@ const view = {
 /** The latest restored answer, kept only for Copy until it's hidden. */
 let restoredText = "";
 
-/** Whether the reset form is open. */
-let resetting = false;
+/** Whether the delete form is open. */
+let deleting = false;
 
-/** The last status shown, to redraw after opening or closing the reset form. */
+/** The last status shown, to redraw after opening or closing the delete form. */
 let shown: VaultStatus | null = null;
 
 /**
@@ -159,11 +159,11 @@ function renderVault(status: VaultStatus): void {
     ? `This device is remembered until ${new Date(rememberedUntil).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.`
     : "";
   view.create.hidden = state !== "none";
-  view.unlock.hidden = state !== "locked" || resetting;
-  view.forgotPassword.hidden = state !== "locked" || resetting;
-  view.unlocked.hidden = state !== "unlocked" || resetting;
-  view.resetOpen.hidden = state === "none" || resetting;
-  view.reset.hidden = state === "none" || !resetting;
+  view.unlock.hidden = state !== "locked" || deleting;
+  view.forgotPassword.hidden = state !== "locked" || deleting;
+  view.unlocked.hidden = state !== "unlocked" || deleting;
+  view.deleteOpen.hidden = state === "none" || deleting;
+  view.deleteForm.hidden = state === "none" || !deleting;
   view.vaultState.hidden = state === "none";
   if (state !== "none") {
     const [label, paths] = STATE_ICONS[state];
@@ -176,26 +176,26 @@ function renderVault(status: VaultStatus): void {
 }
 
 /**
- * Open or close the reset form.
+ * Open or close the delete form.
  *
  * @param open Whether to open it.
  */
-function showReset(open: boolean): void {
-  resetting = open;
-  view.reset.reset();
-  view.resetSubmit.disabled = true;
+function showDelete(open: boolean): void {
+  deleting = open;
+  view.deleteForm.reset();
+  view.deleteSubmit.disabled = true;
   showError(view.vaultError, null);
   if (shown) renderVault(shown);
-  if (open) view.resetConfirm.focus();
+  if (open) view.deleteConfirm.focus();
 }
 
 /**
- * Whether the user typed the reset confirmation.
+ * Whether the user typed the delete confirmation.
  *
  * @returns True once DELETE is typed, in any case.
  */
-function resetConfirmed(): boolean {
-  return view.resetConfirm.value.trim().toUpperCase() === "DELETE";
+function deleteConfirmed(): boolean {
+  return view.deleteConfirm.value.trim().toUpperCase() === "DELETE";
 }
 
 /**
@@ -577,27 +577,27 @@ document
     "click",
     () => void act({ type: "review-cancel" }, view.reviewError),
   );
-view.forgotPassword.addEventListener("click", () => showReset(true));
-view.resetOpen.addEventListener("click", () => showReset(true));
+view.forgotPassword.addEventListener("click", () => showDelete(true));
+view.deleteOpen.addEventListener("click", () => showDelete(true));
 document
-  .querySelector("#reset-cancel")!
-  .addEventListener("click", () => showReset(false));
-view.reset.addEventListener("input", () => {
-  view.resetSubmit.disabled = !resetConfirmed();
+  .querySelector("#delete-cancel")!
+  .addEventListener("click", () => showDelete(false));
+view.deleteForm.addEventListener("input", () => {
+  view.deleteSubmit.disabled = !deleteConfirmed();
 });
-view.reset.addEventListener("submit", (event) => {
+view.deleteForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  if (!resetConfirmed()) return;
-  view.reset.reset();
-  view.resetSubmit.disabled = true;
-  void ask<VaultStatus>({ type: "vault-reset" }).then(async (response) => {
+  if (!deleteConfirmed()) return;
+  view.deleteForm.reset();
+  view.deleteSubmit.disabled = true;
+  void ask<VaultStatus>({ type: "vault-delete" }).then(async (response) => {
     if ("error" in response) {
-      // A reset locks the vault before deleting it
+      // Deleting locks the vault first
       await refresh();
       showError(view.vaultError, response.error);
       return;
     }
-    resetting = false;
+    deleting = false;
     showError(view.vaultError, null);
     render(response);
   });
