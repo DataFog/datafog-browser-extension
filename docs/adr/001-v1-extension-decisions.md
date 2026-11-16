@@ -54,8 +54,8 @@ import.
 
 Vaults have no recovery key. FogVault can issue one, but the team judged it
 more than V1 needs. Creating a vault says that a forgotten password can't be
-recovered. "Forgot password?" opens Delete vault,
-the only way to start over.
+recovered, and Delete vault is the only way to start over. There's no "Forgot
+password?" link, since it would only lead to Delete vault.
 
 Delete vault needs only a typed confirmation, not the password. Deleting reveals
 nothing, and anyone with the Chrome profile can already clear the extension's
