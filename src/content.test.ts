@@ -676,6 +676,19 @@ test("undoes and redoes a redaction from the panel", async () => {
   expect(panelButton("undo").disabled).toBe(false);
 });
 
+test("keeps offering undo when the editor redraws line breaks", async () => {
+  const box = await start(coreForTwoEmails);
+  await type(box, TWO_EMAILS);
+  await press("redact");
+
+  // As ChatGPT's editor does around a link, innerText gains a line break
+  await type(box, REDACTED.replace("or ", "or\n"));
+
+  expect(panelButton("undo").disabled).toBe(false);
+  await press("undo");
+  expect(box.value).toBe(TWO_EMAILS);
+});
+
 test("undoes a rich-text redaction with one edit per value", async () => {
   const exec = stubEditing();
   await start(
@@ -686,6 +699,34 @@ test("undoes a rich-text redaction with one edit per value", async () => {
   box.dispatchEvent(new Event("input"));
   await vi.advanceTimersByTimeAsync(400);
   await press("redact");
+  exec.mockClear();
+
+  await press("undo");
+
+  expect(box.textContent).toBe(TWO_EMAILS);
+  expect(exec).not.toHaveBeenCalledWith("selectAll");
+});
+
+test("undoes in place when the editor redraws line breaks", async () => {
+  const exec = stubEditing();
+  await start(
+    coreForTwoEmails,
+    `<form><div id="prompt-textarea" contenteditable="true"><p>${TWO_EMAILS}</p></div></form>`,
+  );
+  const box = document.querySelector<HTMLElement>("#prompt-textarea")!;
+  box.dispatchEvent(new Event("input"));
+  await vi.advanceTimersByTimeAsync(400);
+  await press("redact");
+  // As ChatGPT's editor does around a link, innerText loses a line break
+  const read = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "innerText",
+  );
+  vi.spyOn(box, "innerText", "get").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return read!.get!.call(this).replace("or ", "or\n");
+  });
   exec.mockClear();
 
   await press("undo");

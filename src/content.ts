@@ -118,6 +118,22 @@ function readText(element: HTMLElement): string {
 }
 
 /**
+ * Whether two readings of the chat box hold the same text. innerText follows
+ * layout, so it gains or loses line breaks as an editor redraws, as ChatGPT's
+ * does around a link; whitespace alone doesn't count as a change.
+ *
+ * @param text One reading.
+ * @param other The other, if there is one.
+ * @returns Whether they match, ignoring whitespace.
+ */
+function sameText(text: string, other: string | undefined): boolean {
+  return (
+    other !== undefined &&
+    text.replace(/\s+/g, "") === other.replace(/\s+/g, "")
+  );
+}
+
+/**
  * Note a change to the chat box since it was last looked at. Runs on every
  * keystroke, so it reads textContent, which needs no layout, not innerText.
  *
@@ -175,8 +191,8 @@ async function scanNow(force = false): Promise<void> {
   unchecked = false;
   // Anything typed since means the redaction no longer lines up with the text
   badge.offer({
-    undo: text === redaction?.after,
-    redo: text === redaction?.before,
+    undo: sameText(text, redaction?.after),
+    redo: sameText(text, redaction?.before),
   });
 
   if (!text.trim()) {
@@ -498,7 +514,7 @@ function replaceValues(
     selection.addRange(range);
     typeLines(element, edit.replacement);
   }
-  return readText(element) === response.text;
+  return sameText(readText(element), response.text);
 }
 
 /** Redact the chat box's sensitive values in place. */
@@ -689,14 +705,16 @@ function restoring(text: string, response: RedactResponse): RedactResponse {
 
 /** Put back the values the last redaction replaced. */
 function undoRedaction(): void {
-  if (!composer || readText(composer) !== redaction?.after) return;
+  if (!composer || !redaction) return;
+  if (!sameText(readText(composer), redaction.after)) return;
   applyEdits(composer, redaction.after, redaction.restore);
   void scanNow(true);
 }
 
 /** Redact the same values again. */
 function redoRedaction(): void {
-  if (!composer || readText(composer) !== redaction?.before) return;
+  if (!composer || !redaction) return;
+  if (!sameText(readText(composer), redaction.before)) return;
   applyEdits(composer, redaction.before, redaction.redact);
   void scanNow(true);
 }
