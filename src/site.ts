@@ -52,9 +52,32 @@ const CHATGPT: Site = {
   badge: { size: 36, radius: "50%", centerInset: 26 },
 };
 
+const CLAUDE: Site = {
+  name: "Claude",
+  composers: [
+    '[data-testid="chat-input"]',
+    "fieldset [contenteditable='true']",
+    "fieldset textarea",
+  ],
+  box: '[data-cds-part="composer-card"], fieldset',
+  sendButtons:
+    '[data-testid="chat-input-send"], button[aria-label="Send message"]',
+  answers: [
+    '[data-testid="assistant-message"]',
+    ".font-claude-response",
+    "[data-is-streaming]",
+  ],
+  // Its rounded square voice and send buttons
+  badge: { size: 28, radius: "8px", centerInset: 22 },
+};
+
 const SITES: Record<string, Site> = {
   "chatgpt.com": CHATGPT,
+  "claude.ai": CLAUDE,
 };
+
+/** The hosts DataFog runs on, each with its own profile. */
+export const HOSTS = Object.keys(SITES);
 
 /**
  * The site a page belongs to.

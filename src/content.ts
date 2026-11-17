@@ -1,5 +1,5 @@
 /**
- * Content script on chatgpt.com: watches the chat box as the user types.
+ * Content script on each chat site: watches the chat box as the user types.
  *
  * Redact and Pseudonymize edit the chat box; Dismiss hides the warning, and the
  * user sends with ChatGPT's own button. Pseudonymize is reviewed in the side
