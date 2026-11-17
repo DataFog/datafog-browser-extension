@@ -106,13 +106,14 @@ export type ChatOptions = {
   path?: string;
   composer?: "contenteditable" | "textarea" | "none";
   /** Which chat site's markup to stand in for. */
-  site?: "chatgpt" | "claude" | "gemini";
+  site?: "chatgpt" | "claude" | "gemini" | "grok";
 };
 
 const ORIGINS = {
   chatgpt: "https://chatgpt.com",
   claude: "https://claude.ai",
   gemini: "https://gemini.google.com",
+  grok: "https://grok.com",
 };
 
 /** Controlled Claude DOM: a card in a fieldset, with a plain send button. */
@@ -163,10 +164,35 @@ function geminiHTML(): string {
     </script></body></html>`;
 }
 
+/** Controlled Grok DOM: a rounded composer form with a submit button. */
+function grokHTML(): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Grok fixture</title>
+    <style>
+      body{font:16px system-ui;margin:0;padding:32px} main{max-width:760px;margin:auto}
+      form{display:flex;align-items:center;gap:8px;margin:32px 60px 0 0;padding:12px;border:1px solid #888;border-radius:29px}
+      .ProseMirror{flex:1;min-height:24px;white-space:pre-wrap}
+      form button{width:32px;height:32px;border-radius:50%}
+    </style></head><body>
+    <main><section id="answers"></section>
+    <form data-composer data-composer-surface="true">
+    <div class="tiptap ProseMirror" role="textbox" contenteditable="true" aria-label="Message Grok"></div>
+    <button type="submit" data-testid="chat-submit" aria-label="Send">↑</button>
+    </form><output id="sent-count">0</output></main>
+    <script>
+      const form=document.querySelector('form');
+      const sent=document.querySelector('#sent-count');
+      form.addEventListener('submit', e=>{e.preventDefault(); sent.textContent=String(Number(sent.textContent)+1)});
+      form.addEventListener('keydown', e=>{
+        if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();form.requestSubmit()}
+      });
+    </script></body></html>`;
+}
+
 /** Controlled ChatGPT DOM, served at the real origin for manifest injection. */
 function chatHTML(options: ChatOptions): string {
   if (options.site === "claude") return claudeHTML();
   if (options.site === "gemini") return geminiHTML();
+  if (options.site === "grok") return grokHTML();
   const composer = options.composer ?? "contenteditable";
   const editor =
     composer === "none"

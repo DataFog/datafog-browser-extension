@@ -87,10 +87,26 @@ const GEMINI: Site = {
   badge: { size: 32, radius: "50%", centerInset: 32 },
 };
 
+const GROK: Site = {
+  name: "Grok",
+  composers: [
+    "form[data-composer] .ProseMirror",
+    "form [contenteditable='true']",
+    "form textarea",
+  ],
+  box: "form[data-composer], form",
+  sendButtons: '[data-testid="chat-submit"], button[type="submit"]',
+  // The answer's text, without the hidden "Grok" heading
+  answers: ['[data-testid="assistant-message"] .response-content-markdown'],
+  // Its round attach, voice and send buttons
+  badge: { size: 32, radius: "50%", centerInset: 29 },
+};
+
 const SITES: Record<string, Site> = {
   "chatgpt.com": CHATGPT,
   "claude.ai": CLAUDE,
   "gemini.google.com": GEMINI,
+  "grok.com": GROK,
 };
 
 /** The hosts DataFog runs on, each with its own profile. */

@@ -521,7 +521,7 @@ test("explains why an answer can't be restored", async () => {
   await settle();
 
   expect($("#restore-error").textContent).toBe(
-    "Open a ChatGPT, Claude or Gemini chat in this tab to restore its latest answer.",
+    "Open a ChatGPT, Claude, Gemini or Grok chat in this tab to restore its latest answer.",
   );
   expect($("#restored").hidden).toBe(true);
 });
