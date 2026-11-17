@@ -8,6 +8,7 @@ test("knows each site, and treats an unknown host as ChatGPT", () => {
   expect(siteFor("claude.ai").name).toBe("Claude");
   expect(siteFor("gemini.google.com").name).toBe("Gemini");
   expect(siteFor("grok.com").name).toBe("Grok");
+  expect(siteFor("chat.deepseek.com").name).toBe("DeepSeek");
   expect(siteFor("localhost").name).toBe("ChatGPT");
 });
 
@@ -44,7 +45,7 @@ test("finds Gemini's answer text, not its label", () => {
 });
 
 test("names every site in one list", () => {
-  expect(siteNames()).toBe("ChatGPT, Claude, Gemini or Grok");
+  expect(siteNames()).toBe("ChatGPT, Claude, Gemini, Grok or DeepSeek");
 });
 
 test("finds Grok's answer text, not its heading", () => {
@@ -59,6 +60,22 @@ test("finds Grok's answer text, not its heading", () => {
 
   const answers = document.querySelectorAll(selector);
 
+  expect(answers).toHaveLength(1);
+  expect(answers[0].textContent?.trim()).toBe("hi [[EMAIL_7KQ4ZM]]");
+});
+
+test("finds DeepSeek's send button and answer text", () => {
+  document.body.innerHTML = `
+    <div class="ds-message">
+      <div class="ds-markdown ds-assistant-message-main-content">
+        <p>hi [[EMAIL_7KQ4ZM]]</p>
+      </div>
+    </div>
+    <div role="button" class="ds-button ds-button--primary ds-button--circle"></div>`;
+  const site = siteFor("chat.deepseek.com");
+
+  expect(document.querySelectorAll(site.sendButtons)).toHaveLength(1);
+  const answers = document.querySelectorAll(site.answers[0]);
   expect(answers).toHaveLength(1);
   expect(answers[0].textContent?.trim()).toBe("hi [[EMAIL_7KQ4ZM]]");
 });
