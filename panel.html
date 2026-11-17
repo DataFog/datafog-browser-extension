@@ -137,6 +137,29 @@
       form.add {
         flex-direction: row;
       }
+      p.status {
+        min-height: 1.5em;
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      p.status.ok {
+        color: var(--ok);
+      }
+      li.added {
+        animation: added 2s ease-out;
+      }
+      @keyframes added {
+        from {
+          background: color-mix(in srgb, var(--ok) 25%, transparent);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        li.added {
+          animation: none;
+          background: color-mix(in srgb, var(--ok) 15%, transparent);
+        }
+      }
       form.add input {
         flex: 1;
         min-width: 0;
@@ -553,6 +576,7 @@
         />
         <button type="submit">Add</button>
       </form>
+      <p class="status" id="allowlist-status" role="status"></p>
     </section>
 
     <section id="denylist-section">
@@ -600,6 +624,7 @@
         />
         <button type="submit">Add</button>
       </form>
+      <p class="status" id="denylist-status" role="status"></p>
     </section>
 
     <button id="settings" type="button">Settings</button>

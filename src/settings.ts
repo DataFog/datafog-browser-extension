@@ -194,17 +194,26 @@ export async function saveSettings(settings: Settings): Promise<void> {
 /** The settings lists of values the user keeps by hand. */
 export type ListName = "allowlist" | "denylist";
 
+/** What adding to a list did: added it, found it already there, or nothing. */
+export type ListAdd = "added" | "listed" | "blank";
+
 /**
  * Add a value to one of the user's lists, once.
  *
  * @param name The list.
  * @param value The value; surrounding spaces are dropped.
+ * @returns Whether it was added, already listed, or blank.
  */
-export async function addToList(name: ListName, value: string): Promise<void> {
+export async function addToList(
+  name: ListName,
+  value: string,
+): Promise<ListAdd> {
   const item = value.trim();
+  if (!item) return "blank";
   const settings = await loadSettings();
-  if (!item || settings[name].includes(item)) return;
+  if (settings[name].includes(item)) return "listed";
   await saveSettings({ ...settings, [name]: [...settings[name], item] });
+  return "added";
 }
 
 /**
