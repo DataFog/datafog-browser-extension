@@ -22,8 +22,8 @@ decisions on top of it, including one change to ADR 004's scope.
 The extension uses FogVault through Core's adapter, with the same version
 ranges the adapter declares:
 
-- `@datafog/wasm` ^1.5.0
-- `@datafog/core-fogvault-browser` ^1.5.0
+- `@datafog/wasm` ^1.6.0
+- `@datafog/core-fogvault-browser` ^1.6.0
 - `@datafog/fogvault-browser` 0.1.0, exactly
 
 Core packages take a floor rather than an exact pin, so a qualified Core minor
@@ -34,6 +34,7 @@ FogVault stays exact, as the adapter requires.
 
 Core 1.1.0 added `prepareForget` for mapping TTL. Core 1.5.0 corrects detection
 and transform edge cases without changing the browser APIs the extension uses.
+Core 1.6.0 adds literal-phrase deny rules, which the settings deny list needs.
 
 Core, the FogVault Worker and the model run in an offscreen document, not the
 service worker, which Chrome stops when idle and which can't start Workers. The
@@ -93,6 +94,10 @@ the value gets a new marker next time.
   does: by type, ignoring case and spacing. While locked, they're flagged again.
 - The settings allowlist stays separate: it applies everywhere, locked or not,
   and is meant for values such as the user's own work email.
+- The settings deny list works the other way: phrases such as a project name
+  are always found, as whole words ignoring case, even when allowlisted or
+  marked not sensitive. Core keeps them in a review only by their detector, so
+  the review's findings carry it.
 
 ### Mapping TTL
 

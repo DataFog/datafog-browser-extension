@@ -21,7 +21,7 @@ npm run build
 2. **Load unpacked** and choose `dist/`.
 3. Open chatgpt.com, claude.ai, gemini.google.com, grok.com or chat.deepseek.com and type, for example: `my email is jane@example.com and card 4111 1111 1111 1111`.
 
-Click the DataFog tab on the right edge of the page, or the toolbar icon, to open the DataFog side panel. Its **Settings** button opens the settings: types to detect, an exact-match allowlist, and a checkbox for each site to check. A `!` on the toolbar icon means the chat box wasn't found and the page isn't protected.
+Click the DataFog tab on the right edge of the page, or the toolbar icon, to open the DataFog side panel. Its **Settings** button opens the settings: types to detect, an exact-match allowlist, an Always flag list of your own phrases, and a checkbox for each site to check. A `!` on the toolbar icon means the chat box wasn't found and the page isn't protected.
 
 ## How it works
 
