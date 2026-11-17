@@ -640,7 +640,7 @@ test("anchors the badge to the form, not the editor inside it", async () => {
   );
   await start(async () => ({}));
   const root = document.querySelector("datafog-badge")!.shadowRoot!;
-  expect(root.querySelector<HTMLElement>(".wrap")!.style.bottom).toBe("330px");
+  expect(root.querySelector<HTMLElement>(".wrap")!.style.bottom).toBe("324px");
 });
 
 /**

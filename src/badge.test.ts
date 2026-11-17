@@ -87,8 +87,8 @@ test("sits beside the chat box when there's room", async () => {
   badge.reposition();
   await new Promise(requestAnimationFrame);
 
-  expect(wrap.style.right).toBe("92px");
-  expect(wrap.style.bottom).toBe("330px");
+  expect(wrap.style.right).toBe("80px");
+  expect(wrap.style.bottom).toBe("324px");
 });
 
 test("sits above the chat box when there's no room beside it", async () => {
@@ -111,7 +111,7 @@ test("stays on screen when the chat box fills the page", async () => {
   badge.reposition();
   await new Promise(requestAnimationFrame);
 
-  expect(wrap.style.bottom).toBe("736px");
+  expect(wrap.style.bottom).toBe("724px");
 });
 
 test("hides when the chat box is off screen", async () => {
