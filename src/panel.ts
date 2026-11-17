@@ -1,6 +1,7 @@
 /**
  * Side panel: the vault, the Pseudonymize review, the values marked not
- * sensitive, and restoring answers.
+ * sensitive, restoring answers, and the lists of values to always allow or
+ * flag.
  */
 
 import type {
@@ -11,7 +12,14 @@ import type {
   ValueChoice,
   VaultStatus,
 } from "./messages";
-import { LABELS } from "./settings";
+import {
+  addToList,
+  LABELS,
+  loadSettings,
+  removeFromList,
+  type ListName,
+  type Settings,
+} from "./settings";
 import { siteNames } from "./site";
 
 /** Values a list shows before it scrolls within the panel. */
@@ -423,7 +431,7 @@ function renderRestore(state: VaultStatus["state"]): void {
   const unlocked = state === "unlocked";
   view.restoreLatest.disabled = !unlocked;
   view.restoreNote.textContent = unlocked
-    ? "Show the original values in place of markers in the chat's latest answer."
+    ? ""
     : "Unlock your vault to restore markers in the chat's answers.";
   if (!unlocked) {
     showRestored(null);
@@ -445,6 +453,67 @@ async function restoreLatest(): Promise<void> {
   }
   showError(view.restoreError, null);
   showRestored(response);
+}
+
+/** What each list says when it's empty. */
+const EMPTY_LIST: Record<ListName, string> = {
+  allowlist: "No values yet.",
+  denylist: "No phrases yet.",
+};
+
+/**
+ * Find a list's elements: the list, its notes and its add form.
+ *
+ * @param name The list.
+ * @returns The elements.
+ */
+function listParts(name: ListName) {
+  return {
+    list: document.querySelector<HTMLUListElement>(`#${name}`)!,
+    note: document.querySelector<HTMLParagraphElement>(`#${name}-note`)!,
+    count: document.querySelector<HTMLParagraphElement>(`#${name}-count`)!,
+    form: document.querySelector<HTMLFormElement>(`#${name}-add`)!,
+    field: document.querySelector<HTMLInputElement>(`#${name}-value`)!,
+  };
+}
+
+/**
+ * Show one of the user's lists, each value with Remove.
+ *
+ * @param name The list.
+ * @param values Its values.
+ */
+function renderList(name: ListName, values: string[]): void {
+  const { list, note, count } = listParts(name);
+  note.textContent = values.length === 0 ? EMPTY_LIST[name] : "";
+  // Values only ever go in as text, never as markup
+  list.replaceChildren(
+    ...values.map((value) => {
+      const item = document.createElement("li");
+      const text = document.createElement("div");
+      text.textContent = value;
+      const remove = linkButton("Remove");
+      remove.addEventListener("click", () => void removeFromList(name, value));
+      item.append(text, remove);
+      return item;
+    }),
+  );
+  fitList(list, count);
+}
+
+/**
+ * Show both lists from the settings.
+ *
+ * @param settings The current settings.
+ */
+function renderLists(settings: Settings): void {
+  renderList("allowlist", settings.allowlist);
+  renderList("denylist", settings.denylist);
+}
+
+/** Read the settings and show their lists. */
+async function refreshLists(): Promise<void> {
+  renderLists(await loadSettings());
 }
 
 /**
@@ -606,15 +675,51 @@ view.deleteForm.addEventListener("submit", (event) => {
     render(response);
   });
 });
-// Each info button shows or hides the box it controls
+/**
+ * Make an info button show its box while hovered or focused, and keep it open
+ * once clicked, until clicked again or Escape is pressed.
+ *
+ * @param toggle The info button.
+ */
+function setUpInfo(toggle: HTMLButtonElement): void {
+  const info = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+  let pinned = false;
+  let hovered = false;
+  const update = () => {
+    // Keyboard focus opens it; a mouse click's focus leaves it to the pin
+    const open = pinned || hovered || toggle.matches(":focus-visible");
+    info.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+  };
+  // The box counts as hovered too, so its link can be reached
+  for (const target of [toggle, info]) {
+    target.addEventListener("mouseenter", () => {
+      hovered = true;
+      update();
+    });
+    target.addEventListener("mouseleave", () => {
+      hovered = false;
+      update();
+    });
+  }
+  toggle.addEventListener("focus", update);
+  toggle.addEventListener("blur", update);
+  toggle.addEventListener("click", () => {
+    pinned = !pinned;
+    update();
+  });
+  toggle.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    pinned = false;
+    toggle.blur();
+    update();
+  });
+}
+
 for (const toggle of document.querySelectorAll<HTMLButtonElement>(
   "button.icon[aria-controls]",
 )) {
-  const info = document.getElementById(toggle.getAttribute("aria-controls")!)!;
-  toggle.addEventListener("click", () => {
-    info.hidden = !info.hidden;
-    toggle.setAttribute("aria-expanded", String(!info.hidden));
-  });
+  setUpInfo(toggle);
 }
 view.restoreLatest.addEventListener("click", () => void restoreLatest());
 document.querySelector("#copy-restored")!.addEventListener("click", () => {
@@ -630,6 +735,20 @@ document
 document
   .querySelector("#update-now")!
   .addEventListener("click", () => chrome.runtime.reload());
+
+// Adding to a list saves the settings; the change redraws both lists
+for (const name of ["allowlist", "denylist"] as const) {
+  const { form, field } = listParts(name);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void addToList(name, field.value).then(() => (field.value = ""));
+  });
+}
+
+// The lists also change from the settings page
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && "settings" in changes) void refreshLists();
+});
 
 // The vault tells the panel when it locks or a review arrives
 chrome.runtime.onMessage.addListener((message: PanelNotice | object) => {
@@ -651,3 +770,4 @@ export async function connect(): Promise<void> {
 void connect();
 void refresh(true);
 void checkUpdate();
+void refreshLists();

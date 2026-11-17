@@ -40,10 +40,11 @@ export class ModelScanner {
    *
    * @param text The prompt.
    * @param entities The types to find.
+   * @param deny Phrases to always find.
    * @returns What Core found.
    */
-  readonly scan: Scanner = (text, entities) => {
-    const next = this.queue.then(() => this.run(text, entities));
+  readonly scan: Scanner = (text, entities, deny = []) => {
+    const next = this.queue.then(() => this.run(text, entities, deny));
     this.queue = next.catch(() => {});
     return next;
   };
@@ -53,16 +54,21 @@ export class ModelScanner {
    *
    * @param text The prompt.
    * @param entities The types to find.
+   * @param deny Phrases to always find.
    * @returns What Core found.
    */
-  private async run(text: string, entities: string[]): Promise<Finding[]> {
+  private async run(
+    text: string,
+    entities: string[],
+    deny: string[],
+  ): Promise<Finding[]> {
     if (!needsModel(entities)) {
       // Free the model's Worker while names and addresses are off
       await this.close();
-      return scanRules(text, entities);
+      return scanRules(text, entities, deny);
     }
     const session = await this.ready();
-    const result = await session.scan(text, scanConfig(entities));
+    const result = await session.scan(text, scanConfig(entities, deny));
     return result.findings;
   }
 

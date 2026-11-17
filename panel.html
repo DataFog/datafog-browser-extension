@@ -134,6 +134,13 @@
         border: 1px solid var(--line);
         border-radius: 8px;
       }
+      form.add {
+        flex-direction: row;
+      }
+      form.add input {
+        flex: 1;
+        min-width: 0;
+      }
       ul.scroll li:last-child {
         border-bottom: 0;
       }
@@ -204,10 +211,20 @@
       button.icon[aria-expanded="true"] {
         color: var(--text);
       }
+      section {
+        position: relative;
+      }
+      /* Info opens over the section, below its heading, without moving it */
       .info {
+        position: absolute;
+        z-index: 1;
+        left: 0;
+        right: 0;
         padding: 8px;
+        border: 1px solid var(--line);
         border-radius: 8px;
         background: var(--field);
+        box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
         color: var(--muted);
         font-size: 13px;
       }
@@ -300,7 +317,7 @@
           </svg>
         </button>
       </div>
-      <div class="info" id="vault-info" hidden>
+      <div class="info" id="vault-info" role="tooltip" hidden>
         <p>
           Pseudonymize swaps each value for a marker such as [[EMAIL_7KQ4ZM]],
           and keeps the original encrypted in this vault, on this device. The
@@ -409,7 +426,33 @@
     </section>
 
     <section id="restore">
-      <h2>Restore</h2>
+      <div class="heading">
+        <h2>Restore</h2>
+        <button
+          class="icon"
+          id="restore-info-toggle"
+          type="button"
+          aria-label="About Restore"
+          aria-controls="restore-info"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" />
+            <path
+              d="M8 7v4.5M8 4.5v.5"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+      <div class="info" id="restore-info" role="tooltip" hidden>
+        <p>
+          Show the original values in place of markers in the chat's latest
+          answer.
+        </p>
+      </div>
       <p class="muted" id="restore-note"></p>
       <button id="restore-latest" class="primary" type="button">
         Restore latest answer
@@ -446,21 +489,117 @@
           </svg>
         </button>
       </div>
-      <div class="info" id="not-sensitive-info" hidden>
+      <div class="info" id="not-sensitive-info" role="tooltip" hidden>
         <p>
           Mark a value Not sensitive in a review, and DataFog leaves it as is
           from then on. It's left out of reviews and, while the vault is
           unlocked, the badge and Redact skip it too.
         </p>
         <p>
-          These values are saved in your vault, on this device. Remove one to
-          have DataFog replace it again.
+          These values are saved encrypted in your vault, on this device, and
+          apply only to the type they were found as. While the vault is locked,
+          they're flagged again. Remove one to have DataFog replace it again.
         </p>
+        <p>To skip a value everywhere, even when locked, use Always allow.</p>
       </div>
       <p class="muted" id="not-sensitive-note"></p>
       <p class="muted" id="not-sensitive-count" hidden></p>
       <ul id="not-sensitive"></ul>
       <p class="error" id="not-sensitive-error" hidden></p>
+    </section>
+
+    <section id="allowlist-section">
+      <div class="heading">
+        <h2>Always allow</h2>
+        <button
+          class="icon"
+          id="allowlist-info-toggle"
+          type="button"
+          aria-label="About Always allow"
+          aria-controls="allowlist-info"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" />
+            <path
+              d="M8 7v4.5M8 4.5v.5"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+      <div class="info" id="allowlist-info" role="tooltip" hidden>
+        <p>
+          Values DataFog never flags, matched exactly, such as your own work
+          email. They apply to every type, whether or not the vault is unlocked.
+        </p>
+        <p>
+          This list is saved unencrypted in Chrome's storage for DataFog, on
+          this device. For values you'd rather keep encrypted, mark them Not
+          sensitive in a review instead.
+        </p>
+      </div>
+      <p class="muted" id="allowlist-note"></p>
+      <p class="muted" id="allowlist-count" hidden></p>
+      <ul id="allowlist"></ul>
+      <form class="add" id="allowlist-add">
+        <input
+          id="allowlist-value"
+          aria-label="Value to always allow"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="submit">Add</button>
+      </form>
+    </section>
+
+    <section id="denylist-section">
+      <div class="heading">
+        <h2>Always flag</h2>
+        <button
+          class="icon"
+          id="denylist-info-toggle"
+          type="button"
+          aria-label="About Always flag"
+          aria-controls="denylist-info"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+            <circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" />
+            <path
+              d="M8 7v4.5M8 4.5v.5"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+      <div class="info" id="denylist-info" role="tooltip" hidden>
+        <p>
+          Phrases DataFog always flags, as whole words ignoring case, such as a
+          project or client name. They're flagged even if allowed above or
+          marked not sensitive.
+        </p>
+        <p>
+          This list is saved unencrypted in Chrome's storage for DataFog, on
+          this device.
+        </p>
+      </div>
+      <p class="muted" id="denylist-note"></p>
+      <p class="muted" id="denylist-count" hidden></p>
+      <ul id="denylist"></ul>
+      <form class="add" id="denylist-add">
+        <input
+          id="denylist-value"
+          aria-label="Phrase to always flag"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="submit">Add</button>
+      </form>
     </section>
 
     <button id="settings" type="button">Settings</button>

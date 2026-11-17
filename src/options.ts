@@ -1,5 +1,6 @@
 /**
- * Options page: what to detect, an allowlist, and an on/off switch per site.
+ * Options page: what to detect, an allowlist, a deny list, and an on/off
+ * switch per site.
  */
 
 import {
@@ -14,6 +15,7 @@ import { SITE_NAMES } from "./site";
 const sites = document.querySelector<HTMLFieldSetElement>("#sites")!;
 const blockSends = document.querySelector<HTMLInputElement>("#block-sends")!;
 const allowlist = document.querySelector<HTMLTextAreaElement>("#allowlist")!;
+const denylist = document.querySelector<HTMLTextAreaElement>("#denylist")!;
 const status = document.querySelector<HTMLSpanElement>("#status")!;
 
 /** What a type may get wrong: why it's off by default, or its limits. */
@@ -83,11 +85,26 @@ async function render(): Promise<void> {
   renderSites(settings.off);
   blockSends.checked = settings.blockSends;
   allowlist.value = settings.allowlist.join("\n");
+  denylist.value = settings.denylist.join("\n");
   renderTypes(
     document.getElementById("types")!,
     [...DEFAULT_ENTITIES, ...OPT_IN_ENTITIES],
     settings.entities,
   );
+}
+
+/**
+ * The distinct, nonblank lines of a list.
+ *
+ * @param list The text box holding one item per line.
+ * @returns Each item once, trimmed.
+ */
+function linesOf(list: HTMLTextAreaElement): string[] {
+  const items = list.value
+    .split("\n")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return [...new Set(items)];
 }
 
 /** Save the form. */
@@ -98,16 +115,13 @@ async function save(): Promise<void> {
   const off = [
     ...sites.querySelectorAll<HTMLInputElement>("input:not(:checked)"),
   ].map((box) => box.value);
-  const values = allowlist.value
-    .split("\n")
-    .map((value) => value.trim())
-    .filter(Boolean);
 
   await saveSettings({
     enabled: true,
     off,
     entities,
-    allowlist: [...new Set(values)],
+    allowlist: linesOf(allowlist),
+    denylist: linesOf(denylist),
     blockSends: blockSends.checked,
   });
   status.textContent = "Saved";

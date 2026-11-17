@@ -10,7 +10,11 @@ import { ModelScanner, needsModel, type ModelSession } from "./model";
 
 vi.mock("./detect", () => ({
   scanRules: vi.fn(async () => []),
-  scanConfig: (entities: string[]) => ({ entities, detect_uuid: true }),
+  scanConfig: (entities: string[], deny: string[] = []) => ({
+    entities,
+    detect_uuid: true,
+    ...(deny.length > 0 && { deny }),
+  }),
 }));
 
 const RANGE = { start: 0, end: 3 };
@@ -79,7 +83,7 @@ test("needs the model only for names and addresses", () => {
 
 test("uses the rules, with no session, when the model isn't needed", async () => {
   await scanner.scan("a@b.co", ["EMAIL"]);
-  expect(scanRules).toHaveBeenCalledWith("a@b.co", ["EMAIL"]);
+  expect(scanRules).toHaveBeenCalledWith("a@b.co", ["EMAIL"], []);
   expect(sessions).toHaveLength(0);
 });
 
@@ -135,4 +139,12 @@ test("passes a model failure on, without falling back to the rules", async () =>
     code: "model_load_failed",
   });
   expect(scanRules).not.toHaveBeenCalledWith("one", ["PERSON"]);
+});
+
+test("passes deny list phrases to the model's scan", async () => {
+  const scan = scanner.scan("Project Atlas", ["PERSON"], ["Project Atlas"]);
+  await settle();
+  sessions[0].next();
+  await scan;
+  expect(sessions[0].configs[0]).toMatchObject({ deny: ["Project Atlas"] });
 });
