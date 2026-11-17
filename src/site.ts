@@ -102,11 +102,25 @@ const GROK: Site = {
   badge: { size: 32, radius: "50%", centerInset: 29 },
 };
 
+const DEEPSEEK: Site = {
+  name: "DeepSeek",
+  composers: ['textarea[name="search"]', "textarea"],
+  // Its class names are hashed, so the box is found by its shape: the
+  // rounded card two levels above the chat box
+  box: "div:has(> div > div > textarea)",
+  sendButtons: '[role="button"].ds-button--primary.ds-button--circle',
+  // The answer's text, without its thinking
+  answers: [".ds-markdown.ds-assistant-message-main-content"],
+  // Its round attach and send buttons
+  badge: { size: 34, radius: "50%", centerInset: 30 },
+};
+
 const SITES: Record<string, Site> = {
   "chatgpt.com": CHATGPT,
   "claude.ai": CLAUDE,
   "gemini.google.com": GEMINI,
   "grok.com": GROK,
+  "chat.deepseek.com": DEEPSEEK,
 };
 
 /** The hosts DataFog runs on, each with its own profile. */
