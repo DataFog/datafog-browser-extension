@@ -1,7 +1,13 @@
 # Contributing
 
-Pull requests are welcome. For a large change, such as a new site or setting,
-email help@datafog.ai first so the approach can be agreed before you build it.
+Contributions are welcome. Each pull request describes:
+
+- **Summary:** what the change does, in a sentence or two.
+- **What changed:** the main changes, file by file or feature by feature.
+- **Why:** the problem it solves or the reason for it.
+- **Limitations:** anything it leaves out or doesn't handle, if any.
+
+It also follows the [changelog policy](#changelog).
 
 ## Setup
 
