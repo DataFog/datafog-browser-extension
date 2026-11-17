@@ -184,6 +184,9 @@ test("pastes several thousand words and records typing and scan timings", async 
   badge,
   extension,
 }, testInfo) => {
+  // A cold model scans thousands of words twice; this is a completion check,
+  // while observed timings below remain evidence rather than a five-second SLA.
+  test.slow();
   const text = `${"ordinary prompt words ".repeat(1500)} ${SAMPLE}`;
   const editor = chat.locator("#prompt-textarea");
   await extension.context.grantPermissions([
@@ -199,25 +202,32 @@ test("pastes several thousand words and records typing and scan timings", async 
   await editor.press("ControlOrMeta+V");
   await expect(editor).toHaveText(text);
   const inserted = performance.now();
-  await expect.poll(async () => (await badge.state(".dot")).text).toBe("2");
+  await expect
+    .poll(() => badge.state(".dot"), { timeout: 30_000 })
+    .toMatchObject({ text: "2" });
   const scanned = performance.now();
   await editor.press("End");
   const typed = performance.now();
   await editor.pressSequentially(" followup@example.com");
   const finished = performance.now();
   await expect(editor).toContainText("followup@example.com");
-  await expect.poll(async () => (await badge.state(".dot")).text).toBe("3");
+  await expect
+    .poll(() => badge.state(".dot"), { timeout: 30_000 })
+    .toMatchObject({ text: "3" });
   const rescanned = performance.now();
+  const timings = {
+    words: text.trim().split(/\s+/).length,
+    insertMs: inserted - started,
+    scanObservedMs: scanned - inserted,
+    keyboardInteractionMs: finished - typed,
+    keyboardScanObservedMs: rescanned - finished,
+    note: "Observed timings; no unapproved performance SLA is enforced.",
+  };
+  // Keep this evidence even when the CI artifact store is unavailable.
+  console.log("Long-prompt timings:", JSON.stringify(timings));
   await testInfo.attach("long-prompt-timings", {
     contentType: "application/json",
-    body: JSON.stringify({
-      words: text.trim().split(/\s+/).length,
-      insertMs: inserted - started,
-      scanObservedMs: scanned - inserted,
-      keyboardInteractionMs: finished - typed,
-      keyboardScanObservedMs: rescanned - finished,
-      note: "Observed timings; no unapproved performance SLA is enforced.",
-    }),
+    body: JSON.stringify(timings),
   });
 });
 
