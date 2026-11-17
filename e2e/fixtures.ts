@@ -337,7 +337,7 @@ export class Extension {
           this.config.replaceHelperExtension
         )
           await installer.send("Extensions.uninstall", { id: extension.id });
-        else if (extension.enabled && extension.name === "DataFog (prototype)")
+        else if (extension.enabled && extension.name.startsWith("DataFog"))
           throw new Error(
             "This browser already has DataFog installed. Use the dedicated sign-in profile so the live suite does not change an existing vault.",
           );
