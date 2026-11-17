@@ -1,0 +1,14 @@
+import { defineConfig } from "@playwright/test";
+
+export default defineConfig({
+  testDir: "./e2e",
+  testIgnore: "**/live/**",
+  projects: [{ name: "extension-integration" }],
+  // Clipboard contents and native window focus are shared across profiles.
+  // Serialize tests so those OS resources cannot race.
+  workers: 1,
+  fullyParallel: false,
+  reporter: [["list"], ["html", { open: "never" }]],
+  outputDir: "test-results",
+  use: { headless: true },
+});

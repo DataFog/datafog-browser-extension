@@ -4,3 +4,4 @@ harness/
 .code-graph/
 .review/
 package-lock.json
+.playwright/

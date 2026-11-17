@@ -261,3 +261,43 @@ describe("workspaceFindings", () => {
     ).toEqual(["CREDIT_CARD"]);
   });
 });
+
+// Pattern coverage belongs beside Core's real WASM tests, independent of page DOM.
+describe("rule detector samples", () => {
+  test.each([
+    ["API_KEY", "api_key=sk_live_abcdefghijklmnopqrstuvwxyz012345"],
+    [
+      "BEARER_TOKEN",
+      "Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789",
+    ],
+    [
+      "CREDENTIAL_URI",
+      "postgres://testuser:testpassword@localhost:5432/testdb",
+    ],
+    [
+      "JWT",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+    ],
+    [
+      "PRIVATE_KEY",
+      "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----",
+    ],
+    ["SSN", "123-45-6789"],
+    ["US_ROUTING_NUMBER", "Routing number: 021000021"],
+  ])("finds %s with default settings", async (entity, text) => {
+    expect(await countFindings(text, settings)).toEqual({ [entity]: 1 });
+  });
+  test.each([
+    ["DATE", "2026-11-16"],
+    ["ZIP_CODE", "ZIP: 94105"],
+    ["IP_ADDRESS", "192.168.1.42"],
+  ])("leaves %s off until selected", async (entity, text) => {
+    expect(await countFindings(text, settings)).toEqual({});
+    expect(
+      await countFindings(text, {
+        ...settings,
+        entities: [...settings.entities, entity],
+      }),
+    ).toEqual({ [entity]: 1 });
+  });
+});

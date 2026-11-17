@@ -44,7 +44,32 @@ Click the DataFog tab on the right edge of chatgpt.com, or the toolbar icon, to 
 ```bash
 npm run typecheck
 npm test   # unit tests in Node, with the real Core wasm
+npx playwright install chrome
+npm run test:integration  # extension integration tests in Google Chrome
 ```
+
+Extension integration tests run on pull requests to `main`, pushes to `main`, and manual
+CI dispatches on Linux, macOS, and Windows. See the [case coverage and release
+smoke checks](docs/regression-testing.md) for the boundaries of automated coverage,
+including live ChatGPT authentication and native input methods. Failed browser
+runs upload an HTML report and traces; `npm run test:e2e:report` opens a local report.
+
+The live, logged-in suite runs locally before commits:
+
+```sh
+npm run hooks:install  # installs the repository-local pre-commit hook
+npm run test:live:auth -- --keep-open  # sign in once; leave test Chrome open
+npm run test:e2e:live  # run the same live check manually
+```
+
+The hook uses the already-running Chrome window and blocks the commit unless the
+complete configured live suite passes. Each run prints and saves a receipt in
+`.playwright/live-receipt.json` and `.playwright/live-receipt.txt`, including test
+statuses, Chrome/platform details, the working-tree code fingerprint and staged
+tree hash. Tests execute working files; staged contents are recorded separately.
+The existing PR checks remain account-free, and authenticated live tests do not
+run in CI. See [local live setup and receipts](docs/regression-testing.md#local-live-suite-and-pre-commit-hook)
+for browser connection options and proof boundaries.
 
 To try the badge without ChatGPT, serve `harness/` (for example `python3 -m http.server --directory harness`) and open `harness.html`.
 

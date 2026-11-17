@@ -25,6 +25,10 @@ Prototype: a Chrome extension that checks what you type into ChatGPT for sensiti
 - The toolbar icon shows `!`, and the page tab shows an orange dot, when the chat box can't be found, so you know the page isn't being checked. Both explain why on hover.
 - A DataFog tab on the right edge of chatgpt.com opens and closes a DataFog side panel, and the toolbar icon opens it too. The panel follows your browser's light or dark theme, and has a button to open settings.
 
+### Fixed
+
+- The badge's review popup stays on screen in narrow or zoomed-in windows, opening below the badge when there is not enough room above it.
+
 ### Security
 
 - Detection runs on your device with [DataFog Core](https://github.com/DataFog/datafog-core) (`@datafog/wasm` 1.5.0 or a later 1.x). The name and address model is compiled into Core, so nothing is downloaded. The extension makes no network requests.

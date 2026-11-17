@@ -9,8 +9,14 @@
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
     "lint": "oxlint",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.e2e.json",
     "test": "vitest run",
+    "test:integration": "npm run build && playwright test",
+    "test:e2e": "npm run test:integration",
+    "test:e2e:report": "playwright show-report",
+    "test:live:auth": "npm run build && node scripts/chatgpt-auth.mjs",
+    "test:e2e:live": "node scripts/run-live-tests.mjs",
+    "hooks:install": "node scripts/install-hooks.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -20,6 +26,7 @@
     "@datafog/wasm": "^1.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@types/chrome": "0.3.6",
     "@types/node": "^24.19.2",
     "esbuild": "^0.28.2",

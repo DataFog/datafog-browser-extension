@@ -69,7 +69,9 @@ const STYLE = `
     .dots i { animation: none; }
   }
   .panel {
-    width: 280px; border: 1px solid #d0d0d0; border-radius: 12px;
+    position: fixed; box-sizing: border-box;
+    width: min(306px, calc(100vw - 16px)); overflow: auto;
+    border: 1px solid #d0d0d0; border-radius: 12px;
     background: #fff; color: #1f1f1f; padding: 12px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
   }
@@ -246,8 +248,10 @@ export class Badge {
 
     this.dot.addEventListener("click", () => {
       // Checking dots and the off badge have nothing to show in the panel
-      if (this.kind !== "checking" && this.kind !== "off")
+      if (this.kind !== "checking" && this.kind !== "off") {
         this.panel.hidden = !this.panel.hidden;
+        this.place();
+      }
     });
     this.buttons = {
       redact: root.querySelector(".redact")!,
@@ -381,6 +385,7 @@ export class Badge {
     if (attached)
       this.panel.hidden = this.kind === "hidden" || this.kind === "off";
     else if (warned) this.panel.hidden = true;
+    this.place();
   }
 
   /**
@@ -394,6 +399,7 @@ export class Badge {
     this.buttons.send.hidden = reason === null;
     this.showActions();
     if (reason !== null) this.panel.hidden = false;
+    this.place();
   }
 
   /**
@@ -465,5 +471,22 @@ export class Badge {
             window.innerHeight - DOT_SIZE - GAP,
           )
     }px`;
+    this.placePanel();
+  }
+
+  /** Keep the popup on screen without moving the badge away from the editor. */
+  private placePanel(): void {
+    if (this.panel.hidden || this.wrap.hidden) return;
+    const dot = this.dot.getBoundingClientRect();
+    const above = dot.top - GAP * 2;
+    const below = window.innerHeight - dot.bottom - GAP * 2;
+    this.panel.style.maxHeight = `${Math.max(0, above, below)}px`;
+    const { width, height } = this.panel.getBoundingClientRect();
+    this.panel.style.left = `${Math.max(
+      GAP,
+      Math.min(dot.right - width, window.innerWidth - width - GAP),
+    )}px`;
+    const top = dot.top - GAP - height;
+    this.panel.style.top = `${top >= GAP ? top : dot.bottom + GAP}px`;
   }
 }
