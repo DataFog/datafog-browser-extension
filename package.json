@@ -1,8 +1,8 @@
 {
   "name": "datafog-browser-extension",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "private": true,
-  "description": "Prototype: local DataFog checks for prompts typed into ChatGPT",
+  "description": "Local DataFog checks for prompts typed into ChatGPT, Claude, Gemini, Grok and DeepSeek",
   "license": "MIT",
   "type": "module",
   "scripts": {

@@ -4,7 +4,7 @@ Notable changes to the DataFog browser extension. The format follows [Keep a Cha
 
 ## [Unreleased]
 
-Prototype: a Chrome extension that checks what you type into ChatGPT, Claude, Gemini, Grok and DeepSeek for sensitive data, on your device, before you send it.
+The first release: a Chrome extension that checks what you type into ChatGPT, Claude, Gemini, Grok and DeepSeek for sensitive data, on your device, before you send it.
 
 ### Added
 
