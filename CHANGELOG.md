@@ -28,6 +28,7 @@ Prototype: a Chrome extension that checks what you type into ChatGPT for sensiti
 ### Fixed
 
 - The badge's review popup stays on screen in narrow or zoomed-in windows, opening below the badge when there is not enough room above it.
+- Redact and Pseudonymize replace a link that holds a found value with plain text, so the link's saved target and tooltip don't keep the original. Before, only the link's visible text changed.
 
 ### Security
 
