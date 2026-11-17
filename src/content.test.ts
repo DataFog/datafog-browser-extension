@@ -664,6 +664,27 @@ test("checks the chat box again when the types or lists change, and only then", 
   expect(badge().dot.textContent).toBe("1");
 });
 
+test("checks the chat box again when the service worker asks", async () => {
+  let skipped = false;
+  const box = await start(async (request) =>
+    request.type === "scan"
+      ? {
+          seq: request.seq,
+          enabled: true,
+          counts: skipped ? {} : { PERSON: 1 },
+        }
+      : {},
+  );
+  await type(box, "met Ann today");
+  expect(badge().dot.className).toBe("dot found");
+
+  // Ann was just marked not sensitive in the side panel
+  skipped = true;
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(badge().dot.className).toBe("dot clean");
+});
+
 test("greys out the badge, and checks nothing, while checking is off", async () => {
   const sent: string[] = [];
   const box = await start(

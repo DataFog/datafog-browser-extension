@@ -672,6 +672,10 @@ async function answer(request: TabRequest): Promise<object> {
     hideOriginals();
     return {};
   }
+  if (request.type === "recheck") {
+    void scanNow(true);
+    return {};
+  }
   // Approved in the side panel for this text; anything since wins
   if (!composer || readText(composer) !== request.before) {
     return { error: "chat_box_changed" };
