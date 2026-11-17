@@ -564,6 +564,28 @@ test("shows the dots from the keystroke, before the scan starts", async () => {
   expect(badge().dot.className).toBe("dot clean");
 });
 
+test("shows the dots over a red count while typing, then the new count", async () => {
+  const box = await start(async (request) =>
+    request.type === "scan"
+      ? {
+          seq: request.seq,
+          enabled: true,
+          counts: request.text.includes("@") ? { EMAIL: 1 } : {},
+        }
+      : {},
+  );
+  await type(box, "jane@example.com");
+  expect(badge().dot.className).toBe("dot found");
+
+  box.value = "jane@example.com and";
+  box.dispatchEvent(new Event("input"));
+  expect(badge().dot.className).toBe("dot checking");
+  expect(badge().dot.querySelectorAll(".dots i")).toHaveLength(3);
+  await vi.advanceTimersByTimeAsync(400);
+  expect(badge().dot.className).toBe("dot found");
+  expect(badge().dot.textContent).toBe("1");
+});
+
 test("settles when the text changes back before the scan", async () => {
   const box = await start(async (request) =>
     request.type === "scan"

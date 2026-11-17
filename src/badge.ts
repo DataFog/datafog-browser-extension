@@ -323,14 +323,11 @@ export class Badge {
    * @param state What to show.
    */
   show(state: BadgeState): void {
-    // Keep a red count steady while rechecking, rather than flicker to the logo,
-    // an open panel steady too, and don't bring back a badge the user turned off
+    // Keep an open panel steady while rechecking, and don't bring back a badge
+    // the user turned off
     if (
       state.kind === "checking" &&
-      (this.kind === "found" ||
-        this.kind === "hidden" ||
-        this.kind === "off" ||
-        !this.panel.hidden)
+      (this.kind === "hidden" || this.kind === "off" || !this.panel.hidden)
     )
       return;
     this.kind = state.kind;
