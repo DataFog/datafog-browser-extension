@@ -81,7 +81,7 @@ Every completed test run prints its result and saves private receipts:
 
 The receipt records the host, platform, run time, Chrome version, per-test statuses, working-tree code fingerprint and staged Git tree hash. A full-suite `PASS` requires every configured test to pass, with no skipped or flaky results. Filtered manual runs are identified as selected runs and do not establish a full-suite pass. The hook invokes the complete suite for the commit check.
 
-Tests execute the working tree without automatically stashing changes. The staged tree hash is recorded separately: when files are partially staged, the tested working files can differ from the contents that will be committed. Inspect that difference when using the receipt as evidence for a commit. Authentication state and browser profiles stay private and are not uploaded to CI.
+Tests execute the working tree without automatically stashing changes, and the staged tree hash is recorded separately. The hook stops the commit before running when working files differ from what's staged, including untracked files, so its receipt covers the committed code; stage or stash those changes first, for example with `git stash --keep-index --include-untracked`. A manual run tests the working files as they are. Authentication state and browser profiles stay private and are not uploaded to CI.
 
 ### Live coverage
 
