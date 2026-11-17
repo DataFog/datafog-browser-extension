@@ -431,7 +431,7 @@ function renderRestore(state: VaultStatus["state"]): void {
   const unlocked = state === "unlocked";
   view.restoreLatest.disabled = !unlocked;
   view.restoreNote.textContent = unlocked
-    ? "Show the original values in place of markers in the chat's latest answer."
+    ? ""
     : "Unlock your vault to restore markers in the chat's answers.";
   if (!unlocked) {
     showRestored(null);
@@ -675,15 +675,51 @@ view.deleteForm.addEventListener("submit", (event) => {
     render(response);
   });
 });
-// Each info button shows or hides the box it controls
+/**
+ * Make an info button show its box while hovered or focused, and keep it open
+ * once clicked, until clicked again or Escape is pressed.
+ *
+ * @param toggle The info button.
+ */
+function setUpInfo(toggle: HTMLButtonElement): void {
+  const info = document.getElementById(toggle.getAttribute("aria-controls")!)!;
+  let pinned = false;
+  let hovered = false;
+  const update = () => {
+    // Keyboard focus opens it; a mouse click's focus leaves it to the pin
+    const open = pinned || hovered || toggle.matches(":focus-visible");
+    info.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+  };
+  // The box counts as hovered too, so its link can be reached
+  for (const target of [toggle, info]) {
+    target.addEventListener("mouseenter", () => {
+      hovered = true;
+      update();
+    });
+    target.addEventListener("mouseleave", () => {
+      hovered = false;
+      update();
+    });
+  }
+  toggle.addEventListener("focus", update);
+  toggle.addEventListener("blur", update);
+  toggle.addEventListener("click", () => {
+    pinned = !pinned;
+    update();
+  });
+  toggle.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    pinned = false;
+    toggle.blur();
+    update();
+  });
+}
+
 for (const toggle of document.querySelectorAll<HTMLButtonElement>(
   "button.icon[aria-controls]",
 )) {
-  const info = document.getElementById(toggle.getAttribute("aria-controls")!)!;
-  toggle.addEventListener("click", () => {
-    info.hidden = !info.hidden;
-    toggle.setAttribute("aria-expanded", String(!info.hidden));
-  });
+  setUpInfo(toggle);
 }
 view.restoreLatest.addEventListener("click", () => void restoreLatest());
 document.querySelector("#copy-restored")!.addEventListener("click", () => {

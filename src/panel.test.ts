@@ -706,3 +706,27 @@ test("shows a list changed on the settings page", async () => {
     expect(shownIn("allowlist")).toEqual(["me@work.example"]),
   );
 });
+
+test("shows each section's description while its info button is hovered", async () => {
+  await start(() => LOCKED);
+  const toggle = $("#denylist-info-toggle");
+
+  expect($("#denylist-info").hidden).toBe(true);
+  toggle.dispatchEvent(new Event("mouseenter"));
+  expect($("#denylist-info").hidden).toBe(false);
+  expect($("#denylist-info").textContent).toContain("whole words");
+  toggle.dispatchEvent(new Event("mouseleave"));
+  expect($("#denylist-info").hidden).toBe(true);
+});
+
+test("keeps clicked info open until Escape", async () => {
+  await start(() => LOCKED);
+  const toggle = $("#restore-info-toggle");
+
+  toggle.click();
+  toggle.dispatchEvent(new Event("mouseleave"));
+  expect($("#restore-info").hidden).toBe(false);
+  toggle.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  expect($("#restore-info").hidden).toBe(true);
+  expect(toggle.getAttribute("aria-expanded")).toBe("false");
+});
