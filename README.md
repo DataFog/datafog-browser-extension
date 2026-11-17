@@ -1,10 +1,10 @@
 # DataFog browser extension (prototype)
 
-Checks what you type into ChatGPT and Claude for sensitive data, including names and mailing addresses, on your device, using [DataFog Core](https://github.com/DataFog/datafog-core)'s WebAssembly build (`@datafog/wasm`). A badge beside the chat box shows what was found; click it to **Redact** the values, **Pseudonymize** them, or **Dismiss** the warning.
+Checks what you type into ChatGPT, Claude and Gemini for sensitive data, including names and mailing addresses, on your device, using [DataFog Core](https://github.com/DataFog/datafog-core)'s WebAssembly build (`@datafog/wasm`). A badge beside the chat box shows what was found; click it to **Redact** the values, **Pseudonymize** them, or **Dismiss** the warning.
 
 Pseudonymize replaces each value with a marker such as `[[EMAIL_7KQ4ZM]]` and keeps the original in an encrypted vault on your device, so the same value always gets the same marker. You review the values and markers in the side panel before anything changes, and can mark a value **Not sensitive** so DataFog leaves it as is from then on. **Restore latest answer** in the side panel shows the original values in place of the markers in the chat's latest answer, until you choose **Hide originals** or the vault locks.
 
-Prototype only: ChatGPT and Claude only, no file uploads, and restore covers only the latest answer.
+Prototype only: ChatGPT, Claude and Gemini only, no file uploads, and restore covers only the latest answer.
 
 ## Build
 
@@ -19,7 +19,7 @@ npm run build
 
 1. Open `chrome://extensions` and turn on **Developer mode**.
 2. **Load unpacked** and choose `dist/`.
-3. Open chatgpt.com or claude.ai and type, for example: `my email is jane@example.com and card 4111 1111 1111 1111`.
+3. Open chatgpt.com, claude.ai or gemini.google.com and type, for example: `my email is jane@example.com and card 4111 1111 1111 1111`.
 
 Click the DataFog tab on the right edge of the page, or the toolbar icon, to open the DataFog side panel. Its **Settings** button opens the settings: types to detect, an exact-match allowlist, and a checkbox for each site to check. A `!` on the toolbar icon means the chat box wasn't found and the page isn't protected.
 
