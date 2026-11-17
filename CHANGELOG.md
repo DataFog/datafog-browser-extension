@@ -4,7 +4,7 @@ Notable changes to the DataFog browser extension. The format follows [Keep a Cha
 
 ## [Unreleased]
 
-Prototype: a Chrome extension that checks what you type into ChatGPT and Claude for sensitive data, on your device, before you send it.
+Prototype: a Chrome extension that checks what you type into ChatGPT, Claude and Gemini for sensitive data, on your device, before you send it.
 
 ### Added
 
@@ -25,7 +25,8 @@ Prototype: a Chrome extension that checks what you type into ChatGPT and Claude 
 - The toolbar icon shows `!`, and the page tab shows an orange dot, when the chat box can't be found, so you know the page isn't being checked. Both explain why on hover. If ChatGPT's page changed, a DataFog update may fix it: when Chrome has downloaded one that's waiting to install, they say so, and the side panel offers **Update now**, which restarts DataFog with it.
 - A DataFog tab on the right edge of chatgpt.com opens and closes a DataFog side panel, and the toolbar icon opens it too. The panel follows your browser's light or dark theme, and has a button to open settings.
 
-- DataFog also runs on claude.ai, with the same badge, Redact, Pseudonymize, send hold and restore. There the badge is a 28px rounded square, matching Claude's own buttons. Checking can be turned off for each site separately in the settings, which have a checkbox per site; an earlier off switch carries over as off for both. The vault, the allowlist and the types to look for are shared.
+- DataFog also runs on claude.ai, with the same badge, Redact, Pseudonymize, send hold and restore. There the badge is a 28px rounded square, matching Claude's own buttons. Checking can be turned off for each site separately in the settings, which have a checkbox per site; an earlier off switch carries over as off for every site. The vault, the allowlist and the types to look for are shared.
+- DataFog also runs on gemini.google.com, with a 32px round badge matching Gemini's own buttons.
 
 ### Fixed
 
