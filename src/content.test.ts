@@ -473,10 +473,12 @@ test("offers ways to report a failure, but not an update", async () => {
   await type(box, "jane@example.com");
   const root = document.querySelector("datafog-badge")!.shadowRoot!;
   const report = root.querySelector<HTMLElement>(".report")!;
-  const [issues, email] = report.querySelectorAll("a");
+  const links = report.querySelectorAll("a");
   expect(report.hidden).toBe(false);
-  expect(issues.href).toContain("datafog-browser-extension/issues");
-  expect(email.href).toBe("mailto:help@datafog.ai");
+  expect([...links].map((link) => link.href)).toEqual([
+    "mailto:help@datafog.ai",
+  ]);
+  expect(report.textContent).toContain("Report this problem to");
 
   code = "extension_reloaded";
   await type(box, "jane@example.org");
