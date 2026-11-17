@@ -4,6 +4,8 @@
  * chrome.storage.local, not sync: allowlist values are themselves sensitive.
  */
 
+import { HOSTS } from "./site";
+
 /** Found by Core's model rather than its rules. */
 export const MODEL_ENTITIES = ["PERSON", "ADDRESS"];
 
@@ -84,7 +86,13 @@ export const LABELS: Record<string, string> = {
 };
 
 export interface Settings {
+  /**
+   * Whether checking is on for the site at hand. Not saved: worked out from
+   * `off` for the page asking.
+   */
   enabled: boolean;
+  /** The hosts checking is turned off for; any other site is checked. */
+  off: string[];
   entities: string[];
   allowlist: string[];
   /** Hold a send until the user has chosen what to do about found values. */
@@ -93,6 +101,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   enabled: true,
+  off: [],
   entities: DEFAULT_ENTITIES,
   allowlist: [],
   blockSends: false,
@@ -101,13 +110,32 @@ export const DEFAULT_SETTINGS: Settings = {
 /**
  * Read settings, filling anything missing with defaults.
  *
+ * @param host The site they're for, which sets whether checking is on; any
+ *   site when left out.
  * @returns The current settings.
  */
-export async function loadSettings(): Promise<Settings> {
+export async function loadSettings(host?: string): Promise<Settings> {
   const stored = await chrome.storage.local.get<{
     settings?: Partial<Settings>;
   }>("settings");
-  return { ...DEFAULT_SETTINGS, ...stored.settings };
+  const saved = stored.settings ?? {};
+  // One switch used to cover every site; off then means off everywhere
+  const off = saved.off ?? (saved.enabled === false ? [...HOSTS] : []);
+  return forSite({ ...DEFAULT_SETTINGS, ...saved, off }, host);
+}
+
+/**
+ * Settings for one site: whether checking is on there.
+ *
+ * @param settings Settings as saved.
+ * @param host The site, or undefined for any site.
+ * @returns The settings, with `enabled` for that site.
+ */
+export function forSite(settings: Settings, host?: string): Settings {
+  return {
+    ...settings,
+    enabled: host === undefined || !settings.off.includes(host),
+  };
 }
 
 /**
@@ -150,5 +178,7 @@ export function sameChecks(a: Settings, b: Settings): boolean {
  * @param settings The settings to store.
  */
 export async function saveSettings(settings: Settings): Promise<void> {
-  await chrome.storage.local.set({ settings });
+  // Whether checking is on depends on the site, so only `off` is kept
+  const { enabled: _enabled, ...saved } = settings;
+  await chrome.storage.local.set({ settings: saved });
 }

@@ -107,7 +107,7 @@ test("live: allowlist and global off apply to the real composer", async ({
   await composer.fill(`${SAMPLE} updated`);
   await found(badge, 1);
   const settings = await extension.options();
-  await settings.locator("#enabled").uncheck();
+  await settings.locator("#site-chatgpt").uncheck();
   await saveOptions(settings);
   await composer.fill(`${SAMPLE} checking disabled`);
   await expect

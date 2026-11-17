@@ -105,10 +105,43 @@ export class ClosedShadow {
 export type ChatOptions = {
   path?: string;
   composer?: "contenteditable" | "textarea" | "none";
+  /** Which chat site's markup to stand in for. */
+  site?: "chatgpt" | "claude";
 };
+
+const ORIGINS = {
+  chatgpt: "https://chatgpt.com",
+  claude: "https://claude.ai",
+};
+
+/** Controlled Claude DOM: a card in a fieldset, with a plain send button. */
+function claudeHTML(): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Claude fixture</title>
+    <style>
+      body{font:16px system-ui;margin:0;padding:32px} main{max-width:760px;margin:auto}
+      fieldset{border:0;margin:32px 60px 0 0;padding:0}
+      [data-cds-part=composer-card]{border:1px solid #888;border-radius:14px;padding:8px}
+      [data-testid=chat-input]{min-height:50px;white-space:pre-wrap}
+      .row{display:flex;justify-content:flex-end}
+      .row button{width:28px;height:28px;border-radius:8px}
+    </style></head><body>
+    <main><section id="answers"></section><fieldset><div data-cds-part="composer-card">
+    <div data-testid="chat-input" role="textbox" contenteditable="true" aria-label="Write your prompt to Claude"></div>
+    <div class="row"><button type="button" data-testid="chat-input-send" aria-label="Send message">↑</button></div>
+    </div></fieldset><output id="sent-count">0</output></main>
+    <script>
+      const sent=document.querySelector('#sent-count');
+      const send=()=>{sent.textContent=String(Number(sent.textContent)+1)};
+      document.querySelector('[data-testid=chat-input-send]').addEventListener('click', send);
+      document.querySelector('[data-testid=chat-input]').addEventListener('keydown', e=>{
+        if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();send()}
+      });
+    </script></body></html>`;
+}
 
 /** Controlled ChatGPT DOM, served at the real origin for manifest injection. */
 function chatHTML(options: ChatOptions): string {
+  if (options.site === "claude") return claudeHTML();
   const composer = options.composer ?? "contenteditable";
   const editor =
     composer === "none"
@@ -203,13 +236,14 @@ export class Extension {
         snapshots: true,
         sources: true,
       });
-      await this.context.route("https://chatgpt.com/**", (route) => {
-        const options = this.pages.get(route.request().url()) ?? {};
-        return route.fulfill({
-          contentType: "text/html",
-          body: chatHTML(options),
+      for (const origin of Object.values(ORIGINS))
+        await this.context.route(`${origin}/**`, (route) => {
+          const options = this.pages.get(route.request().url()) ?? {};
+          return route.fulfill({
+            contentType: "text/html",
+            body: chatHTML(options),
+          });
         });
-      });
     } else if (!this.authLoaded && !this.borrowedBrowser) {
       if (this.config.storageState)
         await this.context.setStorageState(this.config.storageState);
@@ -252,7 +286,8 @@ export class Extension {
   }
 
   async newChat(options: ChatOptions = {}): Promise<Page> {
-    const url = new URL(options.path ?? "/", "https://chatgpt.com").href;
+    const origin = ORIGINS[options.site ?? "chatgpt"];
+    const url = new URL(options.path ?? "/", origin).href;
     this.pages.set(url, options);
     const page = await this.context.newPage();
     this.ownedPages.add(page);

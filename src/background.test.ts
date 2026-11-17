@@ -61,6 +61,16 @@ const PANEL: Sender = {
 const ROUTING = { recordId: "cmVj", namespace: "bnM=" };
 
 /**
+ * A content script's sender, on a page.
+ *
+ * @param url The page's address.
+ * @returns The sender.
+ */
+function fromPage(url: string): Sender {
+  return { tab: { id: 7, windowId: 3 }, url };
+}
+
+/**
  * Send a request to the service worker as a content script would.
  *
  * @param request The request.
@@ -142,6 +152,19 @@ beforeEach(async () => {
     },
   });
   await import("./background");
+});
+
+test("turns checking off only for the sites it's off for", async () => {
+  stored = { settings: { off: ["claude.ai"] } };
+  const request: Request = { type: "scan", seq: 1, text: "a@b.co" };
+
+  await send(request, fromPage("https://claude.ai/new"));
+  await send(request, fromPage("https://chatgpt.com/"));
+
+  const enabled = sendMessage.mock.calls.map(
+    ([message]) => message.settings.enabled,
+  );
+  expect(enabled).toEqual([false, true]);
 });
 
 test("forwards scans with the settings, opening one offscreen document", async () => {

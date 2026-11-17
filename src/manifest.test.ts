@@ -1,10 +1,18 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { HOSTS } from "./site";
+
 const manifest = JSON.parse(readFileSync("manifest.json", "utf8"));
 const build = readFileSync("build.mjs", "utf8");
 
 describe("manifest", () => {
+  it("runs on exactly the chat sites DataFog has a profile for", () => {
+    expect(manifest.content_scripts[0].matches).toEqual(
+      HOSTS.map((host) => `https://${host}/*`),
+    );
+  });
+
   it("opens the side panel page", () => {
     expect(manifest.permissions).toContain("sidePanel");
     expect(manifest.side_panel.default_path).toBe("panel.html");

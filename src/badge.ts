@@ -1,15 +1,16 @@
 /**
  * The inline badge in the chat box, and its expandable panel.
  *
- * Like Grammarly's: a small round DataFog badge just outside the chat box,
- * the size of ChatGPT's own buttons, that turns into a red count when
+ * Like Grammarly's: a small DataFog badge just outside the chat box, the
+ * size and shape of the site's own buttons, that turns into a red count when
  * something sensitive is found. Lives in a
- * shadow root so ChatGPT's styles can't reach it and its styles can't leak
+ * shadow root so the site's styles can't reach it and its styles can't leak
  * into the page. Shows types and counts only, never values.
  */
 
 import { MARK } from "./logo";
 import { LABELS } from "./settings";
+import { siteFor, type BadgeShape, type Site } from "./site";
 
 const REPORT_URL =
   "https://github.com/DataFog/datafog-browser-extension/issues";
@@ -34,22 +35,11 @@ export type BadgeState =
     }
   | { kind: "found"; counts: Record<string, number> };
 
-/**
- * The badge's size, matching ChatGPT's round voice and send buttons, and its
- * gap from the chat box, in pixels. Every state keeps this size.
- */
-const DOT_SIZE = 36;
+/** The badge's gap from the chat box, in pixels. */
 const GAP = 8;
 
-/**
- * Where a one-line chat box's buttons are centered, above its bottom edge,
- * so the badge lines up with them.
- */
-const CENTER_INSET = 26;
-const BOTTOM_INSET = CENTER_INSET - DOT_SIZE / 2;
-
-/** Room needed beside the chat box, clear of the page tab, in pixels. */
-const SIDE_ROOM = GAP + DOT_SIZE + 40;
+/** Room the page tab takes at the page's right edge, in pixels. */
+const TAB_ROOM = 40;
 
 const STYLE = `
   :host { all: initial; }
@@ -59,11 +49,11 @@ const STYLE = `
     font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   .dot {
-    box-sizing: border-box; flex: none; width: ${DOT_SIZE}px;
-    height: ${DOT_SIZE}px; padding: 0; border: 0; border-radius: 50%;
+    box-sizing: border-box; flex: none; width: var(--size);
+    height: var(--size); padding: 0; border: 0; border-radius: var(--radius);
     display: grid; place-items: center; cursor: pointer;
     background: #1A2226; color: #fff; font-family: inherit;
-    font-size: 14px; font-weight: 700; line-height: 1;
+    font-size: calc(var(--size) * 0.4); font-weight: 700; line-height: 1;
   }
   .dot svg { display: block; }
   .dots { display: flex; gap: 3px; align-items: center; }
@@ -195,6 +185,7 @@ export class Badge {
     undo: false,
     redo: false,
   };
+  private readonly shape: BadgeShape;
   private anchor: Element | null = null;
   private kind: BadgeState["kind"] = "hidden";
   private resize = new ResizeObserver(() => this.reposition());
@@ -205,7 +196,11 @@ export class Badge {
    *
    * @param actions What to do for each button.
    */
-  constructor(actions: Record<Action, () => void>) {
+  constructor(
+    actions: Record<Action, () => void>,
+    site: Site = siteFor(location.hostname),
+  ) {
+    this.shape = site.badge;
     const root = this.host.attachShadow({ mode: "closed" });
     root.innerHTML = `
       <style>${STYLE}</style>
@@ -229,7 +224,7 @@ export class Badge {
           </div>
           <div class="actions">
             <button class="act dismiss" type="button"
-              title="Hide this warning. Send with ChatGPT's own button.">Dismiss</button>
+              title="Hide this warning. Send with ${site.name}'s own button.">Dismiss</button>
             <div class="resolve">
               <button class="act primary pseudonymize" type="button"
                 title="Replace each value with a marker, keeping the original in your vault so it can be restored.">Pseudonymize</button>
@@ -242,6 +237,9 @@ export class Badge {
       </div>`;
 
     this.wrap = root.querySelector(".wrap")!;
+    // Every state keeps the size and shape of the site's own buttons
+    this.wrap.style.setProperty("--size", `${this.shape.size}px`);
+    this.wrap.style.setProperty("--radius", this.shape.radius);
     this.dot = root.querySelector(".dot")!;
     this.panel = root.querySelector(".panel")!;
     this.title = root.querySelector("h2")!;
@@ -467,14 +465,15 @@ export class Badge {
     if (!box) return;
     const fromRight = window.innerWidth - box.right;
     const fromBottom = window.innerHeight - box.bottom;
-    const beside = fromRight >= SIDE_ROOM;
-    this.wrap.style.right = `${beside ? fromRight - GAP - DOT_SIZE : fromRight + GAP}px`;
+    const { size, centerInset } = this.shape;
+    const beside = fromRight >= GAP + size + TAB_ROOM;
+    this.wrap.style.right = `${beside ? fromRight - GAP - size : fromRight + GAP}px`;
     this.wrap.style.bottom = `${
       beside
-        ? fromBottom + BOTTOM_INSET
+        ? fromBottom + centerInset - size / 2
         : Math.min(
             window.innerHeight - box.top + GAP,
-            window.innerHeight - DOT_SIZE - GAP,
+            window.innerHeight - size - GAP,
           )
     }px`;
     this.placePanel();

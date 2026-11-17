@@ -19,6 +19,7 @@ import { DEFAULT_ENTITIES, GERMAN_ENTITIES, type Settings } from "./settings";
 
 const settings: Settings = {
   enabled: true,
+  off: [],
   entities: DEFAULT_ENTITIES,
   allowlist: [],
   blockSends: false,

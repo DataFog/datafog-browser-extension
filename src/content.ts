@@ -1,5 +1,5 @@
 /**
- * Content script on chatgpt.com: watches the chat box as the user types.
+ * Content script on each chat site: watches the chat box as the user types.
  *
  * Redact and Pseudonymize edit the chat box; Dismiss hides the warning, and the
  * user sends with ChatGPT's own button. Pseudonymize is reviewed in the side
@@ -20,6 +20,7 @@ import {
 import { hideOriginals, MARKER, showOriginals } from "./originals";
 import { clickSend, watchPage } from "./page";
 import { loadSettings } from "./settings";
+import { siteFor } from "./site";
 import { mountTab } from "./tab";
 import { PENDING_UPDATE } from "./update";
 
@@ -46,11 +47,7 @@ const HELD_FAILURE = "DataFog couldn't check this text, so sending is paused.";
 /** How long to look for the chat box before warning it can't be found. */
 const FIND_TIMEOUT_MS = 10_000;
 
-const COMPOSER_SELECTORS = [
-  "#prompt-textarea",
-  "form [contenteditable='true']",
-  "form textarea",
-];
+const site = siteFor(location.hostname);
 
 let composer: HTMLElement | null = null;
 let timer: number | undefined;
@@ -71,7 +68,7 @@ let holdTimer: number | undefined;
 let sending = false;
 /** Whether checking is on. Assumed on if the setting can't be read, so a scan reports why. */
 let enabled = true;
-const settingsLoaded = loadSettings().then(
+const settingsLoaded = loadSettings(location.hostname).then(
   (settings) => {
     enabled = settings.enabled;
   },
@@ -97,7 +94,7 @@ const edits = new MutationObserver(() => schedule(DEBOUNCE_MS));
  * @returns The chat box element, or null if it isn't on the page.
  */
 function findComposer(): HTMLElement | null {
-  for (const selector of COMPOSER_SELECTORS) {
+  for (const selector of site.composers) {
     // A page being swapped out can leave its hidden chat box behind
     const element = Array.from(
       document.querySelectorAll<HTMLElement>(selector),
@@ -336,7 +333,7 @@ function sendAnyway(): void {
   warnedText = readText(composer);
   failedText = null;
   sending = true;
-  clickSend(composer);
+  clickSend(composer, site);
   sending = false;
 }
 
@@ -604,22 +601,14 @@ async function pseudonymizeComposer(): Promise<void> {
   }
 }
 
-/** Where ChatGPT has kept its answers, newest last; it changes without notice. */
-const ANSWER_SELECTORS = [
-  "[data-dil-response]",
-  '[data-message-author-role="assistant"]',
-  'article[data-turn="assistant"]',
-  ".markdown",
-];
-
 /**
  * The last element on the page with a marker in it, outside the chat box: a
- * fallback for when ChatGPT's answers can't be found by name.
+ * fallback for when the site's answers can't be found by name.
  *
  * @returns The element, or null if no marker is on the page.
  */
 function lastMarkedBlock(): Element | null {
-  const box = composer?.closest("form") ?? composer;
+  const box = composer?.closest(site.box) ?? composer;
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   let found: Element | null = null;
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -638,7 +627,7 @@ function lastMarkedBlock(): Element | null {
  * @returns Its element, or null if there's no answer yet.
  */
 function latestAnswer(): HTMLElement | null {
-  for (const selector of ANSWER_SELECTORS) {
+  for (const selector of site.answers) {
     const answers = document.querySelectorAll<HTMLElement>(selector);
     const last = answers.item(answers.length - 1);
     if (last?.innerText.trim()) return last;
@@ -777,8 +766,8 @@ function bind(element: HTMLElement): void {
   lastScanned = "";
   redaction = null;
   newContent(element);
-  // The form is the outer chat box, and outlasts changes to the editor inside
-  badge.attach(element.closest("form") ?? element);
+  // The outer chat box outlasts changes to the editor inside
+  badge.attach(element.closest(site.box) ?? element);
   warnTab();
   element.addEventListener("input", () => schedule(DEBOUNCE_MS));
   edits.disconnect();
@@ -817,9 +806,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   // An update downloaded while the chat box is missing may fix it
   if (PENDING_UPDATE in changes && missing && !composer) void warnMissing();
-  const next = (changes.settings?.newValue ?? {}) as { enabled?: unknown };
-  if (typeof next.enabled !== "boolean" || next.enabled === enabled) return;
-  enabled = next.enabled;
+  const next = (changes.settings?.newValue ?? {}) as { off?: unknown };
+  if (!Array.isArray(next.off)) return;
+  const on = !next.off.includes(location.hostname);
+  if (on === enabled) return;
+  enabled = on;
   void scanNow(true);
 });
 

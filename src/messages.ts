@@ -78,7 +78,7 @@ export interface OffscreenRequest {
   routing?: VaultRouting | null;
 }
 
-/** A request the service worker sends a ChatGPT tab. */
+/** A request the service worker sends a chat tab. */
 export type TabRequest =
   | { type: "chat-text" }
   | { type: "latest-answer" }

@@ -29,10 +29,11 @@ const EXPLAINED: Record<string, string> = {
   no_review: "This review is gone. Choose Pseudonymize again.",
   settings_changed:
     "What DataFog checks for changed after this review was prepared. Choose Pseudonymize again.",
-  no_chat: "Open a ChatGPT chat in this tab to restore its latest answer.",
+  no_chat:
+    "Open a ChatGPT or Claude chat in this tab to restore its latest answer.",
   no_answer: "There's no answer in this chat yet.",
   vault_locked: "Unlock your vault to restore.",
-  no_markers: "There are no markers in ChatGPT's latest answer.",
+  no_markers: "There are no markers in the chat's latest answer.",
 };
 
 /** The lock's body, shared by both icons. */
@@ -394,7 +395,7 @@ function showRestored(restored: RestoredInPage | null): void {
   const left = restored.unrestored
     ? ` ${markers(restored.unrestored)} couldn't be restored and stayed as is.`
     : "";
-  let summary = `Showing ${restored.shown} original value${restored.shown === 1 ? "" : "s"} in ChatGPT's answer.${left}`;
+  let summary = `Showing ${restored.shown} original value${restored.shown === 1 ? "" : "s"} in the chat's answer.${left}`;
   if (restored.restored === 0)
     summary = `None of the ${markers(restored.unrestored)} in this answer could be restored.`;
   else if (restored.shown === 0)
@@ -422,8 +423,8 @@ function renderRestore(state: VaultStatus["state"]): void {
   const unlocked = state === "unlocked";
   view.restoreLatest.disabled = !unlocked;
   view.restoreNote.textContent = unlocked
-    ? "Show the original values in place of markers in ChatGPT's latest answer."
-    : "Unlock your vault to restore markers in ChatGPT's answers.";
+    ? "Show the original values in place of markers in the chat's latest answer."
+    : "Unlock your vault to restore markers in the chat's answers.";
   if (!unlocked) {
     showRestored(null);
     showError(view.restoreError, null);
