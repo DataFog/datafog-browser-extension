@@ -106,12 +106,13 @@ export type ChatOptions = {
   path?: string;
   composer?: "contenteditable" | "textarea" | "none";
   /** Which chat site's markup to stand in for. */
-  site?: "chatgpt" | "claude";
+  site?: "chatgpt" | "claude" | "gemini";
 };
 
 const ORIGINS = {
   chatgpt: "https://chatgpt.com",
   claude: "https://claude.ai",
+  gemini: "https://gemini.google.com",
 };
 
 /** Controlled Claude DOM: a card in a fieldset, with a plain send button. */
@@ -139,9 +140,33 @@ function claudeHTML(): string {
     </script></body></html>`;
 }
 
+/** Controlled Gemini DOM: a Quill editor in a rounded box, no form. */
+function geminiHTML(): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Gemini fixture</title>
+    <style>
+      body{font:16px system-ui;margin:0;padding:32px} main{max-width:760px;margin:auto}
+      input-area-v2{display:flex;align-items:center;gap:8px;margin:32px 60px 0 0;padding:16px;border:1px solid #888;border-radius:32px}
+      rich-textarea{flex:1} .ql-editor{min-height:24px;white-space:pre-wrap}
+      input-area-v2 button{width:32px;height:32px;border-radius:50%}
+    </style></head><body>
+    <main><section id="answers"></section><input-area-v2>
+    <rich-textarea><div class="ql-editor" role="textbox" contenteditable="true" aria-label="Enter a prompt for Gemini"></div></rich-textarea>
+    <div class="send-button"><button type="submit" aria-label="Send message">↑</button></div>
+    </input-area-v2><output id="sent-count">0</output></main>
+    <script>
+      const sent=document.querySelector('#sent-count');
+      const send=()=>{sent.textContent=String(Number(sent.textContent)+1)};
+      document.querySelector('[aria-label="Send message"]').addEventListener('click', send);
+      document.querySelector('.ql-editor').addEventListener('keydown', e=>{
+        if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();send()}
+      });
+    </script></body></html>`;
+}
+
 /** Controlled ChatGPT DOM, served at the real origin for manifest injection. */
 function chatHTML(options: ChatOptions): string {
   if (options.site === "claude") return claudeHTML();
+  if (options.site === "gemini") return geminiHTML();
   const composer = options.composer ?? "contenteditable";
   const editor =
     composer === "none"
