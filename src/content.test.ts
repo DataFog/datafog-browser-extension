@@ -40,7 +40,8 @@ let storageListener: StorageListener;
  * @param enabled Whether checking is on.
  */
 async function setChecking(enabled: boolean): Promise<void> {
-  storageListener({ settings: { newValue: { enabled } } }, "local");
+  const off = enabled ? [] : [location.hostname];
+  storageListener({ settings: { newValue: { off } } }, "local");
   await vi.advanceTimersByTimeAsync(0);
 }
 
@@ -63,7 +64,11 @@ async function start(
   Object.assign(globalThis, {
     chrome: {
       storage: {
-        local: { get: async () => ({ settings: { enabled } }) },
+        local: {
+          get: async () => ({
+            settings: { off: enabled ? [] : [location.hostname] },
+          }),
+        },
         onChanged: {
           addListener: (added: StorageListener) => (storageListener = added),
         },

@@ -453,7 +453,7 @@ test("settings: off greys out the badge and disabling checks also disables send 
   extension,
 }) => {
   const options = await extension.options();
-  await options.locator("#enabled").uncheck();
+  await options.locator("#site-chatgpt").uncheck();
   await options.locator("#block-sends").check();
   await saveOptions(options);
   await chat.reload();
@@ -465,8 +465,8 @@ test("settings: off greys out the badge and disabling checks also disables send 
   await expect(chat.locator("#sent-count")).toHaveText("1");
 
   const reopened = await extension.options();
-  await expect(reopened.locator("#enabled")).not.toBeChecked();
-  await reopened.locator("#enabled").check();
+  await expect(reopened.locator("#site-chatgpt")).not.toBeChecked();
+  await reopened.locator("#site-chatgpt").check();
   await saveOptions(reopened);
   await chat.locator("#prompt-textarea").fill(`${SAMPLE} again`);
   await found(badge, 2);

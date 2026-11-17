@@ -283,15 +283,27 @@ function isPanelRequest(
 }
 
 /**
+ * The host of a page that sent a request.
+ *
+ * @param url The page's address, if known.
+ * @returns Its host, or undefined if there's no address.
+ */
+function hostOf(url?: string): string | undefined {
+  return url ? new URL(url).hostname : undefined;
+}
+
+/**
  * Handle one request from a content script.
  *
  * @param request The request.
  * @param tab The sending tab, if any.
+ * @param host The sending page's host, which sets whether checking is on.
  * @returns The response to send back.
  */
 async function handle(
   request: Request,
   tab?: chrome.tabs.Tab,
+  host?: string,
 ): Promise<unknown> {
   const tabId = tab?.id;
   if (request.type === "pseudonymize") {
@@ -328,14 +340,14 @@ async function handle(
   }
 
   if (request.type === "block-sends") {
-    return { blockSends: blockingSends(await loadSettings()) };
+    return { blockSends: blockingSends(await loadSettings(host)) };
   }
 
   await ensureOffscreen();
   const forwarded: OffscreenRequest = {
     target: "offscreen",
     request,
-    settings: await loadSettings(),
+    settings: await loadSettings(host),
   };
   return chrome.runtime.sendMessage(forwarded);
 }
@@ -353,7 +365,8 @@ chrome.runtime.onMessage.addListener(
     // Messages for the offscreen document or the side panel aren't for us
     if ("target" in request) return false;
     let pending: Promise<unknown>;
-    if (!isPanelRequest(request)) pending = handle(request, sender.tab);
+    if (!isPanelRequest(request))
+      pending = handle(request, sender.tab, hostOf(sender.url));
     else if (fromExtensionPage(sender)) pending = handlePanel(request);
     else pending = Promise.reject(coded("not_allowed"));
     pending.then(respond, (error) => {

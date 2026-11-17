@@ -68,7 +68,7 @@ let holdTimer: number | undefined;
 let sending = false;
 /** Whether checking is on. Assumed on if the setting can't be read, so a scan reports why. */
 let enabled = true;
-const settingsLoaded = loadSettings().then(
+const settingsLoaded = loadSettings(location.hostname).then(
   (settings) => {
     enabled = settings.enabled;
   },
@@ -806,9 +806,11 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   // An update downloaded while the chat box is missing may fix it
   if (PENDING_UPDATE in changes && missing && !composer) void warnMissing();
-  const next = (changes.settings?.newValue ?? {}) as { enabled?: unknown };
-  if (typeof next.enabled !== "boolean" || next.enabled === enabled) return;
-  enabled = next.enabled;
+  const next = (changes.settings?.newValue ?? {}) as { off?: unknown };
+  if (!Array.isArray(next.off)) return;
+  const on = !next.off.includes(location.hostname);
+  if (on === enabled) return;
+  enabled = on;
   void scanNow(true);
 });
 

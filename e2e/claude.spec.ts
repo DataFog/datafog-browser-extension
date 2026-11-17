@@ -54,3 +54,36 @@ for (const sendMethod of ["button", "Enter"] as const) {
     await expect(chat.locator("#sent-count")).toHaveText("1");
   });
 }
+
+test("settings: turning Claude off leaves ChatGPT checked", async ({
+  extension,
+}) => {
+  const options = await extension.options();
+  await expect(options.locator("#site-chatgpt")).toBeChecked();
+  await options.locator("#site-claude").uncheck();
+  await options.locator("#save").click();
+  await expect(options.locator("#status")).toHaveText("Saved");
+  await options.close();
+
+  const claude = await extension.newChat({ site: "claude" });
+  await claude.locator('[data-testid="chat-input"]').fill(SAMPLE);
+  await expect
+    .poll(() =>
+      extension
+        .badge(claude)
+        .state(".dot")
+        .then((state) => state.title),
+    )
+    .toContain("disabled");
+
+  const chatgpt = await extension.newChat();
+  await chatgpt.locator("#prompt-textarea").fill(SAMPLE);
+  await expect
+    .poll(() =>
+      extension
+        .badge(chatgpt)
+        .state(".dot")
+        .then((state) => state.title),
+    )
+    .toBe("DataFog: 2 items found. Click to review.");
+});

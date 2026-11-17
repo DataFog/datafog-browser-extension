@@ -80,6 +80,12 @@ const SITES: Record<string, Site> = {
 /** The hosts DataFog runs on, each with its own profile. */
 export const HOSTS = Object.keys(SITES);
 
+/** Each site's host and name, for settings. */
+export const SITE_NAMES = Object.entries(SITES).map(([host, { name }]) => ({
+  host,
+  name,
+}));
+
 /**
  * The site a page belongs to.
  *

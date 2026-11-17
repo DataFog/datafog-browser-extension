@@ -1,5 +1,5 @@
 /**
- * Options page: what to detect, an allowlist, and an on/off switch.
+ * Options page: what to detect, an allowlist, and an on/off switch per site.
  */
 
 import {
@@ -9,8 +9,9 @@ import {
   loadSettings,
   saveSettings,
 } from "./settings";
+import { SITE_NAMES } from "./site";
 
-const enabled = document.querySelector<HTMLInputElement>("#enabled")!;
+const sites = document.querySelector<HTMLFieldSetElement>("#sites")!;
 const blockSends = document.querySelector<HTMLInputElement>("#block-sends")!;
 const allowlist = document.querySelector<HTMLTextAreaElement>("#allowlist")!;
 const status = document.querySelector<HTMLSpanElement>("#status")!;
@@ -58,10 +59,28 @@ function renderTypes(
   }
 }
 
+/**
+ * Add one checkbox per chat site, checked while DataFog checks it.
+ *
+ * @param off The hosts checking is turned off for.
+ */
+function renderSites(off: string[]): void {
+  for (const { host, name } of SITE_NAMES) {
+    const label = document.createElement("label");
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.id = `site-${name.toLowerCase()}`;
+    box.value = host;
+    box.checked = !off.includes(host);
+    label.append(box, ` ${name}`);
+    sites.append(label);
+  }
+}
+
 /** Fill the form from saved settings. */
 async function render(): Promise<void> {
   const settings = await loadSettings();
-  enabled.checked = settings.enabled;
+  renderSites(settings.off);
   blockSends.checked = settings.blockSends;
   allowlist.value = settings.allowlist.join("\n");
   renderTypes(
@@ -74,7 +93,10 @@ async function render(): Promise<void> {
 /** Save the form. */
 async function save(): Promise<void> {
   const entities = [
-    ...document.querySelectorAll<HTMLInputElement>("fieldset input:checked"),
+    ...document.querySelectorAll<HTMLInputElement>("#types input:checked"),
+  ].map((box) => box.value);
+  const off = [
+    ...sites.querySelectorAll<HTMLInputElement>("input:not(:checked)"),
   ].map((box) => box.value);
   const values = allowlist.value
     .split("\n")
@@ -82,7 +104,8 @@ async function save(): Promise<void> {
     .filter(Boolean);
 
   await saveSettings({
-    enabled: enabled.checked,
+    enabled: true,
+    off,
     entities,
     allowlist: [...new Set(values)],
     blockSends: blockSends.checked,
