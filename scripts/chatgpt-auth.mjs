@@ -30,7 +30,7 @@ function chatGPTState(state) {
   return {
     cookies: state.cookies.filter((cookie) => allowedHost(cookie.domain)),
     // Keep session cookies and complete ChatGPT storage, but omit large
-    // auth-site sign-in caches from the 48 KB GitHub Actions secret.
+    // auth-site sign-in caches, which the live suite doesn't need.
     origins: state.origins.filter((origin) =>
       chatGPTHost(new URL(origin.origin).hostname),
     ),

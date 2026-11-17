@@ -79,7 +79,7 @@ export async function requireSignedIn(page: Page): Promise<void> {
   });
   if (!authenticated)
     throw new Error(
-      "ChatGPT is not authenticated. Run npm run test:live:auth and sign in to the test account again; refresh the CI authentication secret if this is a CI run.",
+      "ChatGPT is not authenticated. Run npm run test:live:auth and sign in to the test account again.",
     );
   await expect(
     composerIn(page),
