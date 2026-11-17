@@ -1,23 +1,21 @@
-import { expect, SAMPLE, test } from "./fixtures";
+import { expect, expectBadgeFitsBox, SAMPLE, test } from "./fixtures";
 
 const EDITOR = 'textarea[name="search"]';
 const SEND = '[role="button"].ds-button--circle';
 
-test("DeepSeek: checks the chat box, matches its buttons and redacts", async ({
+test("DeepSeek: checks the chat box, matches its size and redacts", async ({
   extension,
 }) => {
   const chat = await extension.newChat({ site: "deepseek" });
   const badge = extension.badge(chat);
   const composer = chat.locator(EDITOR);
+  const box = chat.locator("#card");
   await composer.fill(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
     .toBe("DataFog: 2 items found. Click to review.");
-  const { rect } = await badge.state(".dot");
-  expect([rect.width, rect.height]).toEqual([34, 34]);
-  // Lined up with the send button, so the card was found as the box
-  const send = await chat.locator(SEND).boundingBox();
-  expect(Math.abs(rect.y + 17 - (send!.y + 17))).toBeLessThanOrEqual(1);
+  // Level with the card's bottom edge, so the card was found as the box
+  await expectBadgeFitsBox(badge, box, 60, "24px");
   expect((await badge.state(".dismiss")).title).toContain("DeepSeek's own");
 
   await badge.click(".dot");

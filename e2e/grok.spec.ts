@@ -1,19 +1,26 @@
-import { expect, SAMPLE, test } from "./fixtures";
+import {
+  expect,
+  expectBadgeFitsBox,
+  measuredSize,
+  SAMPLE,
+  test,
+} from "./fixtures";
 
 const EDITOR = "form[data-composer] .ProseMirror";
 
-test("Grok: checks the chat box, matches its buttons and redacts", async ({
+test("Grok: checks the chat box, matches its size and redacts", async ({
   extension,
 }) => {
   const chat = await extension.newChat({ site: "grok" });
   const badge = extension.badge(chat);
   const composer = chat.locator(EDITOR);
+  const box = chat.locator("form[data-composer]");
+  const empty = (await box.boundingBox())!.height;
   await composer.fill(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
     .toBe("DataFog: 2 items found. Click to review.");
-  const { rect } = await badge.state(".dot");
-  expect([rect.width, rect.height]).toEqual([32, 32]);
+  await expectBadgeFitsBox(badge, box, measuredSize(empty), "50%");
   expect((await badge.state(".dismiss")).title).toContain("Grok's own");
 
   await badge.click(".dot");

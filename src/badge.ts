@@ -1,8 +1,8 @@
 /**
  * The inline badge in the chat box, and its expandable panel.
  *
- * Like Grammarly's: a small DataFog badge just outside the chat box, the
- * size and shape of the site's own buttons, that turns into a red count when
+ * Like Grammarly's: a DataFog badge just outside the chat box, sized and
+ * rounded to match it, that turns into a red count when
  * something sensitive is found. Lives in a
  * shadow root so the site's styles can't reach it and its styles can't leak
  * into the page. Shows types and counts only, never values.
@@ -39,6 +39,13 @@ const GAP = 8;
 /** Room the page tab takes at the page's right edge, in pixels. */
 const TAB_ROOM = 40;
 
+/**
+ * The badge's smallest and largest size, in pixels, so it stays easy to
+ * click and doesn't crowd the page beside an unusually tall chat box.
+ */
+const MIN_SIZE = 28;
+const MAX_SIZE = 128;
+
 const STYLE = `
   :host { all: initial; }
   .wrap {
@@ -51,12 +58,17 @@ const STYLE = `
     height: var(--size); padding: 0; border: 0; border-radius: var(--radius);
     display: grid; place-items: center; cursor: pointer;
     background: #1A2226; color: #fff; font-family: inherit;
-    font-size: calc(var(--size) * 0.4); font-weight: 700; line-height: 1;
+    /* The logo, dots and count grow with the badge, up to a 48px badge's */
+    --inner: min(var(--size), 48px);
+    font-size: calc(var(--inner) * 0.4); font-weight: 700; line-height: 1;
   }
-  .dot svg { display: block; }
-  .dots { display: flex; gap: 3px; align-items: center; }
+  .dot svg { display: block; width: calc(var(--inner) * 0.55); height: auto; }
+  .dots {
+    display: flex; gap: calc(var(--inner) * 0.08); align-items: center;
+  }
   .dots i {
-    width: 5px; height: 5px; border-radius: 50%; background: #A7B2B1;
+    width: calc(var(--inner) * 0.14); height: calc(var(--inner) * 0.14);
+    border-radius: 50%; background: #A7B2B1;
     animation: pulse 1s ease-in-out infinite;
   }
   .dots i:nth-child(2) { animation-delay: 150ms; }
@@ -183,7 +195,9 @@ export class Badge {
     undo: false,
     redo: false,
   };
-  private readonly shape: BadgeShape;
+  private shape: BadgeShape;
+  /** Whether the chat box is empty, so its height is the badge's size. */
+  private resting = false;
   private anchor: Element | null = null;
   private kind: BadgeState["kind"] = "hidden";
   private resize = new ResizeObserver(() => this.reposition());
@@ -235,9 +249,7 @@ export class Badge {
       </div>`;
 
     this.wrap = root.querySelector(".wrap")!;
-    // Every state keeps the size and shape of the site's own buttons
-    this.wrap.style.setProperty("--size", `${this.shape.size}px`);
-    this.wrap.style.setProperty("--radius", this.shape.radius);
+    this.applyShape();
     this.dot = root.querySelector(".dot")!;
     this.panel = root.querySelector(".panel")!;
     this.title = root.querySelector("h2")!;
@@ -294,19 +306,28 @@ export class Badge {
   }
 
   /**
+   * Say whether the chat box is empty. While it is, a site's badge that's
+   * measured takes the box's height, and keeps it as text makes it grow.
+   *
+   * @param empty Whether the chat box holds no text.
+   */
+  rest(empty: boolean): void {
+    if (empty === this.resting) return;
+    this.resting = empty;
+    if (empty) this.reposition();
+  }
+
+  /**
    * Show a state.
    *
    * @param state What to show.
    */
   show(state: BadgeState): void {
-    // Keep a red count steady while rechecking, rather than flicker to the logo,
-    // an open panel steady too, and don't bring back a badge the user turned off
+    // Keep an open panel steady while rechecking, and don't bring back a badge
+    // the user turned off
     if (
       state.kind === "checking" &&
-      (this.kind === "found" ||
-        this.kind === "hidden" ||
-        this.kind === "off" ||
-        !this.panel.hidden)
+      (this.kind === "hidden" || this.kind === "off" || !this.panel.hidden)
     )
       return;
     this.kind = state.kind;
@@ -461,20 +482,42 @@ export class Badge {
     const box = visibleBox(this.anchor);
     this.wrap.style.visibility = box ? "" : "hidden";
     if (!box) return;
+    if (this.resting) this.fit(this.anchor);
     const fromRight = window.innerWidth - box.right;
     const fromBottom = window.innerHeight - box.bottom;
-    const { size, centerInset } = this.shape;
+    const { size } = this.shape;
     const beside = fromRight >= GAP + size + TAB_ROOM;
     this.wrap.style.right = `${beside ? fromRight - GAP - size : fromRight + GAP}px`;
     this.wrap.style.bottom = `${
       beside
-        ? fromBottom + centerInset - size / 2
+        ? fromBottom
         : Math.min(
             window.innerHeight - box.top + GAP,
             window.innerHeight - size - GAP,
           )
     }px`;
     this.placePanel();
+  }
+
+  /**
+   * Take the empty chat box's height, on a site whose badge is measured.
+   *
+   * @param anchor The chat box.
+   */
+  private fit(anchor: Element): void {
+    if (!this.shape.measured) return;
+    const { height } = anchor.getBoundingClientRect();
+    if (height <= 0) return;
+    const size = Math.round(Math.min(MAX_SIZE, Math.max(MIN_SIZE, height)));
+    if (size === this.shape.size) return;
+    this.shape = { ...this.shape, size };
+    this.applyShape();
+  }
+
+  /** Size and round the badge to its shape, the same in every state. */
+  private applyShape(): void {
+    this.wrap.style.setProperty("--size", `${this.shape.size}px`);
+    this.wrap.style.setProperty("--radius", this.shape.radius);
   }
 
   /** Keep the popup on screen without moving the badge away from the editor. */

@@ -1,21 +1,25 @@
 /**
  * What DataFog needs to know about each chat site: where its chat box,
- * send button and answers are, and how its own buttons look, so the badge
- * can match them. Sites change their markup without notice, so each list
+ * send button and answers are, and the size and shape of the badge that
+ * matches its chat box. Sites change their markup without notice, so each list
  * runs from the most specific selector to the most general.
  */
 
-/** How the badge matches a site's own chat box buttons. */
+/** The badge's size and shape, matching the site's chat box. */
 export interface BadgeShape {
-  /** Width and height, in pixels. */
+  /**
+   * Width and height, in pixels: the empty chat box's height, or the height
+   * of its text area when the box also holds a toolbar.
+   */
   size: number;
   /** Corner radius, as CSS. */
   radius: string;
   /**
-   * How far above the chat box's bottom edge its buttons are centered, in
-   * pixels, so the badge lines up with them.
+   * Whether the badge measures the empty chat box's height instead, for a
+   * box that's the same height on a new chat as in an ongoing one. Until it
+   * has seen the box empty, it uses `size`.
    */
-  centerInset: number;
+  measured: boolean;
 }
 
 export interface Site {
@@ -48,8 +52,8 @@ const CHATGPT: Site = {
     'article[data-turn="assistant"]',
     ".markdown",
   ],
-  // Its round voice and send buttons
-  badge: { size: 36, radius: "50%", centerInset: 26 },
+  // Round, like its pill-shaped chat box
+  badge: { size: 56, radius: "50%", measured: true },
 };
 
 const CLAUDE: Site = {
@@ -68,8 +72,8 @@ const CLAUDE: Site = {
     '[data-testid="assistant-message"] [data-cds="Prose"]',
     '[data-testid="assistant-message"] .standard-markdown',
   ],
-  // Its rounded square voice and send buttons
-  badge: { size: 28, radius: "8px", centerInset: 22 },
+  // Its card in an ongoing chat; a new chat's card is taller, with a toolbar
+  badge: { size: 44, radius: "14px", measured: false },
 };
 
 const GEMINI: Site = {
@@ -83,8 +87,8 @@ const GEMINI: Site = {
   sendButtons: 'button[aria-label="Send message"], .send-button button',
   // The answer's text, without the "Gemini said" label and thoughts
   answers: ["model-response message-content .markdown"],
-  // Its round upload, voice and send buttons
-  badge: { size: 32, radius: "50%", centerInset: 32 },
+  // Round, like its pill-shaped chat box
+  badge: { size: 64, radius: "50%", measured: true },
 };
 
 const GROK: Site = {
@@ -98,8 +102,8 @@ const GROK: Site = {
   sendButtons: '[data-testid="chat-submit"], button[type="submit"]',
   // The answer's text, without the hidden "Grok" heading
   answers: ['[data-testid="assistant-message"] .response-content-markdown'],
-  // Its round attach, voice and send buttons
-  badge: { size: 32, radius: "50%", centerInset: 29 },
+  // Round, like its pill-shaped chat box
+  badge: { size: 58, radius: "50%", measured: true },
 };
 
 const DEEPSEEK: Site = {
@@ -111,8 +115,9 @@ const DEEPSEEK: Site = {
   sendButtons: '[role="button"].ds-button--primary.ds-button--circle',
   // The answer's text, without its thinking
   answers: [".ds-markdown.ds-assistant-message-main-content"],
-  // Its round attach and send buttons
-  badge: { size: 34, radius: "50%", centerInset: 30 },
+  // Its text area, with the card's corner radius; the card also holds a
+  // toolbar
+  badge: { size: 60, radius: "24px", measured: false },
 };
 
 const SITES: Record<string, Site> = {

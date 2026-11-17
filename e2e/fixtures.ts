@@ -4,6 +4,7 @@ import {
   expect,
   type Browser,
   type BrowserContext,
+  type Locator,
   type Page,
   type Worker,
 } from "@playwright/test";
@@ -30,6 +31,8 @@ export interface ShadowState {
   visible: boolean;
   disabled: boolean;
   rect: { x: number; y: number; width: number; height: number };
+  /** The top right corner's radius, as computed. */
+  radius: string;
 }
 
 /** Inspect closed roots through DevTools, preserving production isolation. */
@@ -73,7 +76,8 @@ export class ClosedShadow {
           return {
             text: el.textContent || '', title: el.getAttribute('title') || '',
             visible: el.checkVisibility(), disabled: Boolean(el.disabled),
-            rect: {x:r.x,y:r.y,width:r.width,height:r.height}
+            rect: {x:r.x,y:r.y,width:r.width,height:r.height},
+            radius: getComputedStyle(el).borderTopRightRadius
           };
         }`,
         arguments: [{ value: selector }],
@@ -100,6 +104,41 @@ export class ClosedShadow {
       rect.y + rect.height / 2,
     );
   }
+}
+
+/**
+ * The size of a measured badge: the chat box's height while empty, kept
+ * between 28 and 128 pixels.
+ *
+ * @param emptyHeight The chat box's height while it was empty.
+ * @returns The badge's width and height, in pixels.
+ */
+export function measuredSize(emptyHeight: number): number {
+  return Math.min(128, Math.max(28, Math.round(emptyHeight)));
+}
+
+/**
+ * Check the badge's size and corner radius, and that it's level with the
+ * chat box's bottom edge.
+ *
+ * @param badge The badge.
+ * @param box The chat box.
+ * @param size The badge's expected width and height, in pixels.
+ * @param radius The badge's expected corner radius, as computed.
+ */
+export async function expectBadgeFitsBox(
+  badge: ClosedShadow,
+  box: Locator,
+  size: number,
+  radius: string,
+): Promise<void> {
+  const { rect, radius: actual } = await badge.state(".dot");
+  expect([rect.width, rect.height]).toEqual([size, size]);
+  expect(actual).toBe(radius);
+  const bounds = await box.boundingBox();
+  expect(
+    Math.abs(rect.y + rect.height - (bounds!.y + bounds!.height)),
+  ).toBeLessThanOrEqual(1);
 }
 
 export type ChatOptions = {

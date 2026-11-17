@@ -185,6 +185,7 @@ async function scanNow(force = false): Promise<void> {
     return;
   }
   const text = readText(composer);
+  badge.rest(!text.trim());
   if (!force && !unchecked && text === lastScanned) return;
   lastScanned = text;
   unchecked = false;
@@ -769,7 +770,11 @@ function bind(element: HTMLElement): void {
   // The outer chat box outlasts changes to the editor inside
   badge.attach(element.closest(site.box) ?? element);
   warnTab();
-  element.addEventListener("input", () => schedule(DEBOUNCE_MS));
+  element.addEventListener("input", () => {
+    // Before the box grows with the text, so the badge keeps its empty height
+    badge.rest(!readText(element).trim());
+    schedule(DEBOUNCE_MS);
+  });
   edits.disconnect();
   edits.observe(element, {
     characterData: true,
