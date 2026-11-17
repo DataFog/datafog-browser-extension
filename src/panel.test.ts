@@ -95,6 +95,7 @@ beforeEach(() => {
             notices.push(added),
         },
         openOptionsPage: vi.fn(),
+        reload: vi.fn(),
         sendMessage,
       },
       windows: { getCurrent: vi.fn(async () => ({ id: 3 })) },
@@ -104,6 +105,23 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+test("offers Update now while an update waits, and installs it", async () => {
+  let ready = false;
+  await start((request) =>
+    request.type === "update-status" ? { ready } : LOCKED,
+  );
+  expect($("#update").hidden).toBe(true);
+
+  ready = true;
+  for (const notice of notices)
+    notice({ target: "panel", type: "update-ready" });
+  await settle();
+  expect($("#update").hidden).toBe(false);
+
+  $("#update-now").click();
+  expect(chrome.runtime.reload).toHaveBeenCalled();
 });
 
 test("closes when told to, and reconnects when the worker stops", async () => {
