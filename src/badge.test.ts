@@ -87,8 +87,8 @@ test("sits beside the chat box when there's room", async () => {
   badge.reposition();
   await new Promise(requestAnimationFrame);
 
-  expect(wrap.style.right).toBe("80px");
-  expect(wrap.style.bottom).toBe("324px");
+  expect(wrap.style.right).toBe("60px");
+  expect(wrap.style.bottom).toBe("316px");
 });
 
 test("sits above the chat box when there's no room beside it", async () => {
@@ -111,8 +111,44 @@ test("stays on screen when the chat box fills the page", async () => {
   badge.reposition();
   await new Promise(requestAnimationFrame);
 
-  expect(wrap.style.bottom).toBe("724px");
+  expect(wrap.style.bottom).toBe("704px");
 });
+
+test("takes the empty chat box's height and corner radius, and keeps them as it grows", async () => {
+  const { badge, box, scroller, wrap } = mount();
+  box.style.borderRadius = "20px";
+  setBox(scroller, { top: 0, right: 1024, bottom: 768, left: 0 });
+  setBox(box, { top: 400, right: 800, bottom: 480, left: 100 });
+
+  badge.rest(true);
+  await new Promise(requestAnimationFrame);
+  expect(wrap.style.getPropertyValue("--size")).toBe("80px");
+  expect(wrap.style.getPropertyValue("--radius")).toBe("20px");
+  expect(wrap.style.bottom).toBe("288px");
+
+  badge.rest(false);
+  setBox(box, { top: 280, right: 800, bottom: 480, left: 100 });
+  badge.reposition();
+  await new Promise(requestAnimationFrame);
+  expect(wrap.style.getPropertyValue("--size")).toBe("80px");
+  expect(wrap.style.bottom).toBe("288px");
+});
+
+test.each([
+  { height: 20, size: "28px" },
+  { height: 400, size: "128px" },
+])(
+  "keeps the badge between 28 and 128 pixels: $height",
+  async ({ height, size }) => {
+    const { badge, box, scroller, wrap } = mount();
+    setBox(scroller, { top: 0, right: 1024, bottom: 768, left: 0 });
+    setBox(box, { top: 700 - height, right: 800, bottom: 700, left: 100 });
+
+    badge.rest(true);
+    await new Promise(requestAnimationFrame);
+    expect(wrap.style.getPropertyValue("--size")).toBe(size);
+  },
+);
 
 test("hides when the chat box is off screen", async () => {
   const { badge, box, scroller, wrap } = mount();
