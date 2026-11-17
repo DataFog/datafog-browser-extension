@@ -1,10 +1,10 @@
-# DataFog browser extension (prototype)
+# DataFog browser extension
 
 Checks what you type into ChatGPT, Claude, Gemini, Grok and DeepSeek for sensitive data, including names and mailing addresses, on your device, using [DataFog Core](https://github.com/DataFog/datafog-core)'s WebAssembly build (`@datafog/wasm`). A badge beside the chat box shows what was found; click it to **Redact** the values, **Pseudonymize** them, or **Dismiss** the warning.
 
 Pseudonymize replaces each value with a marker such as `[[EMAIL_7KQ4ZM]]` and keeps the original in an encrypted vault on your device, so the same value always gets the same marker. You review the values and markers in the side panel before anything changes, and can mark a value **Not sensitive** so DataFog leaves it as is from then on. **Restore latest answer** in the side panel shows the original values in place of the markers in the chat's latest answer, until you choose **Hide originals** or the vault locks.
 
-Prototype only: ChatGPT, Claude, Gemini, Grok and DeepSeek only, no file uploads, and restore covers only the latest answer.
+Limits: it runs only on ChatGPT, Claude, Gemini, Grok and DeepSeek, doesn't check file uploads, and restores only the latest answer.
 
 ## Build
 
