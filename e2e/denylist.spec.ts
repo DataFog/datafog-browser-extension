@@ -52,6 +52,22 @@ test("deny list: a phrase is flagged and redacted even when allowed", async ({
   );
 });
 
+test("deny list: a phrase added in the side panel is flagged right away", async ({
+  extension,
+}) => {
+  const panel = await extension.panel();
+  await panel.locator("#denylist-value").fill(PHRASE);
+  await panel.locator("#denylist-add button").click();
+  await expect(panel.locator("#denylist li")).toContainText(PHRASE);
+
+  await typePlan(extension);
+
+  await panel.locator("#denylist li button").click();
+  await expect(panel.locator("#denylist-note")).toHaveText("No phrases yet.");
+  const options = await extension.options();
+  await expect(options.locator("#denylist")).toHaveValue("");
+});
+
 test("deny list: Pseudonymize replaces a phrase with a marker", async ({
   extension,
 }) => {
