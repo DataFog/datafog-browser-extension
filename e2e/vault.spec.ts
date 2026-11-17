@@ -97,6 +97,10 @@ test("Not sensitive is skipped while unlocked and flagged again after locking", 
     .click();
   await expect(panel.locator("#not-sensitive")).toContainText(EMAIL);
   await expect(panel.locator("#review-items li")).toHaveCount(0);
+  // The chat box is checked again without editing it
+  await expect
+    .poll(async () => (await badge.state(".dot")).title)
+    .toContain("no sensitive data found");
   await chat.locator("#prompt-textarea").fill(`Contact ${EMAIL}`);
   await expect
     .poll(async () => (await badge.state(".dot")).title)
