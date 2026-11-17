@@ -1,11 +1,10 @@
 /**
  * Watches the page for sends and attached files. Listens in the capture phase,
- * ahead of ChatGPT's own handlers, on events rather than ChatGPT's markup,
+ * ahead of the site's own handlers, on events rather than the site's markup,
  * since those survive redesigns.
  */
 
-const SEND_BUTTONS =
-  'button[type="submit"], [data-testid="send-button"], #composer-submit-button';
+import { siteFor, type Site } from "./site";
 
 export interface PageEvents {
   /**
@@ -22,22 +21,24 @@ export interface PageEvents {
  *
  * @param findComposer Finds the current chat box.
  * @param events Called as things happen.
+ * @param site The chat site.
  */
 export function watchPage(
   findComposer: () => HTMLElement | null,
   events: PageEvents,
+  site: Site = siteFor(location.hostname),
 ): void {
   const inForm = (target: EventTarget | null): boolean => {
     const composer = findComposer();
     return (
       target instanceof Node &&
-      Boolean((composer?.closest("form") ?? composer)?.contains(target))
+      Boolean((composer?.closest(site.box) ?? composer)?.contains(target))
     );
   };
 
   const ask = (event: Event, repeat = false): void => {
     if (events.send(repeat)) return;
-    // Ahead of ChatGPT's handlers, so they never see the send
+    // Ahead of the site's handlers, so they never see the send
     event.preventDefault();
     event.stopImmediatePropagation();
   };
@@ -56,7 +57,7 @@ export function watchPage(
     (event) => {
       const { target } = event;
       const button =
-        target instanceof Element ? target.closest(SEND_BUTTONS) : null;
+        target instanceof Element ? target.closest(site.sendButtons) : null;
       if (button && inForm(button)) ask(event);
     },
     true,
@@ -84,7 +85,7 @@ export function watchPage(
     },
     true,
   );
-  // ChatGPT takes a dropped file anywhere on the page
+  // ChatGPT and Claude take a dropped file anywhere on the page
   document.addEventListener(
     "drop",
     ({ dataTransfer }) => {
@@ -98,12 +99,16 @@ export function watchPage(
  * Send what's in the chat box, as if the user had pressed the send button.
  *
  * @param composer The chat box.
+ * @param site The chat site.
  */
-export function clickSend(composer: HTMLElement): void {
-  const form = composer.closest("form");
-  const button = form?.querySelector<HTMLButtonElement>(
-    `:is(${SEND_BUTTONS}):not(:disabled)`,
+export function clickSend(
+  composer: HTMLElement,
+  site: Site = siteFor(location.hostname),
+): void {
+  const box = composer.closest(site.box);
+  const button = box?.querySelector<HTMLButtonElement>(
+    `:is(${site.sendButtons}):not(:disabled)`,
   );
   if (button) button.click();
-  else form?.requestSubmit();
+  else if (box instanceof HTMLFormElement) box.requestSubmit();
 }
