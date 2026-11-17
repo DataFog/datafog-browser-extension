@@ -9,7 +9,7 @@ The first release: a Chrome extension that checks what you type into ChatGPT, Cl
 ### Added
 
 - Text in the ChatGPT chat box on chatgpt.com is checked when you pause typing, and right away when you paste.
-- A round DataFog badge just outside the chat box, the same size as ChatGPT's voice and send buttons and lined up with them, shows pulsing dots from the moment you type until the text has been checked, and turns into a red count when something sensitive is found. Clicking it lists the types and counts, never the values. It stays in view while a long prompt is scrolled, and follows the chat box into a new chat.
+- A DataFog badge just outside the chat box, as tall as the empty chat box, with its corner radius, and level with its bottom edge, shows pulsing dots from the moment you type until the text has been checked, and turns into a red count when something sensitive is found. Clicking it lists the types and counts, never the values. It stays in view while a long prompt is scrolled, and follows the chat box into a new chat.
 - If DataFog can't check the text or redact it, the badge shows an orange `!` instead of checking forever. Its panel shows an error code and asks you to report it to help@datafog.ai, and the extension logs only that code, never the text. Reloading the page tries again. If Redact fails, the panel keeps listing what was found. After an extension update, it asks you to reload the page.
 - **Redact** replaces each found value in the chat box with a label such as `[EMAIL]`, editing only those values, so it stays quick on a long prompt. **Undo** and **Redo** in the badge's panel reverse and repeat the last redaction, and grey out once the text changes. Spacing alone doesn't count, since ChatGPT's editor adds and drops line breaks as it redraws a link. The panel stays open for them until you click elsewhere. **Dismiss** hides the warning until the text changes. The extension only sends a message when you ask it to.
 - Account numbers, API keys, bearer tokens, credential URIs, credit card numbers, email addresses, JWTs, mailing addresses, names, NPIs, private keys, SSNs, street addresses, and US routing numbers are checked by default. Account numbers and street addresses are found only after a label such as "Account number:" or "Shipping address:". Names and mailing addresses are found by a small model bundled in Core, which runs on your device. Phone numbers, dates, ZIP codes, IP addresses, and UUIDs can be turned on in settings, which note what each one may flag by mistake.
@@ -25,11 +25,11 @@ The first release: a Chrome extension that checks what you type into ChatGPT, Cl
 - The toolbar icon shows `!`, and the page tab shows an orange dot, when the chat box can't be found, so you know the page isn't being checked. Both explain why on hover. If ChatGPT's page changed, a DataFog update may fix it: when Chrome has downloaded one that's waiting to install, they say so, and the side panel offers **Update now**, which restarts DataFog with it.
 - A DataFog tab on the right edge of chatgpt.com opens and closes a DataFog side panel, and the toolbar icon opens it too. The panel follows your browser's light or dark theme, and has a button to open settings.
 
-- DataFog also runs on claude.ai, with the same badge, Redact, Pseudonymize, send hold and restore. There the badge is a 28px rounded square, matching Claude's own buttons. Checking can be turned off for each site separately in the settings, which have a checkbox per site; an earlier off switch carries over as off for every site. The vault, the allowlist and the types to look for are shared.
+- DataFog also runs on claude.ai, with the same badge, Redact, Pseudonymize, send hold and restore. Checking can be turned off for each site separately in the settings, which have a checkbox per site; an earlier off switch carries over as off for every site. The vault, the allowlist and the types to look for are shared.
 - An **Always flag** list in the settings finds your own phrases, such as a project or client name, as whole words ignoring case. Redact replaces them with `[DENYLIST]` and Pseudonymize with a marker, and they're flagged even if also on the allowlist or marked not sensitive. The side panel lists both Always allow and Always flag, with Add and Remove, kept in step with the settings page. Each side panel section's description opens from its info button, on hover or keyboard focus, and stays open once clicked.
-- DataFog also runs on gemini.google.com, with a 32px round badge matching Gemini's own buttons.
-- DataFog also runs on grok.com, with a 32px round badge matching Grok's own buttons.
-- DataFog also runs on chat.deepseek.com, with a 34px round badge matching DeepSeek's own buttons.
+- DataFog also runs on gemini.google.com.
+- DataFog also runs on grok.com.
+- DataFog also runs on chat.deepseek.com.
 
 ### Fixed
 

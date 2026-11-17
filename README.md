@@ -25,7 +25,7 @@ Click the DataFog tab on the right edge of the page, or the toolbar icon, to ope
 
 ## How it works
 
-- `src/site.ts` holds what each chat site needs: where its chat box, send button and answers are, and the size and shape of its buttons, which the badge matches. Adding a site means adding a profile there and its host to `manifest.json`.
+- `src/site.ts` holds what each chat site needs: where its chat box, send button and answers are, and the empty chat box's height and corner radius, which the badge uses until it has measured the box itself. Adding a site means adding a profile there and its host to `manifest.json`.
 - `src/content.ts` watches the chat box. It scans 400 ms after you stop typing, and right away on paste. Stale results are dropped.
 - `src/background.ts` opens an offscreen document and passes the content script's requests to it, with the current settings. It also saves the version of an update Chrome has downloaded, which `src/update.ts` reads to offer Update now when the chat box can't be found.
 - `src/offscreen.ts` runs Core and answers with counts by type. It stays loaded while the side panel is closed, unlike the service worker, which Chrome stops when idle. Counts come from Core's `transform`, so a value two detectors match counts once.
