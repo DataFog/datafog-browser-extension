@@ -7,12 +7,11 @@ test("Claude: checks the chat box, matches its size and redacts", async ({
   const badge = extension.badge(chat);
   const composer = chat.locator('[data-testid="chat-input"]');
   const box = chat.locator('[data-cds-part="composer-card"]');
-  const empty = (await box.boundingBox())!.height;
   await composer.fill(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
     .toBe("DataFog: 2 items found. Click to review.");
-  await expectBadgeFitsBox(badge, box, empty);
+  await expectBadgeFitsBox(badge, box, 44, "14px");
   expect((await badge.state(".dismiss")).title).toContain("Claude's own");
 
   await badge.click(".dot");

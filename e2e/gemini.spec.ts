@@ -1,4 +1,10 @@
-import { expect, expectBadgeFitsBox, SAMPLE, test } from "./fixtures";
+import {
+  expect,
+  expectBadgeFitsBox,
+  measuredSize,
+  SAMPLE,
+  test,
+} from "./fixtures";
 
 const EDITOR = "rich-textarea .ql-editor";
 
@@ -14,7 +20,7 @@ test("Gemini: checks the chat box, matches its size and redacts", async ({
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
     .toBe("DataFog: 2 items found. Click to review.");
-  await expectBadgeFitsBox(badge, box, empty);
+  await expectBadgeFitsBox(badge, box, measuredSize(empty), "50%");
   expect((await badge.state(".dismiss")).title).toContain("Gemini's own");
 
   await badge.click(".dot");

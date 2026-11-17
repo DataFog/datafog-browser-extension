@@ -10,13 +10,12 @@ test("DeepSeek: checks the chat box, matches its size and redacts", async ({
   const badge = extension.badge(chat);
   const composer = chat.locator(EDITOR);
   const box = chat.locator("#card");
-  const empty = (await box.boundingBox())!.height;
   await composer.fill(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
     .toBe("DataFog: 2 items found. Click to review.");
-  // Matching the card's size and radius means the card was found as the box
-  await expectBadgeFitsBox(badge, box, empty);
+  // Level with the card's bottom edge, so the card was found as the box
+  await expectBadgeFitsBox(badge, box, 60, "24px");
   expect((await badge.state(".dismiss")).title).toContain("DeepSeek's own");
 
   await badge.click(".dot");

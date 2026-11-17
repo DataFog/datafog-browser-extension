@@ -1,6 +1,12 @@
 import type { Page } from "@playwright/test";
 
-import { expect, expectBadgeFitsBox, SAMPLE, test } from "./fixtures";
+import {
+  expect,
+  expectBadgeFitsBox,
+  measuredSize,
+  SAMPLE,
+  test,
+} from "./fixtures";
 
 interface BadgeControls {
   state(selector: string): Promise<{
@@ -51,23 +57,25 @@ test("the extension scans the editor and shows type counts", async ({
   expect((await badge.state(".panel")).text).not.toContain("jane@example.com");
 });
 
-test("the badge keeps the empty chat box's size in every state, as it grows", async ({
+test("the badge stays round, the empty chat box's size, in every state and as it grows", async ({
   chat,
   badge,
 }) => {
   const box = chat.locator("form");
   const empty = (await box.boundingBox())!.height;
   const composer = chat.locator("#prompt-textarea");
-  await expect(() => expectBadgeFitsBox(badge, box, empty)).toPass();
+  await expect(() =>
+    expectBadgeFitsBox(badge, box, measuredSize(empty), "50%"),
+  ).toPass();
   await composer.fill(SAMPLE);
   await found(badge, 2);
-  await expectBadgeFitsBox(badge, box, empty);
+  await expectBadgeFitsBox(badge, box, measuredSize(empty), "50%");
   await openBadge(badge);
   await badge.click(".redact");
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
     .toBe("DataFog: no sensitive data found");
-  await expectBadgeFitsBox(badge, box, empty);
+  await expectBadgeFitsBox(badge, box, measuredSize(empty), "50%");
 
   // A long prompt makes the box taller; the badge keeps its size, level with
   // the box's bottom edge
@@ -75,7 +83,7 @@ test("the badge keeps the empty chat box's size in every state, as it grows", as
   await expect
     .poll(async () => (await box.boundingBox())!.height)
     .toBeGreaterThan(empty + 20);
-  await expectBadgeFitsBox(badge, box, empty);
+  await expectBadgeFitsBox(badge, box, measuredSize(empty), "50%");
 });
 
 // The real model Worker is a separate browser integration path from rule WASM.

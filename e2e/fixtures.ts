@@ -107,27 +107,34 @@ export class ClosedShadow {
 }
 
 /**
- * Check the badge is as tall as the chat box was while empty, kept between
- * 28 and 128 pixels, with the box's corner radius, and level with the box's
- * bottom edge.
+ * The size of a measured badge: the chat box's height while empty, kept
+ * between 28 and 128 pixels.
+ *
+ * @param emptyHeight The chat box's height while it was empty.
+ * @returns The badge's width and height, in pixels.
+ */
+export function measuredSize(emptyHeight: number): number {
+  return Math.min(128, Math.max(28, Math.round(emptyHeight)));
+}
+
+/**
+ * Check the badge's size and corner radius, and that it's level with the
+ * chat box's bottom edge.
  *
  * @param badge The badge.
  * @param box The chat box.
- * @param emptyHeight The chat box's height while it was empty.
+ * @param size The badge's expected width and height, in pixels.
+ * @param radius The badge's expected corner radius, as computed.
  */
 export async function expectBadgeFitsBox(
   badge: ClosedShadow,
   box: Locator,
-  emptyHeight: number,
+  size: number,
+  radius: string,
 ): Promise<void> {
-  const size = Math.min(128, Math.max(28, Math.round(emptyHeight)));
-  const { rect, radius } = await badge.state(".dot");
+  const { rect, radius: actual } = await badge.state(".dot");
   expect([rect.width, rect.height]).toEqual([size, size]);
-  expect(radius).toBe(
-    await box.evaluate(
-      (element) => getComputedStyle(element).borderTopRightRadius,
-    ),
-  );
+  expect(actual).toBe(radius);
   const bounds = await box.boundingBox();
   expect(
     Math.abs(rect.y + rect.height - (bounds!.y + bounds!.height)),
