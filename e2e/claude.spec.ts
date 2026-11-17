@@ -1,17 +1,18 @@
-import { expect, SAMPLE, test } from "./fixtures";
+import { expect, expectBadgeFitsBox, SAMPLE, test } from "./fixtures";
 
-test("Claude: checks the chat box, matches its buttons and redacts", async ({
+test("Claude: checks the chat box, matches its size and redacts", async ({
   extension,
 }) => {
   const chat = await extension.newChat({ site: "claude" });
   const badge = extension.badge(chat);
   const composer = chat.locator('[data-testid="chat-input"]');
+  const box = chat.locator('[data-cds-part="composer-card"]');
+  const empty = (await box.boundingBox())!.height;
   await composer.fill(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
     .toBe("DataFog: 2 items found. Click to review.");
-  const { rect } = await badge.state(".dot");
-  expect([rect.width, rect.height]).toEqual([28, 28]);
+  await expectBadgeFitsBox(badge, box, empty);
   expect((await badge.state(".dismiss")).title).toContain("Claude's own");
 
   await badge.click(".dot");

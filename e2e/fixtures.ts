@@ -4,6 +4,7 @@ import {
   expect,
   type Browser,
   type BrowserContext,
+  type Locator,
   type Page,
   type Worker,
 } from "@playwright/test";
@@ -30,6 +31,8 @@ export interface ShadowState {
   visible: boolean;
   disabled: boolean;
   rect: { x: number; y: number; width: number; height: number };
+  /** The top right corner's radius, as computed. */
+  radius: string;
 }
 
 /** Inspect closed roots through DevTools, preserving production isolation. */
@@ -73,7 +76,8 @@ export class ClosedShadow {
           return {
             text: el.textContent || '', title: el.getAttribute('title') || '',
             visible: el.checkVisibility(), disabled: Boolean(el.disabled),
-            rect: {x:r.x,y:r.y,width:r.width,height:r.height}
+            rect: {x:r.x,y:r.y,width:r.width,height:r.height},
+            radius: getComputedStyle(el).borderTopRightRadius
           };
         }`,
         arguments: [{ value: selector }],
@@ -100,6 +104,34 @@ export class ClosedShadow {
       rect.y + rect.height / 2,
     );
   }
+}
+
+/**
+ * Check the badge is as tall as the chat box was while empty, kept between
+ * 28 and 128 pixels, with the box's corner radius, and level with the box's
+ * bottom edge.
+ *
+ * @param badge The badge.
+ * @param box The chat box.
+ * @param emptyHeight The chat box's height while it was empty.
+ */
+export async function expectBadgeFitsBox(
+  badge: ClosedShadow,
+  box: Locator,
+  emptyHeight: number,
+): Promise<void> {
+  const size = Math.min(128, Math.max(28, Math.round(emptyHeight)));
+  const { rect, radius } = await badge.state(".dot");
+  expect([rect.width, rect.height]).toEqual([size, size]);
+  expect(radius).toBe(
+    await box.evaluate(
+      (element) => getComputedStyle(element).borderTopRightRadius,
+    ),
+  );
+  const bounds = await box.boundingBox();
+  expect(
+    Math.abs(rect.y + rect.height - (bounds!.y + bounds!.height)),
+  ).toBeLessThanOrEqual(1);
 }
 
 export type ChatOptions = {
