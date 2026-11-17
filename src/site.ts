@@ -72,9 +72,25 @@ const CLAUDE: Site = {
   badge: { size: 28, radius: "8px", centerInset: 22 },
 };
 
+const GEMINI: Site = {
+  name: "Gemini",
+  composers: [
+    'rich-textarea .ql-editor[contenteditable="true"]',
+    "input-area-v2 [contenteditable='true']",
+    "input-area-v2 textarea",
+  ],
+  box: "input-area-v2",
+  sendButtons: 'button[aria-label="Send message"], .send-button button',
+  // The answer's text, without the "Gemini said" label and thoughts
+  answers: ["model-response message-content .markdown"],
+  // Its round upload, voice and send buttons
+  badge: { size: 32, radius: "50%", centerInset: 32 },
+};
+
 const SITES: Record<string, Site> = {
   "chatgpt.com": CHATGPT,
   "claude.ai": CLAUDE,
+  "gemini.google.com": GEMINI,
 };
 
 /** The hosts DataFog runs on, each with its own profile. */

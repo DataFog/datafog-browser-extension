@@ -13,6 +13,7 @@ import {
   OPT_IN_ENTITIES,
   type Settings,
 } from "./settings";
+import { HOSTS } from "./site";
 
 const OFFERED = [...DEFAULT_ENTITIES, ...OPT_IN_ENTITIES, ...GERMAN_ENTITIES];
 
@@ -46,6 +47,6 @@ test("turns checking off per site, and keeps an old off switch as off everywhere
   expect((await load({}, "claude.ai")).enabled).toBe(true);
   const old = await load({ enabled: false }, "chatgpt.com");
   expect(old.enabled).toBe(false);
-  expect(old.off).toEqual(["chatgpt.com", "claude.ai"]);
+  expect(old.off).toEqual(HOSTS);
   vi.unstubAllGlobals();
 });
