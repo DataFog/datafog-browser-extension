@@ -51,6 +51,27 @@ test("the extension scans the editor and shows type counts", async ({
   expect((await badge.state(".panel")).text).not.toContain("jane@example.com");
 });
 
+test("the badge keeps ChatGPT's button size in every state", async ({
+  chat,
+  badge,
+}) => {
+  const size = async () => {
+    const { rect } = await badge.state(".dot");
+    return [rect.width, rect.height];
+  };
+  const composer = chat.locator("#prompt-textarea");
+  await expect.poll(size).toEqual([36, 36]);
+  await composer.fill(SAMPLE);
+  await found(badge, 2);
+  expect(await size()).toEqual([36, 36]);
+  await openBadge(badge);
+  await badge.click(".redact");
+  await expect
+    .poll(() => badge.state(".dot").then((state) => state.title))
+    .toBe("DataFog: no sensitive data found");
+  expect(await size()).toEqual([36, 36]);
+});
+
 // The real model Worker is a separate browser integration path from rule WASM.
 // Rule samples live in src/detect.test.ts; the README case checks their wiring.
 const modelDetectors = [
