@@ -278,6 +278,11 @@ function stubEditing(): ReturnType<typeof vi.fn> {
         range.collapse(true);
       }
     }
+    if (command === "delete") {
+      const range = window.getSelection()!.getRangeAt(0);
+      range.deleteContents();
+      range.collapse(true);
+    }
     if (command === "insertLineBreak") {
       const range = window.getSelection()!.getRangeAt(0);
       const br = document.createElement("br");
@@ -352,6 +357,24 @@ test("redacts a long prompt with one edit per value", async () => {
   expect(exec.mock.calls).toEqual([["insertText", false, "[EMAIL]"]]);
   expect(box.textContent).toContain("Contact: [EMAIL]");
   expect(box.textContent).not.toContain("jane@example.com");
+});
+
+test("replaces a link chip with plain text, so its target goes too", async () => {
+  const exec = stubEditing();
+  const url = "https://example.com/u/jane@example.com/profile";
+
+  const box = await redactRichText([
+    `in url: <span title="${url}" text-link-href="${url}"><span>${url}</span></span> ok`,
+  ]);
+
+  expect(exec.mock.calls).toEqual([
+    ["delete"],
+    ["insertText", false, "https://example.com/u/[EMAIL]/profile"],
+  ]);
+  expect(box.textContent).toBe(
+    "in url: https://example.com/u/[EMAIL]/profile ok",
+  );
+  expect(box.innerHTML).not.toContain("jane@example.com");
 });
 
 test("redacts a value across lines in place", async () => {
