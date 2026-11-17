@@ -1,12 +1,11 @@
 # ADR 001: V1 Extension Decisions
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-01
 
 ## Context
 
-Core 1.0.0 and FogVault 0.1.0 are published
-([#9](https://github.com/DataFog/datafog-browser-extension/issues/9)). Core
+Core and FogVault are published. Core
 handles workspace behavior, FogVault handles encryption and storage, and Core's
 browser adapter connects them. The extension owns the UI, permissions,
 credentials and the interaction with the chat site.
@@ -77,7 +76,7 @@ FogVault's device slots.
 - "Forget this device", or the 30 days running out, deletes the key, so the
   slot can't be used. Locking still clears everything in memory.
 - Anyone who can use the Chrome profile can open the vault while the device is
-  remembered. The vault encryption review covers this.
+  remembered.
 
 ### Not sensitive values
 
@@ -98,23 +97,6 @@ the value gets a new marker next time.
   are always found, as whole words ignoring case, even when allowlisted or
   marked not sensitive. Core keeps them in a review only by their detector, so
   the review's findings carry it.
-
-### Mapping TTL
-
-Mappings expire 30 days after they were last touched. A mapping is touched when
-it's created and each time it's restored; each touch resets the clock. Values
-that keep coming back in answers stay in the workspace; values that don't drop
-out, so the workspace doesn't grow into a full list of a person's PII. It also
-keeps saves small, since the adapter saves the whole workspace each time.
-
-TTL is applied by the extension. Core 1.0 has no API to remove or expire a
-mapping, so this depends on a Core addition, proposed separately.
-
-- Finding a value in a new prompt doesn't reset its clock. A value that's
-  pseudonymized often but never restored expires 30 days after it was created.
-- A value seen again after it expires gets a new marker.
-- Markers in older conversations whose mapping expired can't be restored. The
-  restore view says so rather than showing them as damaged.
 
 ### Model
 
@@ -140,22 +122,30 @@ Dismiss or Send anyway.
   DataFog failed. It stays blocked until the user clicks Send anyway; pressing
   send again doesn't get through.
 - It covers the send button, Enter, and input methods that compose text.
-- It shares one send observer with conversation tracking, which already needs
-  to record actual sends.
+
+### Sites
+
+V1 runs on ChatGPT, Claude, Gemini, Grok and DeepSeek. Each site has a profile
+of selectors for its chat box, send button and answers, and the badge's size
+and shape, so adding a site doesn't change the shared code.
 
 ### Out of V1
 
 - file upload scanning and CSV
-- sites other than ChatGPT
+- sites other than the five above
 - the other ADR 004 exclusions, except remembered unlock (above)
+
+### Planned
+
+Mapping TTL: mappings would expire 30 days after they were last created or
+restored, so the workspace doesn't grow into a full list of a person's PII.
+A value seen again after it expires would get a new marker, and markers whose
+mapping expired couldn't be restored. Core 1.1.0's `prepareForget` makes this
+possible; it isn't in V1.
 
 ## Consequences
 
-- ADR 004 needs an amendment for remembered unlock.
-- TTL waits on the Core API; the rest of V1 does not.
 - The offscreen document holds Core, FogVault and the model's Worker, with a
   second copy of Core, in memory while Chrome is open.
-- The README and CHANGELOG no longer promise that the extension never touches
-  ChatGPT's send button. Users who leave send blocking off keep that behavior.
-- The V1 acceptance run in #9 covers the vault, restore and conversation flow;
-  remember device, TTL and send blocking need their own end-to-end cases.
+- The extension can hold a send, but only when send blocking is turned on.
+  Users who leave it off keep sends untouched.

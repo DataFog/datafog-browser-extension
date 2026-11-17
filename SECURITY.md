@@ -6,13 +6,11 @@ The DataFog browser extension checks prompts for personal data and credentials b
 
 Email help@datafog.ai with the details.
 
-Please don't open a public issue or pull request for a vulnerability, and don't include real personal data in a report. A synthetic example is enough.
-
 ## In scope
 
-- Prompt text, matched values, or allowlist values leaving the device, including in any network request.
+- Prompt text, matched values, or allowlist or Always flag values leaving the device, including in any network request.
 - Those values appearing in a console log, an error message, or anywhere a page script can read them beyond what the user typed.
-- Settings or allowlist values stored outside `chrome.storage.local`, or readable by a website.
+- Settings, allowlist or Always flag values stored outside `chrome.storage.local`, or readable by a website.
 - The extension running on, or requesting access to, sites and permissions beyond those in its manifest.
 - Redact or Pseudonymize leaving a detected value in the chat box.
 - The vault password or original values behind markers reaching a web page, a log, or storage outside the encrypted vault.
