@@ -7,6 +7,7 @@ test("knows each site, and treats an unknown host as ChatGPT", () => {
   expect(siteFor("chatgpt.com").name).toBe("ChatGPT");
   expect(siteFor("claude.ai").name).toBe("Claude");
   expect(siteFor("gemini.google.com").name).toBe("Gemini");
+  expect(siteFor("grok.com").name).toBe("Grok");
   expect(siteFor("localhost").name).toBe("ChatGPT");
 });
 
@@ -43,5 +44,21 @@ test("finds Gemini's answer text, not its label", () => {
 });
 
 test("names every site in one list", () => {
-  expect(siteNames()).toBe("ChatGPT, Claude or Gemini");
+  expect(siteNames()).toBe("ChatGPT, Claude, Gemini or Grok");
+});
+
+test("finds Grok's answer text, not its heading", () => {
+  document.body.innerHTML = `
+    <div data-testid="assistant-message">
+      <h2 class="sr-only">Grok</h2>
+      <div class="response-content-markdown markdown">
+        <p>hi [[EMAIL_7KQ4ZM]]</p>
+      </div>
+    </div>`;
+  const [selector] = siteFor("grok.com").answers;
+
+  const answers = document.querySelectorAll(selector);
+
+  expect(answers).toHaveLength(1);
+  expect(answers[0].textContent?.trim()).toBe("hi [[EMAIL_7KQ4ZM]]");
 });
