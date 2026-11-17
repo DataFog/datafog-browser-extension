@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { Badge, OFF_TITLE } from "./badge";
+import { siteFor, type Site } from "./site";
 
 /**
  * Give an element a fixed box, since happy-dom does no layout.
@@ -33,7 +34,7 @@ function setBox(
  *
  * @returns The chat box, its container, and the badge's positioned wrapper.
  */
-function mount(): {
+function mount(site?: Site): {
   badge: Badge;
   box: HTMLElement;
   scroller: HTMLElement;
@@ -43,14 +44,17 @@ function mount(): {
     '<div style="overflow-y: auto"><div contenteditable="true"></div></div>';
   const scroller = document.querySelector<HTMLElement>("div")!;
   const box = document.querySelector<HTMLElement>("[contenteditable]")!;
-  const badge = new Badge({
-    redact: () => {},
-    pseudonymize: () => {},
-    dismiss: () => {},
-    undo: () => {},
-    redo: () => {},
-    send: () => {},
-  });
+  const badge = new Badge(
+    {
+      redact: () => {},
+      pseudonymize: () => {},
+      dismiss: () => {},
+      undo: () => {},
+      redo: () => {},
+      send: () => {},
+    },
+    site,
+  );
   badge.attach(box);
   const wrap = document
     .querySelector("datafog-badge")!
@@ -114,16 +118,15 @@ test("stays on screen when the chat box fills the page", async () => {
   expect(wrap.style.bottom).toBe("704px");
 });
 
-test("takes the empty chat box's height and corner radius, and keeps them as it grows", async () => {
+test("takes the empty chat box's height, stays round, and keeps its size as the box grows", async () => {
   const { badge, box, scroller, wrap } = mount();
-  box.style.borderRadius = "20px";
   setBox(scroller, { top: 0, right: 1024, bottom: 768, left: 0 });
   setBox(box, { top: 400, right: 800, bottom: 480, left: 100 });
 
   badge.rest(true);
   await new Promise(requestAnimationFrame);
   expect(wrap.style.getPropertyValue("--size")).toBe("80px");
-  expect(wrap.style.getPropertyValue("--radius")).toBe("20px");
+  expect(wrap.style.getPropertyValue("--radius")).toBe("50%");
   expect(wrap.style.bottom).toBe("288px");
 
   badge.rest(false);
@@ -131,6 +134,18 @@ test("takes the empty chat box's height and corner radius, and keeps them as it 
   badge.reposition();
   await new Promise(requestAnimationFrame);
   expect(wrap.style.getPropertyValue("--size")).toBe("80px");
+  expect(wrap.style.bottom).toBe("288px");
+});
+
+test("keeps a fixed size on a site whose chat box changes height between chats", async () => {
+  const { badge, box, scroller, wrap } = mount(siteFor("claude.ai"));
+  setBox(scroller, { top: 0, right: 1024, bottom: 768, left: 0 });
+  setBox(box, { top: 377, right: 800, bottom: 480, left: 100 });
+
+  badge.rest(true);
+  await new Promise(requestAnimationFrame);
+  expect(wrap.style.getPropertyValue("--size")).toBe("44px");
+  expect(wrap.style.getPropertyValue("--radius")).toBe("14px");
   expect(wrap.style.bottom).toBe("288px");
 });
 

@@ -1,8 +1,8 @@
 /**
  * The inline badge in the chat box, and its expandable panel.
  *
- * Like Grammarly's: a DataFog badge just outside the chat box, as tall as
- * the empty box and with its corner radius, that turns into a red count when
+ * Like Grammarly's: a DataFog badge just outside the chat box, sized and
+ * rounded to match it, that turns into a red count when
  * something sensitive is found. Lives in a
  * shadow root so the site's styles can't reach it and its styles can't leak
  * into the page. Shows types and counts only, never values.
@@ -306,8 +306,8 @@ export class Badge {
   }
 
   /**
-   * Say whether the chat box is empty. While it is, the badge takes the
-   * box's height and corner radius, and keeps them as text makes it grow.
+   * Say whether the chat box is empty. While it is, a site's badge that's
+   * measured takes the box's height, and keeps it as text makes it grow.
    *
    * @param empty Whether the chat box holds no text.
    */
@@ -503,22 +503,17 @@ export class Badge {
   }
 
   /**
-   * Take the empty chat box's height and corner radius.
+   * Take the empty chat box's height, on a site whose badge is measured.
    *
    * @param anchor The chat box.
    */
   private fit(anchor: Element): void {
+    if (!this.shape.measured) return;
     const { height } = anchor.getBoundingClientRect();
     if (height <= 0) return;
     const size = Math.round(Math.min(MAX_SIZE, Math.max(MIN_SIZE, height)));
-    // The horizontal radius of the top right corner, the one beside the badge
-    const [radius] = getComputedStyle(anchor)
-      .borderTopRightRadius.split(" ")
-      .filter(Boolean);
-    const shape = { size, radius: radius ?? this.shape.radius };
-    if (shape.size === this.shape.size && shape.radius === this.shape.radius)
-      return;
-    this.shape = shape;
+    if (size === this.shape.size) return;
+    this.shape = { ...this.shape, size };
     this.applyShape();
   }
 
