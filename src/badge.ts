@@ -12,8 +12,6 @@ import { MARK } from "./logo";
 import { LABELS } from "./settings";
 import { siteFor, type BadgeShape, type Site } from "./site";
 
-const REPORT_URL =
-  "https://github.com/DataFog/datafog-browser-extension/issues";
 const HELP_EMAIL = "help@datafog.ai";
 
 /** Why the badge is greyed out, on hover. */
@@ -213,8 +211,8 @@ export class Badge {
           <ul></ul>
           <p class="note"></p>
           <p class="report" hidden>
-            <a href="${REPORT_URL}" target="_blank" rel="noreferrer">Report this problem</a>
-            or email <a href="mailto:${HELP_EMAIL}">${HELP_EMAIL}</a>
+            Report this problem to
+            <a href="mailto:${HELP_EMAIL}">${HELP_EMAIL}</a>
           </p>
           <div class="history">
             <button class="act small undo" type="button"

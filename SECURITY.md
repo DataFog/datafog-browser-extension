@@ -4,7 +4,7 @@ The DataFog browser extension checks prompts for personal data and credentials b
 
 ## Reporting a vulnerability
 
-Report it privately through GitHub using [Report a vulnerability](https://github.com/DataFog/datafog-browser-extension/security/advisories/new). If that isn't available to you, email hi@datafog.ai.
+Email help@datafog.ai with the details.
 
 Please don't open a public issue or pull request for a vulnerability, and don't include real personal data in a report. A synthetic example is enough.
 
@@ -19,7 +19,7 @@ Please don't open a public issue or pull request for a vulnerability, and don't 
 
 ## Out of scope
 
-- Values the detectors miss, or match wrongly. Detection is pattern-based and not exhaustive; report these as regular issues.
+- Values the detectors miss, or match wrongly. Detection is pattern-based and not exhaustive; report these to help@datafog.ai as well.
 - Text the user sends after dismissing a warning, or that the chat site itself collects.
 
 ## Supported versions

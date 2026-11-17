@@ -77,7 +77,7 @@ To try the badge without ChatGPT, serve `harness/` (for example `python3 -m http
 
 ## Security
 
-Report vulnerabilities through [SECURITY.md](SECURITY.md), rather than a public issue.
+Report problems and vulnerabilities to help@datafog.ai, rather than in a public issue. See [SECURITY.md](SECURITY.md) for what counts as a vulnerability.
 
 ## License
 
