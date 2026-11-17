@@ -482,7 +482,7 @@ test("restores the latest answer in the page, and hides it again", async () => {
   });
   expect($("#restored").hidden).toBe(false);
   expect($("#restored-summary").textContent).toBe(
-    "Showing 2 original values in ChatGPT's answer. 1 marker couldn't be restored and stayed as is.",
+    "Showing 2 original values in the chat's answer. 1 marker couldn't be restored and stayed as is.",
   );
 
   $("#hide-originals").click();
@@ -521,7 +521,7 @@ test("explains why an answer can't be restored", async () => {
   await settle();
 
   expect($("#restore-error").textContent).toBe(
-    "Open a ChatGPT chat in this tab to restore its latest answer.",
+    "Open a ChatGPT or Claude chat in this tab to restore its latest answer.",
   );
   expect($("#restored").hidden).toBe(true);
 });
