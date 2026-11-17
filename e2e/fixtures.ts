@@ -106,7 +106,7 @@ export type ChatOptions = {
   path?: string;
   composer?: "contenteditable" | "textarea" | "none";
   /** Which chat site's markup to stand in for. */
-  site?: "chatgpt" | "claude" | "gemini" | "grok";
+  site?: "chatgpt" | "claude" | "gemini" | "grok" | "deepseek";
 };
 
 const ORIGINS = {
@@ -114,6 +114,7 @@ const ORIGINS = {
   claude: "https://claude.ai",
   gemini: "https://gemini.google.com",
   grok: "https://grok.com",
+  deepseek: "https://chat.deepseek.com",
 };
 
 /** Controlled Claude DOM: a card in a fieldset, with a plain send button. */
@@ -188,11 +189,36 @@ function grokHTML(): string {
     </script></body></html>`;
 }
 
+/** Controlled DeepSeek DOM: a textarea in an unnamed card, div buttons. */
+function deepseekHTML(): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><title>DeepSeek fixture</title>
+    <style>
+      body{font:16px system-ui;margin:0;padding:32px} main{max-width:760px;margin:auto}
+      #card{margin:32px 60px 0 0;padding:12px;border:1px solid #888;border-radius:24px}
+      textarea{width:100%;min-height:60px;border:0}
+      .row{display:flex;justify-content:flex-end}
+      [role=button]{width:34px;height:34px;border-radius:50%;background:#3964fe}
+    </style></head><body>
+    <main><section id="answers"></section>
+    <div id="card"><div><div><textarea name="search" placeholder="Message DeepSeek"></textarea></div></div>
+    <div class="row"><div role="button" class="ds-button ds-button--primary ds-button--circle"></div></div>
+    </div><output id="sent-count">0</output></main>
+    <script>
+      const sent=document.querySelector('#sent-count');
+      const send=()=>{sent.textContent=String(Number(sent.textContent)+1)};
+      document.querySelector('[role=button]').addEventListener('click', send);
+      document.querySelector('textarea').addEventListener('keydown', e=>{
+        if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();send()}
+      });
+    </script></body></html>`;
+}
+
 /** Controlled ChatGPT DOM, served at the real origin for manifest injection. */
 function chatHTML(options: ChatOptions): string {
   if (options.site === "claude") return claudeHTML();
   if (options.site === "gemini") return geminiHTML();
   if (options.site === "grok") return grokHTML();
+  if (options.site === "deepseek") return deepseekHTML();
   const composer = options.composer ?? "contenteditable";
   const editor =
     composer === "none"
