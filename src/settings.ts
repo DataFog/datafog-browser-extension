@@ -190,3 +190,36 @@ export async function saveSettings(settings: Settings): Promise<void> {
   const { enabled: _enabled, ...saved } = settings;
   await chrome.storage.local.set({ settings: saved });
 }
+
+/** The settings lists of values the user keeps by hand. */
+export type ListName = "allowlist" | "denylist";
+
+/**
+ * Add a value to one of the user's lists, once.
+ *
+ * @param name The list.
+ * @param value The value; surrounding spaces are dropped.
+ */
+export async function addToList(name: ListName, value: string): Promise<void> {
+  const item = value.trim();
+  const settings = await loadSettings();
+  if (!item || settings[name].includes(item)) return;
+  await saveSettings({ ...settings, [name]: [...settings[name], item] });
+}
+
+/**
+ * Remove a value from one of the user's lists.
+ *
+ * @param name The list.
+ * @param value The value.
+ */
+export async function removeFromList(
+  name: ListName,
+  value: string,
+): Promise<void> {
+  const settings = await loadSettings();
+  await saveSettings({
+    ...settings,
+    [name]: settings[name].filter((item) => item !== value),
+  });
+}

@@ -25,6 +25,8 @@ const LOCKED: VaultStatus = {
 };
 
 let notices: ((message: object) => void)[];
+let stored: { settings?: object };
+let storageChanges: ((changes: object, area: string) => void)[];
 let sendMessage: ReturnType<typeof vi.fn<(request: PanelRequest) => unknown>>;
 
 /** Let pending requests and renders finish. */
@@ -82,9 +84,25 @@ beforeEach(() => {
   vi.resetModules();
   document.body.innerHTML = BODY;
   notices = [];
+  stored = {};
+  storageChanges = [];
   sendMessage = vi.fn();
   Object.assign(globalThis, {
     chrome: {
+      storage: {
+        local: {
+          get: vi.fn(async () => ({ ...stored })),
+          set: vi.fn(async (next: { settings: object }) => {
+            stored = { ...stored, ...next };
+            for (const changed of storageChanges)
+              changed({ settings: { newValue: next.settings } }, "local");
+          }),
+        },
+        onChanged: {
+          addListener: (added: (changes: object, area: string) => void) =>
+            storageChanges.push(added),
+        },
+      },
       runtime: {
         connect: vi.fn(() => ({
           onMessage: { addListener: vi.fn() },
@@ -630,4 +648,61 @@ test("forgets the device", async () => {
 
   expect(sendMessage).toHaveBeenCalledWith({ type: "device-forget" });
   expect($("#remembered").hidden).toBe(true);
+});
+
+/**
+ * The values a list in the panel shows.
+ *
+ * @param name The list's id.
+ * @returns Each value's text.
+ */
+function shownIn(name: string): string[] {
+  return [...document.querySelectorAll(`#${name} li div`)].map(
+    (value) => value.textContent ?? "",
+  );
+}
+
+test("lists the values to always allow and flag, as text", async () => {
+  stored = {
+    settings: { allowlist: ["me@work.example"], denylist: ["<b>Atlas</b>"] },
+  };
+  await start(() => LOCKED);
+  await vi.waitFor(() => expect(shownIn("denylist")).toHaveLength(1));
+
+  expect(shownIn("allowlist")).toEqual(["me@work.example"]);
+  expect(shownIn("denylist")).toEqual(["<b>Atlas</b>"]);
+  expect($("#denylist b")).toBeNull();
+});
+
+test("adds and removes a phrase to always flag", async () => {
+  await start(() => LOCKED);
+  await vi.waitFor(() =>
+    expect($("#denylist-note").textContent).toBe("No phrases yet."),
+  );
+
+  fill("#denylist-value", " Project Atlas ");
+  await submit("#denylist-add");
+  await vi.waitFor(() =>
+    expect(shownIn("denylist")).toEqual(["Project Atlas"]),
+  );
+  expect(stored.settings).toMatchObject({ denylist: ["Project Atlas"] });
+  expect(
+    document.querySelector<HTMLInputElement>("#denylist-value")!.value,
+  ).toBe("");
+
+  $("#denylist li button").click();
+  await vi.waitFor(() => expect(shownIn("denylist")).toEqual([]));
+  expect(stored.settings).toMatchObject({ denylist: [] });
+});
+
+test("shows a list changed on the settings page", async () => {
+  await start(() => LOCKED);
+  stored = { settings: { allowlist: ["me@work.example"] } };
+
+  for (const changed of storageChanges)
+    changed({ settings: { newValue: stored.settings } }, "local");
+
+  await vi.waitFor(() =>
+    expect(shownIn("allowlist")).toEqual(["me@work.example"]),
+  );
 });

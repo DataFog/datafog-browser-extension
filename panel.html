@@ -134,6 +134,13 @@
         border: 1px solid var(--line);
         border-radius: 8px;
       }
+      form.add {
+        flex-direction: row;
+      }
+      form.add input {
+        flex: 1;
+        min-width: 0;
+      }
       ul.scroll li:last-child {
         border-bottom: 0;
       }
@@ -461,6 +468,47 @@
       <p class="muted" id="not-sensitive-count" hidden></p>
       <ul id="not-sensitive"></ul>
       <p class="error" id="not-sensitive-error" hidden></p>
+    </section>
+
+    <section id="allowlist-section">
+      <h2>Always allow</h2>
+      <p class="muted">
+        Values DataFog never flags, matched exactly, such as your own work
+        email.
+      </p>
+      <p class="muted" id="allowlist-note"></p>
+      <p class="muted" id="allowlist-count" hidden></p>
+      <ul id="allowlist"></ul>
+      <form class="add" id="allowlist-add">
+        <input
+          id="allowlist-value"
+          aria-label="Value to always allow"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="submit">Add</button>
+      </form>
+    </section>
+
+    <section id="denylist-section">
+      <h2>Always flag</h2>
+      <p class="muted">
+        Phrases DataFog always flags, as whole words ignoring case, such as a
+        project or client name. They're flagged even if allowed above or marked
+        not sensitive.
+      </p>
+      <p class="muted" id="denylist-note"></p>
+      <p class="muted" id="denylist-count" hidden></p>
+      <ul id="denylist"></ul>
+      <form class="add" id="denylist-add">
+        <input
+          id="denylist-value"
+          aria-label="Phrase to always flag"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button type="submit">Add</button>
+      </form>
     </section>
 
     <button id="settings" type="button">Settings</button>

@@ -1,6 +1,7 @@
 /**
  * Side panel: the vault, the Pseudonymize review, the values marked not
- * sensitive, and restoring answers.
+ * sensitive, restoring answers, and the lists of values to always allow or
+ * flag.
  */
 
 import type {
@@ -11,7 +12,14 @@ import type {
   ValueChoice,
   VaultStatus,
 } from "./messages";
-import { LABELS } from "./settings";
+import {
+  addToList,
+  LABELS,
+  loadSettings,
+  removeFromList,
+  type ListName,
+  type Settings,
+} from "./settings";
 import { siteNames } from "./site";
 
 /** Values a list shows before it scrolls within the panel. */
@@ -447,6 +455,67 @@ async function restoreLatest(): Promise<void> {
   showRestored(response);
 }
 
+/** What each list says when it's empty. */
+const EMPTY_LIST: Record<ListName, string> = {
+  allowlist: "No values yet.",
+  denylist: "No phrases yet.",
+};
+
+/**
+ * Find a list's elements: the list, its notes and its add form.
+ *
+ * @param name The list.
+ * @returns The elements.
+ */
+function listParts(name: ListName) {
+  return {
+    list: document.querySelector<HTMLUListElement>(`#${name}`)!,
+    note: document.querySelector<HTMLParagraphElement>(`#${name}-note`)!,
+    count: document.querySelector<HTMLParagraphElement>(`#${name}-count`)!,
+    form: document.querySelector<HTMLFormElement>(`#${name}-add`)!,
+    field: document.querySelector<HTMLInputElement>(`#${name}-value`)!,
+  };
+}
+
+/**
+ * Show one of the user's lists, each value with Remove.
+ *
+ * @param name The list.
+ * @param values Its values.
+ */
+function renderList(name: ListName, values: string[]): void {
+  const { list, note, count } = listParts(name);
+  note.textContent = values.length === 0 ? EMPTY_LIST[name] : "";
+  // Values only ever go in as text, never as markup
+  list.replaceChildren(
+    ...values.map((value) => {
+      const item = document.createElement("li");
+      const text = document.createElement("div");
+      text.textContent = value;
+      const remove = linkButton("Remove");
+      remove.addEventListener("click", () => void removeFromList(name, value));
+      item.append(text, remove);
+      return item;
+    }),
+  );
+  fitList(list, count);
+}
+
+/**
+ * Show both lists from the settings.
+ *
+ * @param settings The current settings.
+ */
+function renderLists(settings: Settings): void {
+  renderList("allowlist", settings.allowlist);
+  renderList("denylist", settings.denylist);
+}
+
+/** Read the settings and show their lists. */
+async function refreshLists(): Promise<void> {
+  renderLists(await loadSettings());
+}
+
 /**
  * Show the vault and any review.
  *
@@ -631,6 +700,20 @@ document
   .querySelector("#update-now")!
   .addEventListener("click", () => chrome.runtime.reload());
 
+// Adding to a list saves the settings; the change redraws both lists
+for (const name of ["allowlist", "denylist"] as const) {
+  const { form, field } = listParts(name);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void addToList(name, field.value).then(() => (field.value = ""));
+  });
+}
+
+// The lists also change from the settings page
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && "settings" in changes) void refreshLists();
+});
+
 // The vault tells the panel when it locks or a review arrives
 chrome.runtime.onMessage.addListener((message: PanelNotice | object) => {
   if (!("target" in message) || message.target !== "panel") return false;
@@ -651,3 +734,4 @@ export async function connect(): Promise<void> {
 void connect();
 void refresh(true);
 void checkUpdate();
+void refreshLists();
