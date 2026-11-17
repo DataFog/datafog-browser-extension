@@ -26,21 +26,46 @@ export function ready(): Promise<void> {
   return init();
 }
 
-/** Finds the values of the given types in a prompt. */
-export type Scanner = (text: string, entities: string[]) => Promise<Finding[]>;
+/** Finds the values of the given types, and the given phrases, in a prompt. */
+export type Scanner = (
+  text: string,
+  entities: string[],
+  deny?: string[],
+) => Promise<Finding[]>;
+
+/** Core's detector for phrases on the user's deny list. */
+const DENY_DETECTOR = "datafog-core/denylist";
 
 /**
- * Core's scan config for these types. Choosing UUID or a German type isn't
- * enough on its own: Core also needs its UUID switch or the German locale.
+ * Whether Core found a value because it's on the user's deny list.
+ *
+ * @param finding What Core found.
+ * @returns True for a deny list phrase.
+ */
+function denied({ detectorName }: { detectorName?: string | null }): boolean {
+  return detectorName === DENY_DETECTOR;
+}
+
+/**
+ * Core's scan config for these types and phrases. Choosing UUID or a German
+ * type isn't enough on its own: Core also needs its UUID switch or the German
+ * locale.
  *
  * @param entities The types to find.
+ * @param deny Phrases to always find, ignoring case, as whole words.
  * @returns The config to scan with.
  */
-export function scanConfig(entities: string[]): ScanConfig {
+export function scanConfig(
+  entities: string[],
+  deny: string[] = [],
+): ScanConfig {
   return {
-    entities,
+    ...(entities.length > 0 && { entities }),
     ...(entities.includes("UUID") && { detect_uuid: true }),
     ...(entities.some((type) => type.startsWith("DE_")) && { locale: "de" }),
+    ...(deny.length > 0 && {
+      deny: deny.map((phrase) => ({ phrase, case_sensitive: false })),
+    }),
   };
 }
 
@@ -50,11 +75,15 @@ export function scanConfig(entities: string[]): ScanConfig {
  *
  * @param text The prompt.
  * @param entities The types to find.
+ * @param deny Phrases to always find.
  * @returns What Core found.
  */
-export const scanRules: Scanner = async (text, entities) => {
+export const scanRules: Scanner = async (text, entities, deny = []) => {
   const rules = entities.filter((type) => !MODEL_ENTITIES.includes(type));
-  return rules.length === 0 ? [] : scan(text, scanConfig(rules));
+  if (rules.length > 0) return scan(text, scanConfig(rules, deny));
+  if (deny.length === 0) return [];
+  // With no types, Core would run every rule: keep only the phrases
+  return scan(text, scanConfig([], deny)).filter(denied);
 };
 
 /**
@@ -80,15 +109,17 @@ export function skipChoices(
   scanner: Scanner,
   choices: () => ValueChoice[],
 ): Scanner {
-  return async (text, entities) => {
-    const found = await scanner(text, entities);
+  return async (text, entities, deny) => {
+    const found = await scanner(text, entities, deny);
     const known = new Set(
       choices().map(({ entityType, value }) => choiceKey(entityType, value)),
     );
     if (known.size === 0) return found;
+    // A deny list phrase is found even if marked not sensitive, as in Core
     return found.filter(
-      ({ entityType, matchedText }) =>
-        !known.has(choiceKey(entityType, matchedText)),
+      (finding) =>
+        denied(finding) ||
+        !known.has(choiceKey(finding.entityType, finding.matchedText)),
     );
   };
 }
@@ -133,6 +164,16 @@ function outsidePlaceholders(text: string, found: Finding[]): Finding[] {
 }
 
 /**
+ * Whether the settings look for anything at all.
+ *
+ * @param settings The current settings.
+ * @returns True if there are types or phrases to find.
+ */
+function looksForAnything(settings: Settings): boolean {
+  return settings.entities.length > 0 || settings.denylist.length > 0;
+}
+
+/**
  * Find a prompt's values and decide which to replace: after the allowlist,
  * and with a value two detectors match once.
  *
@@ -146,10 +187,10 @@ async function replaceable(
   settings: Settings,
   scanner: Scanner,
 ): Promise<Transformation[]> {
-  if (!text.trim() || settings.entities.length === 0) return [];
+  if (!text.trim() || !looksForAnything(settings)) return [];
   const found = outsidePlaceholders(
     text,
-    await scanner(text, settings.entities),
+    await scanner(text, settings.entities, settings.denylist),
   );
   return transform(text, found, redactConfig(settings)).transformations;
 }
@@ -190,12 +231,12 @@ export async function redact(
   settings: Settings,
   scanner: Scanner,
 ): Promise<RedactResponse> {
-  if (!text.trim() || settings.entities.length === 0) {
+  if (!text.trim() || !looksForAnything(settings)) {
     return { text, edits: [] };
   }
   const found = outsidePlaceholders(
     text,
-    await scanner(text, settings.entities),
+    await scanner(text, settings.entities, settings.denylist),
   );
   const result = transform(text, found, redactConfig(settings));
   return {
@@ -229,5 +270,8 @@ export async function workspaceFindings(
       item.sourceUtf16Range.end,
     ),
     range: { unit: "utf8_bytes", ...item.sourceByteRange },
+    // Core keeps a deny list phrase in the review only by its detector
+    detectorName: item.detectorName,
+    detectorVersion: item.detectorVersion,
   }));
 }

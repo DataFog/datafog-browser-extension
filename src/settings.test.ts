@@ -7,10 +7,12 @@ import { expect, test, vi } from "vitest";
 
 import {
   DEFAULT_ENTITIES,
+  DEFAULT_SETTINGS,
   GERMAN_ENTITIES,
   LABELS,
   loadSettings,
   OPT_IN_ENTITIES,
+  sameChecks,
   type Settings,
 } from "./settings";
 import { HOSTS } from "./site";
@@ -49,4 +51,11 @@ test("turns checking off per site, and keeps an old off switch as off everywhere
   expect(old.enabled).toBe(false);
   expect(old.off).toEqual(HOSTS);
   vi.unstubAllGlobals();
+});
+
+test("a review no longer holds once the deny list changes", () => {
+  const before = { ...DEFAULT_SETTINGS, denylist: ["Project Atlas"] };
+
+  expect(sameChecks(before, { ...before })).toBe(true);
+  expect(sameChecks(before, { ...before, denylist: [] })).toBe(false);
 });

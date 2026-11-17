@@ -57,6 +57,8 @@ export const GERMAN_ENTITIES = [
 
 /** Plain-language names for non-technical users. */
 export const LABELS: Record<string, string> = {
+  // A phrase from the user's own list, not one of Core's types
+  DENYLIST: "Flagged phrase",
   ACCOUNT_NUMBER: "Account number",
   ADDRESS: "Mailing address",
   API_KEY: "API key",
@@ -95,6 +97,8 @@ export interface Settings {
   off: string[];
   entities: string[];
   allowlist: string[];
+  /** Phrases always found, ignoring case, even when allowed or not sensitive. */
+  denylist: string[];
   /** Hold a send until the user has chosen what to do about found values. */
   blockSends: boolean;
 }
@@ -104,6 +108,7 @@ export const DEFAULT_SETTINGS: Settings = {
   off: [],
   entities: DEFAULT_ENTITIES,
   allowlist: [],
+  denylist: [],
   blockSends: false,
 };
 
@@ -160,7 +165,8 @@ function sameItems(a: string[], b: string[]): boolean {
 }
 
 /**
- * Whether two settings find the same values: the same types and allowlist.
+ * Whether two settings find the same values: the same types, allowlist and
+ * deny list.
  *
  * @param a One set of settings.
  * @param b The other.
@@ -168,7 +174,9 @@ function sameItems(a: string[], b: string[]): boolean {
  */
 export function sameChecks(a: Settings, b: Settings): boolean {
   return (
-    sameItems(a.entities, b.entities) && sameItems(a.allowlist, b.allowlist)
+    sameItems(a.entities, b.entities) &&
+    sameItems(a.allowlist, b.allowlist) &&
+    sameItems(a.denylist, b.denylist)
   );
 }
 

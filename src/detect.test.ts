@@ -22,6 +22,7 @@ const settings: Settings = {
   off: [],
   entities: DEFAULT_ENTITIES,
   allowlist: [],
+  denylist: [],
   blockSends: false,
 };
 const countFindings = (text: string, chosen: Settings) =>
@@ -247,11 +248,12 @@ describe("workspaceFindings", () => {
   test("gives each value once, with its UTF-8 byte range", async () => {
     const text = "café jane@example.com";
     expect(await workspaceFindings(text, settings)).toEqual([
-      {
+      expect.objectContaining({
         entityType: "EMAIL",
         matchedText: "jane@example.com",
         range: { unit: "utf8_bytes", start: 6, end: 22 },
-      },
+        detectorName: "datafog-core/email",
+      }),
     ]);
   });
 
@@ -300,5 +302,51 @@ describe("rule detector samples", () => {
         entities: [...settings.entities, entity],
       }),
     ).toEqual({ [entity]: 1 });
+  });
+});
+
+describe("deny list", () => {
+  const flagged = { ...settings, denylist: ["Project Atlas"] };
+  const plan = "Project Atlas ships; project atlas is late, Atlases aren't";
+
+  test("flags each phrase as a whole word, whatever its case", async () => {
+    expect(await countFindings(plan, flagged)).toEqual({ DENYLIST: 2 });
+    expect((await redact(plan, flagged)).text).toBe(
+      "[DENYLIST] ships; [DENYLIST] is late, Atlases aren't",
+    );
+  });
+
+  test("flags a phrase even when it's allowed", async () => {
+    const allowed = { ...flagged, allowlist: ["Project Atlas"] };
+
+    expect(await countFindings(plan, allowed)).toEqual({ DENYLIST: 2 });
+  });
+
+  test("flags phrases with every type turned off", async () => {
+    const only = { ...flagged, entities: [] };
+
+    expect(await countFindings(`${plan} ${prompt}`, only)).toEqual({
+      DENYLIST: 2,
+    });
+  });
+
+  test("flags a phrase even when marked not sensitive", async () => {
+    const remembered = skipChoices(scanRules, () => [
+      { entityType: "DENYLIST", value: "project atlas" },
+    ]);
+
+    expect(await countWith(plan, flagged, remembered)).toEqual({
+      DENYLIST: 2,
+    });
+  });
+
+  test("gives the review each phrase with Core's deny detector", async () => {
+    const [found] = await workspaceFindings("Project Atlas", flagged);
+
+    expect(found).toMatchObject({
+      entityType: "DENYLIST",
+      matchedText: "Project Atlas",
+      detectorName: "datafog-core/denylist",
+    });
   });
 });
