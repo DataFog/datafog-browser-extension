@@ -12,6 +12,7 @@ import type {
   VaultStatus,
 } from "./messages";
 import { LABELS } from "./settings";
+import { siteNames } from "./site";
 
 /** Values a list shows before it scrolls within the panel. */
 const LIST_VISIBLE = 5;
@@ -29,8 +30,7 @@ const EXPLAINED: Record<string, string> = {
   no_review: "This review is gone. Choose Pseudonymize again.",
   settings_changed:
     "What DataFog checks for changed after this review was prepared. Choose Pseudonymize again.",
-  no_chat:
-    "Open a ChatGPT or Claude chat in this tab to restore its latest answer.",
+  no_chat: `Open a ${siteNames()} chat in this tab to restore its latest answer.`,
   no_answer: "There's no answer in this chat yet.",
   vault_locked: "Unlock your vault to restore.",
   no_markers: "There are no markers in the chat's latest answer.",

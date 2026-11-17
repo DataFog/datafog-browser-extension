@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { expect, test } from "vitest";
 
-import { siteFor } from "./site";
+import { siteFor, siteNames } from "./site";
 
 test("knows each site, and treats an unknown host as ChatGPT", () => {
   expect(siteFor("chatgpt.com").name).toBe("ChatGPT");
@@ -40,4 +40,8 @@ test("finds Gemini's answer text, not its label", () => {
 
   expect(answers).toHaveLength(1);
   expect(answers[0].textContent).toBe("hi [[EMAIL_7KQ4ZM]]");
+});
+
+test("names every site in one list", () => {
+  expect(siteNames()).toBe("ChatGPT, Claude or Gemini");
 });

@@ -85,7 +85,7 @@ export function watchPage(
     },
     true,
   );
-  // ChatGPT and Claude take a dropped file anywhere on the page
+  // Chat sites take a dropped file anywhere on the page
   document.addEventListener(
     "drop",
     ({ dataTransfer }) => {

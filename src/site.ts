@@ -103,6 +103,17 @@ export const SITE_NAMES = Object.entries(SITES).map(([host, { name }]) => ({
 }));
 
 /**
+ * Each site's name, as a list joined with "or", for messages.
+ *
+ * @returns The names, such as "ChatGPT, Claude or Gemini".
+ */
+export function siteNames(): string {
+  const names = SITE_NAMES.map(({ name }) => name);
+  const last = names.pop();
+  return names.length ? `${names.join(", ")} or ${last}` : `${last}`;
+}
+
+/**
  * The site a page belongs to.
  *
  * @param host The page's host name.
