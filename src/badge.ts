@@ -1,13 +1,14 @@
 /**
  * The inline badge in the chat box, and its expandable panel.
  *
- * Like Grammarly's: a small DataFog logo just outside the chat box
- * that turns into a red count when something sensitive is found. Lives in a
+ * Like Grammarly's: a small round DataFog badge just outside the chat box,
+ * the size of ChatGPT's own buttons, that turns into a red count when
+ * something sensitive is found. Lives in a
  * shadow root so ChatGPT's styles can't reach it and its styles can't leak
  * into the page. Shows types and counts only, never values.
  */
 
-import { LOGO } from "./logo";
+import { MARK } from "./logo";
 import { LABELS } from "./settings";
 
 const REPORT_URL =
@@ -33,6 +34,23 @@ export type BadgeState =
     }
   | { kind: "found"; counts: Record<string, number> };
 
+/**
+ * The badge's size, matching ChatGPT's round voice and send buttons, and its
+ * gap from the chat box, in pixels. Every state keeps this size.
+ */
+const DOT_SIZE = 36;
+const GAP = 8;
+
+/**
+ * Where a one-line chat box's buttons are centered, above its bottom edge,
+ * so the badge lines up with them.
+ */
+const CENTER_INSET = 26;
+const BOTTOM_INSET = CENTER_INSET - DOT_SIZE / 2;
+
+/** Room needed beside the chat box, clear of the page tab, in pixels. */
+const SIDE_ROOM = GAP + DOT_SIZE + 40;
+
 const STYLE = `
   :host { all: initial; }
   .wrap {
@@ -41,28 +59,26 @@ const STYLE = `
     font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   .dot {
-    width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px;
-    display: grid; place-items: center; cursor: pointer; background: none;
+    box-sizing: border-box; flex: none; width: ${DOT_SIZE}px;
+    height: ${DOT_SIZE}px; padding: 0; border: 0; border-radius: 50%;
+    display: grid; place-items: center; cursor: pointer;
+    background: #1A2226; color: #fff; font-family: inherit;
+    font-size: 14px; font-weight: 700; line-height: 1;
   }
   .dot svg { display: block; }
-  .dots {
-    display: flex; gap: 2px; align-items: center; justify-content: center;
-    width: 22px; height: 22px; border-radius: 5px; background: #1A2226;
-  }
+  .dots { display: flex; gap: 3px; align-items: center; }
   .dots i {
-    width: 4px; height: 4px; border-radius: 999px; background: #A7B2B1;
+    width: 5px; height: 5px; border-radius: 50%; background: #A7B2B1;
     animation: pulse 1s ease-in-out infinite;
   }
   .dots i:nth-child(2) { animation-delay: 150ms; }
   .dots i:nth-child(3) { animation-delay: 300ms; }
   .dot.found {
-    background: #d93025; color: #fff; font-weight: 700; font-size: 12px;
-    box-shadow: 0 1px 4px rgba(217, 48, 37, 0.45);
+    background: #d93025; box-shadow: 0 1px 4px rgba(217, 48, 37, 0.45);
   }
   .dot.off { filter: grayscale(1); opacity: 0.4; cursor: default; }
   .dot.failed {
-    background: #b06000; color: #fff; font-weight: 700; font-size: 13px;
-    box-shadow: 0 1px 4px rgba(176, 96, 0, 0.45);
+    background: #b06000; box-shadow: 0 1px 4px rgba(176, 96, 0, 0.45);
   }
   @keyframes pulse { 50% { opacity: 0.3; } }
   @media (prefers-reduced-motion: reduce) {
@@ -114,16 +130,6 @@ const ACTIONS = [
 type Action = (typeof ACTIONS)[number];
 
 const DOTS = '<span class="dots"><i></i><i></i><i></i></span>';
-
-/** The badge's size, and its gap from the chat box, in pixels. */
-const DOT_SIZE = 24;
-const GAP = 8;
-
-/** Lines the badge up with a one-line chat box's center, or the send button. */
-const BOTTOM_INSET = 14;
-
-/** Room needed beside the chat box, clear of the page tab, in pixels. */
-const SIDE_ROOM = 72;
 
 /** A box in viewport coordinates. */
 interface Box {
@@ -332,7 +338,7 @@ export class Badge {
       this.title.textContent = title;
       this.listCounts(state.counts ?? {});
     } else {
-      this.dot.innerHTML = state.kind === "checking" ? DOTS : LOGO;
+      this.dot.innerHTML = state.kind === "checking" ? DOTS : MARK;
       if (state.kind === "checking") this.dot.title = "DataFog is checking";
       else if (state.kind === "off") this.dot.title = OFF_TITLE;
       else
