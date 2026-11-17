@@ -490,6 +490,34 @@ function locateSpan(
   return head;
 }
 
+/** Links that keep their target apart from their text, as ChatGPT's chips do. */
+const LINK = "[text-link-href], a[href]";
+
+/**
+ * Widen a value's range to the whole link it's in, so the link and the target
+ * it holds are replaced with plain text, not just its visible text.
+ *
+ * @param range The value's range, changed in place.
+ * @param replacement What replaces the value.
+ * @returns What replaces the range: the link's text with the value replaced,
+ *   or null if the value isn't in a link.
+ */
+function wholeLink(range: Range, replacement: string): string | null {
+  const link =
+    range.startContainer.parentElement?.closest(LINK) ??
+    range.endContainer.parentElement?.closest(LINK);
+  if (!link) return null;
+  const before = document.createRange();
+  before.setStartBefore(link);
+  before.setEnd(range.startContainer, range.startOffset);
+  const after = document.createRange();
+  after.setStart(range.endContainer, range.endOffset);
+  after.setEndAfter(link);
+  range.setStartBefore(link);
+  range.setEndAfter(link);
+  return before.toString() + replacement + after.toString();
+}
+
 /**
  * Swap each found value for its label with one small edit apiece, so a long
  * prompt with a few values isn't retyped line by line.
@@ -512,9 +540,12 @@ function replaceValues(
     const edit = response.edits[index];
     const range = locateSpan(element, text, edit.start, edit.end);
     if (!range) return false;
+    const linked = wholeLink(range, edit.replacement);
     selection.removeAllRanges();
     selection.addRange(range);
-    typeLines(element, edit.replacement);
+    // Typing over a link keeps it, so remove it first
+    if (linked !== null) document.execCommand("delete");
+    typeLines(element, linked ?? edit.replacement);
   }
   return sameText(readText(element), response.text);
 }

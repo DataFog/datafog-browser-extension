@@ -155,6 +155,27 @@ test("Redact, Undo and Redo preserve the prompt and edits invalidate history", a
   await expect(chat.locator("#sent-count")).toHaveText("0");
 });
 
+test("Redact replaces a link chip, so its target is redacted too", async ({
+  chat,
+  badge,
+}) => {
+  const composer = chat.locator("#prompt-textarea");
+  const url = "https://example.com/u/jane@example.com/profile";
+  // As ChatGPT shows a pasted link: a chip holding the URL in attributes
+  await composer.evaluate((element, link) => {
+    element.innerHTML = `<p>in url: <span role="button" title="${link}" text-link-href="${link}">${link}</span> ok</p>`;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+  }, url);
+  await expect
+    .poll(() => badge.state(".dot").then((state) => state.title))
+    .toContain("found");
+  await openBadge(badge);
+  await badge.click(".redact");
+
+  await expect(composer).toContainText("[EMAIL]");
+  expect(await composer.innerHTML()).not.toContain("jane@example.com");
+});
+
 test("Dismiss leaves text intact and an edit restores the warning", async ({
   chat,
   badge,
