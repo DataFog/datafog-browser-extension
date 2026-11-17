@@ -14,6 +14,7 @@ import type {
 } from "./messages";
 import {
   addToList,
+  type ListAdd,
   LABELS,
   loadSettings,
   removeFromList,
@@ -455,6 +456,12 @@ async function restoreLatest(): Promise<void> {
   showRestored(response);
 }
 
+/** How long an added value stays highlighted, and its status shown, in ms. */
+const ADDED_MS = 2000;
+
+/** The value just added, or added again, to highlight while it's shown. */
+let added: { name: ListName; value: string } | null = null;
+
 /** What each list says when it's empty. */
 const EMPTY_LIST: Record<ListName, string> = {
   allowlist: "No values yet.",
@@ -474,6 +481,7 @@ function listParts(name: ListName) {
     count: document.querySelector<HTMLParagraphElement>(`#${name}-count`)!,
     form: document.querySelector<HTMLFormElement>(`#${name}-add`)!,
     field: document.querySelector<HTMLInputElement>(`#${name}-value`)!,
+    status: document.querySelector<HTMLParagraphElement>(`#${name}-status`)!,
   };
 }
 
@@ -499,6 +507,42 @@ function renderList(name: ListName, values: string[]): void {
     }),
   );
   fitList(list, count);
+  const index = added?.name === name ? values.indexOf(added.value) : -1;
+  const row = list.children[index];
+  if (!row) return;
+  row.classList.add("added");
+  row.scrollIntoView({ block: "nearest" });
+}
+
+/**
+ * Say what adding to a list did, and highlight the value in the list, for a
+ * moment.
+ *
+ * @param name The list.
+ * @param value The value, as typed.
+ * @param result What adding it did.
+ */
+async function confirmAdd(
+  name: ListName,
+  value: string,
+  result: ListAdd,
+): Promise<void> {
+  if (result === "blank") return;
+  const { status } = listParts(name);
+  const highlight = { name, value: value.trim() };
+  added = highlight;
+  status.textContent = result === "added" ? "Added" : "Already in the list";
+  status.classList.toggle("ok", result === "added");
+  // A new value redraws the list when the settings change; one already
+  // listed is highlighted where it is
+  await refreshLists();
+  window.setTimeout(() => {
+    if (added !== highlight) return;
+    added = null;
+    status.textContent = "";
+    for (const row of listParts(name).list.querySelectorAll(".added"))
+      row.classList.remove("added");
+  }, ADDED_MS);
 }
 
 /**
@@ -736,12 +780,16 @@ document
   .querySelector("#update-now")!
   .addEventListener("click", () => chrome.runtime.reload());
 
-// Adding to a list saves the settings; the change redraws both lists
+// Adding to a list saves the settings, then says so and highlights the value
 for (const name of ["allowlist", "denylist"] as const) {
   const { form, field } = listParts(name);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    void addToList(name, field.value).then(() => (field.value = ""));
+    const { value } = field;
+    void addToList(name, value).then(async (result) => {
+      field.value = "";
+      await confirmAdd(name, value, result);
+    });
   });
 }
 

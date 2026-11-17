@@ -27,7 +27,7 @@ type TabListener = (
 let tabListener: TabListener;
 
 type StorageListener = (
-  changes: Record<string, { newValue?: unknown }>,
+  changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,
   area: string,
 ) => void;
 
@@ -618,6 +618,71 @@ test("ignores an answer about text that has since changed", async () => {
   answers[0]();
   await vi.advanceTimersByTimeAsync(0);
   expect(badge().dot.className).toBe("dot checking");
+});
+
+test("checks the chat box again when the types or lists change, and only then", async () => {
+  let flagged = 0;
+  let scans = 0;
+  const box = await start(async (request) => {
+    if (request.type !== "scan") return {};
+    scans++;
+    return {
+      seq: request.seq,
+      enabled: true,
+      counts: flagged ? { DENYLIST: flagged } : {},
+    };
+  });
+  await type(box, "notes on Project Atlas");
+  expect(badge().dot.className).toBe("dot clean");
+  const before = scans;
+
+  storageListener(
+    {
+      settings: {
+        oldValue: { blockSends: false },
+        newValue: { blockSends: true },
+      },
+    },
+    "local",
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  expect(scans).toBe(before);
+
+  flagged = 1;
+  storageListener(
+    {
+      settings: {
+        oldValue: { denylist: [] },
+        newValue: { denylist: ["Project Atlas"] },
+      },
+    },
+    "local",
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  expect(scans).toBe(before + 1);
+  expect(badge().dot.className).toBe("dot found");
+  expect(badge().dot.textContent).toBe("1");
+});
+
+test("checks the chat box again when the service worker asks", async () => {
+  let skipped = false;
+  const box = await start(async (request) =>
+    request.type === "scan"
+      ? {
+          seq: request.seq,
+          enabled: true,
+          counts: skipped ? {} : { PERSON: 1 },
+        }
+      : {},
+  );
+  await type(box, "met Ann today");
+  expect(badge().dot.className).toBe("dot found");
+
+  // Ann was just marked not sensitive in the side panel
+  skipped = true;
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(badge().dot.className).toBe("dot clean");
 });
 
 test("greys out the badge, and checks nothing, while checking is off", async () => {

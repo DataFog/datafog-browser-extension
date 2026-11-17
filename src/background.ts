@@ -190,6 +190,14 @@ async function hideIfLocked(): Promise<void> {
   }
 }
 
+/** Have every tab check its chat box again, since what's skipped changed. */
+async function recheckTabs(): Promise<void> {
+  for (const { id } of await chrome.tabs.query({})) {
+    // Tabs without DataFog's content script don't answer
+    if (id !== undefined) await askTab(id, { type: "recheck" }).catch(() => {});
+  }
+}
+
 /**
  * Save an approved review and put its markers in the chat box, unless the chat
  * box changed since the review was prepared.
@@ -228,6 +236,15 @@ async function handlePanel(request: PanelRequest): Promise<unknown> {
   if (request.type === "restore-latest") return restoreLatest(request.windowId);
   if (request.type === "hide-originals") return hideInTab(request.windowId);
   if (request.type === "update-status") return { ready: await updateWaiting() };
+  // A value marked not sensitive, or no longer, changes what open chats count
+  if (
+    request.type === "review-not-sensitive" ||
+    request.type === "choice-clear"
+  ) {
+    const status = await forwardVault(request);
+    void recheckTabs().catch(() => {});
+    return status;
+  }
   if (request.type === "vault-delete") {
     const status = await forwardVault<VaultStatus>(request);
     await chrome.storage.local.remove("vault");

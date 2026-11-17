@@ -68,6 +68,35 @@ test("deny list: a phrase added in the side panel is flagged right away", async 
   await expect(options.locator("#denylist")).toHaveValue("");
 });
 
+test("deny list: adding a phrase confirms it and checks the open chat again", async ({
+  extension,
+}) => {
+  const chat = await extension.newChat();
+  const badge = extension.badge(chat);
+  await chat.locator("#prompt-textarea").fill("Ship project atlas Friday");
+  await expect
+    .poll(() => badge.state(".dot").then((state) => state.title))
+    .toContain("no sensitive data found");
+
+  const panel = await extension.panel();
+  await panel.locator("#denylist-value").fill(PHRASE);
+  await panel.locator("#denylist-add button").click();
+  await expect(panel.locator("#denylist-status")).toHaveText("Added");
+  await expect(panel.locator("#denylist li.added")).toContainText(PHRASE);
+
+  // Counted without editing the chat box
+  await expect
+    .poll(() => badge.state(".dot").then((state) => state.text))
+    .toBe("1");
+
+  await panel.locator("#denylist-value").fill(PHRASE);
+  await panel.locator("#denylist-add button").click();
+  await expect(panel.locator("#denylist-status")).toHaveText(
+    "Already in the list",
+  );
+  await expect(panel.locator("#denylist li")).toHaveCount(1);
+});
+
 test("deny list: Pseudonymize replaces a phrase with a marker", async ({
   extension,
 }) => {

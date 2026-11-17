@@ -84,6 +84,8 @@ export type TabRequest =
   | { type: "latest-answer" }
   | { type: "show-originals"; values: RestoredValue[] }
   | { type: "hide-originals" }
+  /** Values marked not sensitive changed; check the chat box again. */
+  | { type: "recheck" }
   | { type: "apply-pseudonyms"; before: string; response: RedactResponse };
 
 /** Tells an open side panel the vault or its review changed. */

@@ -338,6 +338,25 @@ test("passes not sensitive choices on from the side panel only", async () => {
   warn.mockRestore();
 });
 
+test("has every tab check again once a not sensitive choice changes", async () => {
+  queryTabs.mockResolvedValue([{ id: 7 }, { id: 8 }]);
+  sendMessage.mockResolvedValue({ state: "unlocked" });
+  tabMessage.mockRejectedValueOnce(new Error("no content script"));
+
+  await send({ type: "review-not-sensitive", index: 0 }, PANEL);
+  await vi.waitFor(() =>
+    expect(tabMessage).toHaveBeenCalledWith(8, { type: "recheck" }),
+  );
+  expect(tabMessage).toHaveBeenCalledWith(7, { type: "recheck" });
+
+  tabMessage.mockClear();
+  await send(
+    { type: "choice-clear", entityType: "PERSON", value: "Ann" },
+    PANEL,
+  );
+  await vi.waitFor(() => expect(tabMessage).toHaveBeenCalledTimes(2));
+});
+
 test("stores a new vault's routing, and passes on its status", async () => {
   sendMessage.mockResolvedValueOnce({
     status: { state: "unlocked" },

@@ -84,9 +84,9 @@ function storeOf(settings: object): { settings: object } {
 test("adds a list value once, trimmed, and removes it", async () => {
   const store = storeOf({ allowlist: ["me@work.example"] });
 
-  await addToList("denylist", "  Project Atlas ");
-  await addToList("denylist", "Project Atlas");
-  await addToList("denylist", "   ");
+  expect(await addToList("denylist", "  Project Atlas ")).toBe("added");
+  expect(await addToList("denylist", "Project Atlas")).toBe("listed");
+  expect(await addToList("denylist", "   ")).toBe("blank");
   expect(store.settings).toMatchObject({
     allowlist: ["me@work.example"],
     denylist: ["Project Atlas"],

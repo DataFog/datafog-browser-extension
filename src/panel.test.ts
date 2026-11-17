@@ -689,10 +689,47 @@ test("adds and removes a phrase to always flag", async () => {
   expect(
     document.querySelector<HTMLInputElement>("#denylist-value")!.value,
   ).toBe("");
+  expect($("#denylist-status").textContent).toBe("Added");
+  expect($("#denylist li").classList.contains("added")).toBe(true);
 
   $("#denylist li button").click();
   await vi.waitFor(() => expect(shownIn("denylist")).toEqual([]));
   expect(stored.settings).toMatchObject({ denylist: [] });
+});
+
+test("says a value is already listed, and highlights it where it is", async () => {
+  stored = { settings: { allowlist: ["me@work.example", "you@work.example"] } };
+  await start(() => LOCKED);
+  await vi.waitFor(() => expect(shownIn("allowlist")).toHaveLength(2));
+
+  fill("#allowlist-value", "you@work.example");
+  await submit("#allowlist-add");
+  await vi.waitFor(() =>
+    expect($("#allowlist-status").textContent).toBe("Already in the list"),
+  );
+  const rows = document.querySelectorAll("#allowlist li");
+  expect(rows[0].classList.contains("added")).toBe(false);
+  expect(rows[1].classList.contains("added")).toBe(true);
+  expect(stored.settings).toMatchObject({
+    allowlist: ["me@work.example", "you@work.example"],
+  });
+});
+
+test("clears the confirmation after a moment", async () => {
+  await start(() => LOCKED);
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    fill("#denylist-value", "Project Atlas");
+    await submit("#denylist-add");
+    await vi.waitFor(() =>
+      expect($("#denylist-status").textContent).toBe("Added"),
+    );
+    await vi.advanceTimersByTimeAsync(2000);
+    expect($("#denylist-status").textContent).toBe("");
+    expect($("#denylist li").classList.contains("added")).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("shows a list changed on the settings page", async () => {

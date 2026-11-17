@@ -672,6 +672,10 @@ async function answer(request: TabRequest): Promise<object> {
     hideOriginals();
     return {};
   }
+  if (request.type === "recheck") {
+    void scanNow(true);
+    return {};
+  }
   // Approved in the side panel for this text; anything since wins
   if (!composer || readText(composer) !== request.before) {
     return { error: "chat_box_changed" };
@@ -805,18 +809,42 @@ chrome.runtime.onMessage.addListener(
   },
 );
 
-// Turning checking off greys out the badge and closes its panel at once; turning it on
-// checks the chat box as it stands
+/** The stored settings that change what a check finds. */
+const CHECK_SETTINGS = ["entities", "allowlist", "denylist"];
+
+/**
+ * The stored settings that change what a check finds, as one string.
+ *
+ * @param stored The stored settings, if any.
+ * @returns The types and both lists, serialized.
+ */
+function checkSettings(stored: unknown): string {
+  return JSON.stringify(
+    CHECK_SETTINGS.map((key) =>
+      stored && typeof stored === "object"
+        ? Reflect.get(stored, key)
+        : undefined,
+    ),
+  );
+}
+
+// Turning checking off greys out the badge and closes its panel at once; turning it on,
+// or changing the types or lists, checks the chat box as it stands
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   // An update downloaded while the chat box is missing may fix it
   if (PENDING_UPDATE in changes && missing && !composer) void warnMissing();
-  const next = (changes.settings?.newValue ?? {}) as { off?: unknown };
-  if (!Array.isArray(next.off)) return;
-  const on = !next.off.includes(location.hostname);
-  if (on === enabled) return;
-  enabled = on;
-  void scanNow(true);
+  if (!changes.settings) return;
+  const { oldValue, newValue } = changes.settings;
+  const next = (newValue ?? {}) as { off?: unknown };
+  const on = Array.isArray(next.off)
+    ? !next.off.includes(location.hostname)
+    : enabled;
+  if (on !== enabled) {
+    enabled = on;
+    void scanNow(true);
+  } else if (enabled && checkSettings(oldValue) !== checkSettings(newValue))
+    void scanNow(true);
 });
 
 // The page tab opens or closes the side panel; send right away, within the click
