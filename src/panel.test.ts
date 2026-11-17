@@ -730,3 +730,14 @@ test("keeps clicked info open until Escape", async () => {
   expect($("#restore-info").hidden).toBe(true);
   expect(toggle.getAttribute("aria-expanded")).toBe("false");
 });
+
+test("says where each list is saved and when it applies", async () => {
+  await start(() => LOCKED);
+
+  expect($("#allowlist-info").textContent).toContain("saved unencrypted");
+  expect($("#denylist-info").textContent).toContain("saved unencrypted");
+  expect($("#not-sensitive-info").textContent).toContain(
+    "saved encrypted in your vault",
+  );
+  expect($("#not-sensitive-info").textContent).toContain("use Always allow");
+});

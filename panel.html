@@ -496,9 +496,11 @@
           unlocked, the badge and Redact skip it too.
         </p>
         <p>
-          These values are saved in your vault, on this device. Remove one to
-          have DataFog replace it again.
+          These values are saved encrypted in your vault, on this device, and
+          apply only to the type they were found as. While the vault is locked,
+          they're flagged again. Remove one to have DataFog replace it again.
         </p>
+        <p>To skip a value everywhere, even when locked, use Always allow.</p>
       </div>
       <p class="muted" id="not-sensitive-note"></p>
       <p class="muted" id="not-sensitive-count" hidden></p>
@@ -531,7 +533,12 @@
       <div class="info" id="allowlist-info" role="tooltip" hidden>
         <p>
           Values DataFog never flags, matched exactly, such as your own work
-          email.
+          email. They apply to every type, whether or not the vault is unlocked.
+        </p>
+        <p>
+          This list is saved unencrypted in Chrome's storage for DataFog, on
+          this device. For values you'd rather keep encrypted, mark them Not
+          sensitive in a review instead.
         </p>
       </div>
       <p class="muted" id="allowlist-note"></p>
@@ -575,6 +582,10 @@
           Phrases DataFog always flags, as whole words ignoring case, such as a
           project or client name. They're flagged even if allowed above or
           marked not sensitive.
+        </p>
+        <p>
+          This list is saved unencrypted in Chrome's storage for DataFog, on
+          this device.
         </p>
       </div>
       <p class="muted" id="denylist-note"></p>
