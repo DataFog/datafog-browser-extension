@@ -66,7 +66,8 @@ The hook uses the already-running Chrome window and blocks the commit unless the
 complete configured live suite passes. Each run prints and saves a receipt in
 `.playwright/live-receipt.json` and `.playwright/live-receipt.txt`, including test
 statuses, Chrome/platform details, the working-tree code fingerprint and staged
-tree hash. Tests execute working files; staged contents are recorded separately.
+tree hash. Tests execute working files, so the hook stops the commit first if
+any differ from what's staged.
 The existing PR checks remain account-free, and authenticated live tests do not
 run in CI. See [local live setup and receipts](docs/regression-testing.md#local-live-suite-and-pre-commit-hook)
 for browser connection options and proof boundaries.
