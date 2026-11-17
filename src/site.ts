@@ -62,10 +62,11 @@ const CLAUDE: Site = {
   box: '[data-cds-part="composer-card"], fieldset',
   sendButtons:
     '[data-testid="chat-input-send"], button[aria-label="Send message"]',
+  // The answer's prose, without the hidden heading, thinking summary and
+  // timestamp the whole message also holds
   answers: [
-    '[data-testid="assistant-message"]',
-    ".font-claude-response",
-    "[data-is-streaming]",
+    '[data-testid="assistant-message"] [data-cds="Prose"]',
+    '[data-testid="assistant-message"] .standard-markdown',
   ],
   // Its rounded square voice and send buttons
   badge: { size: 28, radius: "8px", centerInset: 22 },
