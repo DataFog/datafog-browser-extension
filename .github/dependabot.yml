@@ -1,0 +1,28 @@
+# Weekly pull requests for dependency and GitHub Actions updates. They're
+# exempt from the changelog check; add an entry by hand when an update
+# changes what users see.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+    groups:
+      # Core and its vault packages move together
+      datafog:
+        patterns:
+          - "@datafog/*"
+      development:
+        dependency-type: development
+    ignore:
+      # Core's adapter pins FogVault exactly, so it moves only with Core
+      - dependency-name: "@datafog/fogvault-browser"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
