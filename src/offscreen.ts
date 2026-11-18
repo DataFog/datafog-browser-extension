@@ -152,6 +152,8 @@ async function handle({
       return { source: host.source() };
     case "review-approve":
       return host.approve(settings);
+    case "review-mark-sensitive":
+      return host.markSensitive(request.index, settings);
     case "review-cancel":
       host.cancel();
       return host.status(routing);

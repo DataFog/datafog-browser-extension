@@ -5,21 +5,19 @@
  * runs from the most specific selector to the most general.
  */
 
-/** The badge's size and shape, matching the site's chat box. */
+/**
+ * The badge's size and shape, matching the site's chat box. The size is fixed,
+ * so the badge stays the same as the box grows with text or the window is
+ * resized, and scales only with the page's zoom.
+ */
 export interface BadgeShape {
   /**
-   * Width and height, in pixels: the empty chat box's height, or the height
-   * of its text area when the box also holds a toolbar.
+   * Width and height, in CSS pixels: the empty chat box's height, or the
+   * height of its text area when the box also holds a toolbar.
    */
   size: number;
   /** Corner radius, as CSS. */
   radius: string;
-  /**
-   * Whether the badge measures the empty chat box's height instead, for a
-   * box that's the same height on a new chat as in an ongoing one. Until it
-   * has seen the box empty, it uses `size`.
-   */
-  measured: boolean;
 }
 
 export interface Site {
@@ -53,7 +51,7 @@ const CHATGPT: Site = {
     ".markdown",
   ],
   // Round, like its pill-shaped chat box
-  badge: { size: 56, radius: "50%", measured: true },
+  badge: { size: 56, radius: "50%" },
 };
 
 const CLAUDE: Site = {
@@ -73,7 +71,7 @@ const CLAUDE: Site = {
     '[data-testid="assistant-message"] .standard-markdown',
   ],
   // Its card in an ongoing chat; a new chat's card is taller, with a toolbar
-  badge: { size: 44, radius: "14px", measured: false },
+  badge: { size: 44, radius: "14px" },
 };
 
 const GEMINI: Site = {
@@ -88,7 +86,7 @@ const GEMINI: Site = {
   // The answer's text, without the "Gemini said" label and thoughts
   answers: ["model-response message-content .markdown"],
   // Round, like its pill-shaped chat box
-  badge: { size: 64, radius: "50%", measured: true },
+  badge: { size: 64, radius: "50%" },
 };
 
 const GROK: Site = {
@@ -103,7 +101,7 @@ const GROK: Site = {
   // The answer's text, without the hidden "Grok" heading
   answers: ['[data-testid="assistant-message"] .response-content-markdown'],
   // Round, like its pill-shaped chat box
-  badge: { size: 58, radius: "50%", measured: true },
+  badge: { size: 58, radius: "50%" },
 };
 
 const DEEPSEEK: Site = {
@@ -117,7 +115,7 @@ const DEEPSEEK: Site = {
   answers: [".ds-markdown.ds-assistant-message-main-content"],
   // Its text area, with the card's corner radius; the card also holds a
   // toolbar
-  badge: { size: 60, radius: "24px", measured: false },
+  badge: { size: 60, radius: "24px" },
 };
 
 const SITES: Record<string, Site> = {

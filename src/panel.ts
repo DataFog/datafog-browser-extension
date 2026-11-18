@@ -69,6 +69,7 @@ const view = {
   reviewItems: document.querySelector<HTMLUListElement>("#review-items")!,
   reviewButtons: document.querySelector<HTMLDivElement>("#review-buttons")!,
   reviewError: document.querySelector<HTMLParagraphElement>("#review-error")!,
+  reviewStatus: document.querySelector<HTMLParagraphElement>("#review-status")!,
   approve: document.querySelector<HTMLButtonElement>("#approve")!,
   vaultState: document.querySelector<HTMLSpanElement>("#vault-state")!,
   create: document.querySelector<HTMLFormElement>("#create")!,
@@ -272,26 +273,30 @@ function renderReview({
   view.approve.hidden = review === null;
   if (review)
     view.reviewNote.textContent =
-      "Each value will be replaced with its marker, and saved in your vault so it can be restored later.";
+      "Replace values with their markers one at a time with Mark sensitive, or all at once. They're saved in your vault so they can be restored later.";
   else if (waiting)
     view.reviewNote.textContent = `${state === "none" ? "Create" : "Unlock"} your vault below to review the values to pseudonymize.`;
   else view.reviewNote.textContent = "";
   // Values only ever go in as text, never as markup
   view.reviewItems.replaceChildren(
-    ...(review ?? []).map(({ original, marker }, index) => {
+    ...(review ?? []).map(({ entityType, original, marker }, index) => {
       const item = document.createElement("li");
       const value = document.createElement("div");
       value.textContent = original;
       const replacement = document.createElement("div");
       replacement.className = "marker";
       replacement.textContent = `→ ${marker}`;
+      const choices = document.createElement("div");
+      choices.className = "choices";
+      const replace = linkButton("Mark sensitive");
+      replace.addEventListener("click", () => void markSensitive(index));
       const keep = linkButton("Not sensitive");
       keep.addEventListener(
         "click",
-        () =>
-          void act({ type: "review-not-sensitive", index }, view.reviewError),
+        () => void markNotSensitive(index, entityType, original),
       );
-      item.append(value, replacement, keep);
+      choices.append(replace, keep);
+      item.append(value, replacement, choices);
       return item;
     }),
   );
@@ -337,11 +342,125 @@ function renderNotSensitive({ state, notSensitive }: VaultStatus): void {
       const remove = linkButton("Remove");
       remove.addEventListener("click", () => void clearChoice(choice));
       item.append(value, type, remove);
+      if (
+        kept?.choice.entityType === choice.entityType &&
+        kept.choice.value === choice.value
+      )
+        highlightKept(item, kept);
       return item;
     }),
   );
   fitList(view.notSensitive, view.notSensitiveCount);
   if (state !== "unlocked") showError(view.notSensitiveError, null);
+}
+
+/** A value just marked not sensitive, highlighted in its list for a moment. */
+interface Kept {
+  choice: ValueChoice;
+  /** When its highlight started, from `performance.now()`. */
+  since: number;
+  /** Whether its row has been scrolled into view. */
+  shown: boolean;
+}
+
+/** The value just marked not sensitive, while it's highlighted. */
+let kept: Kept | null = null;
+
+/** The timer that ends the highlight. */
+let keptTimer = 0;
+
+/** The review confirmation's timer. */
+let reviewStatusTimer = 0;
+
+/**
+ * Highlight the row of the value just marked not sensitive. A row drawn again
+ * while it's highlighted, such as after another review choice, carries on its
+ * fade rather than starting it over, and isn't scrolled to again.
+ *
+ * @param item The value's row.
+ * @param highlight The value and when its highlight started.
+ */
+function highlightKept(item: HTMLElement, highlight: Kept): void {
+  item.classList.add("added");
+  item.style.animationDelay = `${-(performance.now() - highlight.since)}ms`;
+  if (highlight.shown) return;
+  highlight.shown = true;
+  // Shown once it's drawn, below the review
+  requestAnimationFrame(() => item.scrollIntoView({ block: "nearest" }));
+}
+
+/**
+ * Stop highlighting the value just marked not sensitive, after a moment.
+ *
+ * @param highlight The value and when its highlight started.
+ */
+function endKept(highlight: Kept): void {
+  window.clearTimeout(keptTimer);
+  keptTimer = window.setTimeout(() => {
+    if (kept !== highlight) return;
+    kept = null;
+    for (const row of view.notSensitive.querySelectorAll(".added"))
+      row.classList.remove("added");
+  }, ADDED_MS);
+}
+
+/**
+ * Say what a review button did, for a moment.
+ *
+ * @param text What happened.
+ */
+function confirmReview(text: string): void {
+  view.reviewStatus.textContent = text;
+  window.clearTimeout(reviewStatusTimer);
+  reviewStatusTimer = window.setTimeout(() => {
+    view.reviewStatus.textContent = "";
+  }, ADDED_MS);
+}
+
+/**
+ * Pseudonymize one reviewed value in the chat box.
+ *
+ * @param index The value's place in the review.
+ */
+async function markSensitive(index: number): Promise<void> {
+  if (await act({ type: "review-mark-sensitive", index }, view.reviewError))
+    confirmReview("Replaced in the chat box");
+}
+
+/**
+ * Remember a reviewed value as not sensitive, and highlight it in its list.
+ *
+ * @param index The value's place in the review.
+ * @param entityType Its type.
+ * @param value The value.
+ */
+async function markNotSensitive(
+  index: number,
+  entityType: string,
+  value: string,
+): Promise<void> {
+  const highlight: Kept = {
+    choice: { entityType, value },
+    since: performance.now(),
+    shown: false,
+  };
+  kept = highlight;
+  if (await act({ type: "review-not-sensitive", index }, view.reviewError)) {
+    confirmReview("Marked not sensitive");
+    endKept(highlight);
+  } else kept = null;
+}
+
+/**
+ * Pseudonymize every reviewed value in the chat box.
+ *
+ * @param count How many values the review had.
+ */
+async function replaceAll(count: number): Promise<void> {
+  if (await act({ type: "review-approve" }, view.reviewError))
+    confirmReview(
+      `Replaced ${count} value${count === 1 ? "" : "s"} in the chat box`,
+    );
 }
 
 /**
@@ -594,20 +713,22 @@ async function refresh(autoUnlock = false): Promise<void> {
  *
  * @param request The request.
  * @param errorTarget Where to show a failure.
+ * @returns Whether it succeeded.
  */
 async function act(
   request: PanelRequest,
   errorTarget: HTMLElement,
-): Promise<void> {
+): Promise<boolean> {
   const response = await ask<VaultStatus>(request);
   if ("error" in response) {
     // The review may have changed even though the request failed
     await refresh();
     showError(errorTarget, response.error);
-    return;
+    return false;
   }
   showError(errorTarget, null);
   render(response);
+  return true;
 }
 
 /**
@@ -687,7 +808,7 @@ document
   .querySelector("#approve")!
   .addEventListener(
     "click",
-    () => void act({ type: "review-approve" }, view.reviewError),
+    () => void replaceAll(view.reviewItems.childElementCount),
   );
 document
   .querySelector("#cancel")!

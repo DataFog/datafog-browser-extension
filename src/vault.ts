@@ -21,14 +21,16 @@ import type {
   KeyProvider,
   ProviderIdentity,
 } from "@datafog/fogvault-browser";
-import type { WorkspaceFinding } from "@datafog/wasm";
+import type { WorkspaceFinding, WorkspacePreview } from "@datafog/wasm";
 
 import type {
   CreatedVault,
+  MarkedSensitive,
   Pseudonymized,
   RestoredValue,
   RestoredWithValues,
   RedactEdit,
+  RedactResponse,
   ReviewItem,
   ReviewSource,
   ValueChoice,
@@ -65,6 +67,7 @@ export type Vault = Pick<
 /** The parts of Core's adapter the host uses. */
 export type Owner = Pick<
   FogVaultWorkspace,
+  | "prepare"
   | "prepareReview"
   | "preparePolicyChanges"
   | "policy"
@@ -100,6 +103,10 @@ export interface VaultDeps<V extends Vault> {
 interface Review extends ReviewSource {
   plan: WorkspaceVaultPlan;
   items: ReviewItem[];
+  /** Each item's place in the text, in UTF-8 bytes, as Core counts. */
+  ranges: { start: number; end: number }[];
+  /** What the scan found, to pseudonymize one value on its own. */
+  found: WorkspaceFinding[];
   /** The settings it was found under. */
   settings: Settings;
 }
@@ -117,6 +124,58 @@ interface Waiting extends ReviewSource {
  */
 function again({ tabId, text, settings }: Review): Waiting {
   return { tabId, text, settings };
+}
+
+/**
+ * The edits a saved change makes to the chat box, in order.
+ *
+ * @param preview The change's preview of the text.
+ * @returns The new text and each edit, in UTF-16 positions.
+ */
+function editsOf(preview: WorkspacePreview): RedactResponse {
+  const edits: RedactEdit[] = preview.transformations
+    .map((item) => ({
+      start: item.sourceUtf16Range.start,
+      end: item.sourceUtf16Range.end,
+      replacement: preview.text.slice(
+        item.outputUtf16Range.start,
+        item.outputUtf16Range.end,
+      ),
+    }))
+    .toSorted((a, b) => a.start - b.start);
+  return { text: preview.text, edits };
+}
+
+/**
+ * The scan's finding for one reviewed value: the one at its exact place, else
+ * one inside it, else the value itself as the review showed it.
+ *
+ * @param found What the scan found.
+ * @param range The value's place, in UTF-8 bytes.
+ * @param item The reviewed value.
+ * @returns The finding to pseudonymize.
+ */
+function findingAt(
+  found: WorkspaceFinding[],
+  range: { start: number; end: number },
+  item: ReviewItem,
+): WorkspaceFinding {
+  const exact = found.find(
+    (finding) =>
+      finding.range.start === range.start && finding.range.end === range.end,
+  );
+  const inside = found.find(
+    (finding) =>
+      finding.range.start >= range.start && finding.range.end <= range.end,
+  );
+  return (
+    exact ??
+    inside ?? {
+      entityType: item.entityType,
+      matchedText: item.original,
+      range: { unit: "utf8_bytes", ...range },
+    }
+  );
 }
 
 /**
@@ -668,21 +727,53 @@ export class VaultHost<V extends Vault = Vault> {
     }
     this.review = null;
     const saved = await this.save(owner, review.plan);
-    const preview = saved.previews[0];
-    const edits: RedactEdit[] = preview.transformations
-      .map((item) => ({
-        start: item.sourceUtf16Range.start,
-        end: item.sourceUtf16Range.end,
-        replacement: preview.text.slice(
-          item.outputUtf16Range.start,
-          item.outputUtf16Range.end,
-        ),
-      }))
-      .toSorted((a, b) => a.start - b.start);
     return {
       tabId: review.tabId,
       text: review.text,
-      response: { text: preview.text, edits },
+      response: editsOf(saved.previews[0]),
+    };
+  }
+
+  /**
+   * Pseudonymize one value from the review on its own, and save it to the
+   * vault. The review is dropped; the caller prepares one of the values left
+   * once the chat box has changed.
+   *
+   * @param index The value's place in the review.
+   * @param settings The settings now; a review found under others is dropped.
+   * @returns The tab, its original text, the edit that pseudonymizes the value,
+   *   and how many values the review had left.
+   */
+  async markSensitive(
+    index: number,
+    settings: Settings,
+  ): Promise<MarkedSensitive> {
+    const review = this.review;
+    const owner = this.owner;
+    const item = review?.items[index];
+    const range = review?.ranges[index];
+    if (!review || !owner || !item || !range) throw failure("no_review");
+    if (!sameChecks(review.settings, settings)) {
+      this.drop();
+      this.error = "settings_changed";
+      this.deps.notify();
+      throw failure("settings_changed");
+    }
+    // The adapter holds one prepared change at a time. A new value's marker
+    // depends on its place among the values saved, so saved on its own it
+    // may differ from the one the review showed
+    this.drop();
+    const plan = owner.prepare(
+      review.text,
+      [findingAt(review.found, range, item)],
+      this.deps.randomId(),
+    );
+    const saved = await this.save(owner, plan);
+    return {
+      tabId: review.tabId,
+      text: review.text,
+      response: editsOf(saved.previews[0]),
+      remaining: review.items.length - 1,
     };
   }
 
@@ -731,6 +822,11 @@ export class VaultHost<V extends Vault = Vault> {
           text: waiting.text,
           settings: waiting.settings,
           plan,
+          found,
+          ranges: preview.transformations.map(({ sourceByteRange }) => ({
+            start: sourceByteRange.start,
+            end: sourceByteRange.end,
+          })),
           items: preview.transformations.map((item) => ({
             entityType: labelOf(
               preview.text.slice(

@@ -6,7 +6,7 @@ DataFog checks what you type into ChatGPT, Claude, Gemini, Grok and DeepSeek for
 
 - **Checks as you type**, and right away when you paste. The badge shows how many values were found, by type, never the values themselves.
 - **Redact** replaces each value with its type, such as `[EMAIL]`, with **Undo** and **Redo**.
-- **Pseudonymize** replaces each value with a marker, such as `[[EMAIL_7KQ4ZM]]`, after you review them in the side panel. The originals are kept in an encrypted vault on your device.
+- **Pseudonymize** replaces each value with a marker, such as `[[EMAIL_7KQ4ZM]]`, after you review them in the side panel, one at a time or all at once. The originals are kept in an encrypted vault on your device.
 - **Restore** shows the original values in place of the markers in the chat's latest answer.
 - **Always allow** values DataFog should never flag, such as your own work email, and **Always flag** phrases it should always find, such as a project or client name. Mark a value **Not sensitive** in a review to skip it while the vault is unlocked.
 - **Choose what to check for** and which sites to check in the settings.
