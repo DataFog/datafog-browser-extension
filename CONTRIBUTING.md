@@ -103,6 +103,40 @@ with the `no-changelog` label and a line in the PR description:
 Changelog exemption: Adds tests without changing extension behavior.
 ```
 
+Dependabot's dependency updates are exempt automatically. When one changes
+what users see, such as a Core update with better detection, add an entry by
+hand.
+
+## Releasing
+
+1. In a PR, set the new version in `manifest.json` and `package.json`
+   (`npm version <version> --no-git-tag-version` updates `package.json` and
+   its lock file). Rename `## [Unreleased]` in `CHANGELOG.md` to
+   `## [<version>] - YYYY-MM-DD`, and add an empty `## [Unreleased]` above it.
+   Label the PR `no-changelog`, with `Changelog exemption: Release <version>.`
+2. Check it locally:
+
+   ```sh
+   node scripts/check-release.mjs --tag v<version>
+   npm run package
+   ```
+
+   `npm run package` writes `release/datafog-<version>.zip`, and needs the
+   `zip` command, as on macOS and Linux.
+
+3. After the PR merges, tag the merge commit on `main` and push the tag:
+
+   ```sh
+   git switch main && git pull --ff-only
+   git tag v<version>
+   git push origin v<version>
+   ```
+
+4. The Release workflow checks the tag against the versions and changelog,
+   runs the checks, and publishes a GitHub release with the zip and that
+   version's changelog section. Upload the zip from the release to the Chrome
+   Web Store developer dashboard.
+
 ## Reporting problems
 
 Email bugs and security issues to help@datafog.ai. See

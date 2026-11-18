@@ -15,6 +15,9 @@ import { parseArgs } from "node:util";
 
 export const LABEL = "no-changelog";
 
+/** The account Dependabot opens pull requests from. */
+export const DEPENDABOT = "dependabot[bot]";
+
 /**
  * Whether a CHANGELOG.md diff adds any real text.
  *
@@ -34,11 +37,16 @@ export function hasEntry(patch) {
 /**
  * The reason a PR is exempt from the changelog.
  *
+ * Dependabot's dependency updates are exempt without a label, since their
+ * descriptions can't be edited ahead of the check.
+ *
  * @param pullRequest The `pull_request` object from the GitHub event.
  * @returns The reason, or null if the PR isn't labeled for an exemption.
  * @throws If the PR is labeled but its description gives no reason.
  */
 export function exemption(pullRequest) {
+  if (pullRequest.user?.login === DEPENDABOT)
+    return "Dependency update from Dependabot.";
   const labeled = (pullRequest.labels ?? []).some(
     (label) => label.name === LABEL,
   );

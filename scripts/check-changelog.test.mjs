@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "vitest";
 import { fileURLToPath } from "node:url";
 
-import { exemption, hasEntry, LABEL } from "./check-changelog.mjs";
+import { DEPENDABOT, exemption, hasEntry, LABEL } from "./check-changelog.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./check-changelog.mjs", import.meta.url));
 
@@ -70,6 +70,14 @@ describe("exemption", () => {
       /requires/,
     );
     assert.throws(() => exemption({ ...labeled, body: null }), /requires/);
+  });
+
+  test("exempts Dependabot's updates without a label", () => {
+    assert.equal(
+      exemption({ user: { login: DEPENDABOT }, body: "Bumps esbuild." }),
+      "Dependency update from Dependabot.",
+    );
+    assert.equal(exemption({ user: { login: "someone" }, body: "" }), null);
   });
 
   test("requires the line to start the reason", () => {
