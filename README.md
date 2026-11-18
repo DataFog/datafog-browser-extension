@@ -52,6 +52,10 @@ Removing DataFog deletes its vault, settings and lists from Chrome. Values behin
 - The Always allow and Always flag lists are saved unencrypted in Chrome's storage for DataFog, on your device.
 - Chat sites change their pages without notice, which can stop DataFog from finding the chat box until it's updated.
 
+## Privacy
+
+DataFog checks text on your device and sends nothing anywhere. See the [privacy policy](https://datafog.ai/privacy-policy).
+
 ## Security
 
 Report vulnerabilities to help@datafog.ai. See [SECURITY.md](SECURITY.md) for details.
