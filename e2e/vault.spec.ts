@@ -79,6 +79,47 @@ test("Pseudonymize reviews originals before replacing and Undo restores text", a
   await expect(chat.locator("#prompt-textarea")).toHaveText(`Contact ${EMAIL}`);
 });
 
+test("Mark sensitive replaces one value, rechecks, and reviews the rest", async ({
+  extension,
+  chat,
+  badge,
+}) => {
+  const panel = await extension.panel();
+  await createVault(panel);
+  const composer = chat.locator("#prompt-textarea");
+  await composer.fill(`Contact ${EMAIL} or al@example.org`);
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("2");
+  await badge.click(".dot");
+  await badge.click(".pseudonymize");
+  await expect(panel.locator("#review-items li")).toHaveCount(2);
+
+  await panel
+    .locator("#review-items li")
+    .nth(1)
+    .getByRole("button", { name: "Mark sensitive" })
+    .click();
+  await expect(panel.locator("#review-status")).toHaveText(
+    "Replaced in the chat box",
+  );
+  await expect(composer).toHaveText(
+    /^Contact jane@example\.com or \[\[EMAIL_[A-Z0-9]+\]\]$/,
+  );
+  await expect(panel.locator("#review-items li")).toHaveCount(1);
+  await expect(panel.locator("#review-items")).toContainText(EMAIL);
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
+
+  await panel.locator("#approve").click();
+  await expect(panel.locator("#review-status")).toHaveText(
+    "Replaced 1 value in the chat box",
+  );
+  await expect(composer).toHaveText(
+    /^Contact \[\[EMAIL_[A-Z0-9]+\]\] or \[\[EMAIL_[A-Z0-9]+\]\]$/,
+  );
+  await expect
+    .poll(async () => (await badge.state(".dot")).title)
+    .toContain("no sensitive data found");
+});
+
 test("Not sensitive is skipped while unlocked and flagged again after locking", async ({
   extension,
   chat,
@@ -93,7 +134,7 @@ test("Not sensitive is skipped while unlocked and flagged again after locking", 
   await expect(panel.locator("#review-items li")).toHaveCount(1);
   await panel
     .locator("#review-items")
-    .getByRole("button", { name: "Not sensitive" })
+    .getByRole("button", { name: "Not sensitive", exact: true })
     .click();
   await expect(panel.locator("#not-sensitive")).toContainText(EMAIL);
   await expect(panel.locator("#review-items li")).toHaveCount(0);
@@ -155,7 +196,7 @@ test("Delete requires DELETE; RESET and a typo preserve the vault", async ({
   await panel
     .locator("#review-items li")
     .filter({ hasText: allowed })
-    .getByRole("button", { name: "Not sensitive" })
+    .getByRole("button", { name: "Not sensitive", exact: true })
     .click();
   await expect(panel.locator("#review-items li")).toHaveCount(1);
   const marker = (await panel
