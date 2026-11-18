@@ -79,6 +79,27 @@ test("Pseudonymize reviews originals before replacing and Undo restores text", a
   await expect(chat.locator("#prompt-textarea")).toHaveText(`Contact ${EMAIL}`);
 });
 
+test("an unlocked vault still pseudonymizes after Chrome stops the idle service worker", async ({
+  extension,
+  chat,
+  badge,
+}) => {
+  const panel = await extension.panel();
+  await createVault(panel);
+  await extension.stopWorker();
+
+  await chat.locator("#prompt-textarea").fill(`Contact ${EMAIL}`);
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
+  await badge.click(".dot");
+  await badge.click(".pseudonymize");
+  await expect(panel.locator("#review-items")).toContainText(EMAIL);
+  await panel.locator("#approve").click();
+  await expect(chat.locator("#prompt-textarea")).toHaveText(
+    /Contact \[\[EMAIL_[A-Z0-9]+\]\]/,
+  );
+  await expect(panel.locator("#lock")).toBeVisible();
+});
+
 test("Mark sensitive replaces one value, rechecks, and reviews the rest", async ({
   extension,
   chat,
