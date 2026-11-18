@@ -103,7 +103,11 @@ export async function openBadge(badge: ClosedShadow): Promise<void> {
 }
 
 export async function saveOptions(options: Page): Promise<void> {
-  await options.locator("#save").click();
+  // Settings save as they change; leaving a list saves it right away
+  await options.evaluate(() => {
+    if (document.activeElement instanceof HTMLElement)
+      document.activeElement.blur();
+  });
   await expect(options.locator("#status")).toHaveText("Saved");
   await options.close();
 }

@@ -7,6 +7,7 @@ import {
   LABELS,
   loadSettings,
   saveSettings,
+  type Settings,
   TYPE_GROUPS,
   type TypeGroup,
 } from "./settings";
@@ -107,26 +108,127 @@ function linesOf(list: HTMLTextAreaElement): string[] {
   return [...new Set(items)];
 }
 
-/** Save the form. */
-async function save(): Promise<void> {
-  const entities = [
-    ...document.querySelectorAll<HTMLInputElement>("#types input:checked"),
-  ].map((box) => box.value);
-  const off = [
-    ...sites.querySelectorAll<HTMLInputElement>("input:not(:checked)"),
-  ].map((box) => box.value);
-
-  await saveSettings({
-    enabled: true,
-    off,
-    entities,
-    allowlist: linesOf(allowlist),
-    denylist: linesOf(denylist),
-    blockSends: blockSends.checked,
-  });
-  status.textContent = "Saved";
-  window.setTimeout(() => (status.textContent = ""), 1500);
+/**
+ * The values of a group's checkboxes, checked or not.
+ *
+ * @param selector The checkboxes.
+ * @returns Their values.
+ */
+function valuesOf(selector: string): string[] {
+  return [...document.querySelectorAll<HTMLInputElement>(selector)].map(
+    (box) => box.value,
+  );
 }
 
-document.querySelector("#save")!.addEventListener("click", () => void save());
+/** How long after typing stops a list is saved, in ms. */
+const LIST_SAVE_MS = 400;
+
+/** How long "Saved" shows, in ms. */
+const SAVED_MS = 1500;
+
+let statusTimer = 0;
+
+/**
+ * Say whether a change was saved, for a moment.
+ *
+ * @param text What happened.
+ */
+function showStatus(text: string): void {
+  status.textContent = text;
+  status.classList.toggle("failed", text !== "Saved");
+  window.clearTimeout(statusTimer);
+  statusTimer = window.setTimeout(() => (status.textContent = ""), SAVED_MS);
+}
+
+/** The saves under way, run one at a time so none undoes another. */
+let saving = Promise.resolve();
+
+/**
+ * Save one change, leaving the rest as saved, since the side panel may have
+ * changed a list since this page loaded.
+ *
+ * @param change The settings that changed.
+ * @returns Once it's saved.
+ */
+function save(change: Partial<Settings>): Promise<void> {
+  saving = saving
+    .then(async () => {
+      await saveSettings({ ...(await loadSettings()), ...change });
+      showStatus("Saved");
+    })
+    // A failed save leaves the rest to run
+    .catch(() => showStatus("Couldn't save. Try again."));
+  return saving;
+}
+
+/**
+ * The setting a form control holds, as it now stands.
+ *
+ * @param control The control that changed.
+ * @returns The changed setting, or null for anything else.
+ */
+function changeFrom(control: EventTarget | null): Partial<Settings> | null {
+  if (control === blockSends) return { blockSends: blockSends.checked };
+  if (control === allowlist) return { allowlist: linesOf(allowlist) };
+  if (control === denylist) return { denylist: linesOf(denylist) };
+  if (!(control instanceof HTMLInputElement)) return null;
+  if (sites.contains(control))
+    return { off: valuesOf("#sites input:not(:checked)") };
+  return { entities: valuesOf("#types input:checked") };
+}
+
+/** Lists typed in but not yet saved, each with its timer. */
+const pending = new Map<HTMLTextAreaElement, number>();
+
+/**
+ * Save a list now, if it's waiting to be saved.
+ *
+ * @param list The list's text box.
+ */
+function flush(list: HTMLTextAreaElement): void {
+  if (!pending.has(list)) return;
+  window.clearTimeout(pending.get(list));
+  pending.delete(list);
+  void save(changeFrom(list)!);
+}
+
+// Checkboxes save right away, lists once typing stops or the box loses focus
+document.addEventListener("change", (event) => {
+  if (event.target instanceof HTMLTextAreaElement) flush(event.target);
+  else {
+    const change = changeFrom(event.target);
+    if (change) void save(change);
+  }
+});
+for (const list of [allowlist, denylist]) {
+  list.addEventListener("input", () => {
+    window.clearTimeout(pending.get(list));
+    pending.set(
+      list,
+      window.setTimeout(() => flush(list), LIST_SAVE_MS),
+    );
+  });
+}
+// Don't lose a list typed just before the page closes
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden")
+    for (const list of pending.keys()) flush(list);
+});
+
+/** Show lists changed in the side panel, unless the user is editing them. */
+async function refreshLists(): Promise<void> {
+  const settings = await loadSettings();
+  for (const [list, items] of [
+    [allowlist, settings.allowlist],
+    [denylist, settings.denylist],
+  ] as const) {
+    if (list === document.activeElement || pending.has(list)) continue;
+    list.value = items.join("\n");
+  }
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && "settings" in changes) void refreshLists();
+});
+
 void render();
