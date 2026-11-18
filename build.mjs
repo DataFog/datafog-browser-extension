@@ -30,7 +30,9 @@ function prepare(out, files) {
   for (const file of files) cpSync(file, `${out}/${file}`, { recursive: true });
 }
 
+// The extension's license ships with it; it also covers Core's own code
 prepare("dist", [
+  "LICENSE",
   "icons",
   "manifest.json",
   "offscreen.html",

@@ -123,9 +123,15 @@ test("groups the types by how accurately they're found, each with a tooltip", as
   expect(document.querySelector("#save")).toBeNull();
 });
 
-test("shows the version and where to get help", async () => {
+test("shows the version, the privacy policy and where to get help", async () => {
   await start();
   expect($("#version").textContent).toBe("version 1.2.3");
+  const privacy = document.querySelector<HTMLAnchorElement>(
+    'a[href="https://datafog.ai/privacy-policy"]',
+  )!;
+  expect(privacy.textContent).toBe("privacy policy");
+  expect(privacy.target).toBe("_blank");
+  expect(privacy.rel).toBe("noopener noreferrer");
   expect(document.querySelector('a[href="mailto:help@datafog.ai"]')).not.toBe(
     null,
   );

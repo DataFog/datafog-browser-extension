@@ -11,6 +11,8 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 
 const { version } = JSON.parse(readFileSync("dist/manifest.json", "utf8"));
+// The license must ship with every copy of the extension
+if (!existsSync("dist/LICENSE")) throw new Error("dist/LICENSE is missing.");
 const out = path.resolve("release", `datafog-${version}.zip`);
 
 mkdirSync("release", { recursive: true });
