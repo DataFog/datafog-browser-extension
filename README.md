@@ -9,7 +9,7 @@ datafog checks what you type into ChatGPT, Claude, Gemini, Grok and DeepSeek for
 - **More → Redact** replaces values with labels such as `[EMAIL]` without saving reversible mappings. Local Undo remains available until you edit the draft.
 - **Keep as is** leaves only this draft revision unchanged. **Always allow** saves a lasting exception, and **Always flag** takes precedence.
 - **Show originals / Hide originals** toggles known markers for one assistant answer. Original values appear in extension-owned local display; the provider's underlying text remains markers.
-- **FogVault** stores original mappings, rules and preferences encrypted on this device with automatic local key access. An existing password-protected vault may require its old password once to migrate.
+- **The vault** uses FogVault to store original mappings, rules and checking preferences encrypted on this device with automatic local-key access. There is no password entry or recovery password; losing the local key makes saved originals unrecoverable.
 - **Choose what to check for**, grouped by how accurately each type is found, and which sites to check in the settings. Changes save as you make them.
 - **Hold sends** (optional, off by default): pauses a message with sensitive data once, with **Send anyway**.
 - **Warns you** when a file is attached, since files aren't checked, and when a chat box can't be found, so the page isn't protected.
@@ -35,7 +35,7 @@ npm run build
 2. Choose **Load unpacked** and select the `dist/` folder.
 3. Open a supported chat site and type, for example: `my email is jane@example.com and card 4111 1111 1111 1111`.
 
-Choose **More → Open sidebar** in the draft popup, or click the extension toolbar icon, to manage saved originals, rules and preferences.
+Choose **More → Open sidebar** in the draft popup, or click the extension toolbar icon, to manage saved originals and rules. The sidebar gear opens settings for checking preferences, appearance and vault deletion.
 
 ## Uninstall
 
