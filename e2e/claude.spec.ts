@@ -10,11 +10,12 @@ test("Claude: checks the chat box, matches its size and redacts", async ({
   await composer.fill(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog: 2 items found. Click to review.");
+    .toBe("2 found · click to review");
   await expectBadgeFitsBox(badge, box, 44, "14px");
   expect((await badge.state(".dismiss")).title).toContain("Claude's own");
 
   await badge.click(".dot");
+  await badge.click(".more-toggle");
   await badge.click(".redact");
 
   await expect(composer).toHaveText(
@@ -72,7 +73,7 @@ test("settings: turning Claude off leaves ChatGPT checked", async ({
         .state(".dot")
         .then((state) => state.title),
     )
-    .toContain("disabled");
+    .toContain("is off for this site");
 
   const chatgpt = await extension.newChat();
   await chatgpt.locator("#prompt-textarea").fill(SAMPLE);
@@ -83,5 +84,5 @@ test("settings: turning Claude off leaves ChatGPT checked", async ({
         .state(".dot")
         .then((state) => state.title),
     )
-    .toBe("DataFog: 2 items found. Click to review.");
+    .toBe("2 found · click to review");
 });

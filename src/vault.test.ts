@@ -747,3 +747,137 @@ test("forgets the device, and stays locked when its key fails", async () => {
     rememberedUntil: null,
   });
 });
+
+test("automatic access preserves a failing existing key and never creates a replacement", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+  await host.lock(routing);
+  const keys = devices.records.map((record) => record.key);
+  vi.mocked(vault.unlockDevice).mockRejectedValueOnce(
+    Object.assign(new Error(), { code: "ProviderFailure" }),
+  );
+  await expect(host.automaticAccess(routing)).rejects.toMatchObject({
+    code: "vault_access_failed",
+  });
+  expect(devices.records.map((record) => record.key)).toEqual(keys);
+  expect(vault.create).toHaveBeenCalledTimes(1);
+  expect(host.status(routing).state).toBe("locked");
+  await host.automaticAccess(routing);
+  expect(host.status(routing).state).toBe("unlocked");
+});
+
+test("automatic access reconciles an uncertain replacement before another edit", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+  await host.automaticAccess(routing);
+  const requestId = new Uint8Array([8]);
+  owner.failNextSave = Object.assign(new Error(), {
+    code: "OutcomeUnknown",
+    requestId,
+  });
+  await expect(host.replace(TEXT, 7, DEFAULT_SETTINGS)).rejects.toMatchObject({
+    code: "OutcomeUnknown",
+  });
+  await host.automaticAccess(routing);
+  expect(vault.reconcileLatest).toHaveBeenCalledWith(requestId);
+  const result = await host.replace(TEXT, 7, DEFAULT_SETTINGS);
+  expect(result.saved).toBe(true);
+  expect(host.restore(result.text).text).toBe(TEXT);
+});
+
+test("failed database deletion retains keys and supports cleanup retry", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+  const keys = devices.records.map((record) => record.key);
+  deleteStore.mockRejectedValueOnce(
+    Object.assign(new Error(), { code: "delete_failed" }),
+  );
+  await expect(host.deleteVault(routing)).rejects.toMatchObject({
+    code: "delete_failed",
+  });
+  expect(devices.records.map((record) => record.key)).toEqual(keys);
+  expect((await host.deleteVault(routing)).state).toBe("none");
+  expect(devices.records).toEqual([]);
+});
+
+test("automatic access does not idle-lock or require a second approval for replacement", async () => {
+  vi.useFakeTimers();
+  const { routing } = await host.create("correct horse", null, true);
+  await host.automaticAccess(routing);
+  await vi.advanceTimersByTimeAsync(IDLE_LOCK_MS * 2);
+  expect(host.status(routing).state).toBe("unlocked");
+  const result = await host.replace(TEXT, 7, DEFAULT_SETTINGS);
+  expect(result.saved).toBe(true);
+  expect(host.restore(result.text).text).toBe(TEXT);
+});
+
+test("partial key cleanup retains its deletion stage and retries without deleting twice", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+  vi.spyOn(devices, "clear").mockRejectedValueOnce(
+    Object.assign(new Error(), { code: "device_storage" }),
+  );
+  await expect(host.deleteVault(routing)).rejects.toMatchObject({
+    code: "device_storage",
+  });
+  expect(host.status(routing).deletion).toBe("partial-failure");
+  expect((await host.deleteVault(routing)).deletion).toBe("complete");
+  expect(deleteStore).toHaveBeenCalledTimes(1);
+  expect(devices.records).toEqual([]);
+});
+
+test("Replace commits exactly the reserved preview markers without reallocating", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+  await host.automaticAccess(routing);
+  const preview = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy-a");
+  expect(preview.findings).toHaveLength(2);
+  const saved = await host.replace(
+    TEXT,
+    7,
+    DEFAULT_SETTINGS,
+    preview.previewId,
+    "policy-a",
+  );
+  for (const item of preview.findings)
+    expect(saved.text).toContain(item.marker);
+  expect(host.restore(saved.text).text).toBe(TEXT);
+});
+
+test("another tab invalidates a reservation instead of silently applying different markers", async () => {
+  await host.create("correct horse", null, true);
+  const first = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy-a");
+  await host.preview("other@example.com", DEFAULT_SETTINGS, 8, 1, "policy-a");
+  await expect(
+    host.replace(TEXT, 7, DEFAULT_SETTINGS, first.previewId, "policy-a"),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+  expect(host.restore(first.findings[0].marker).restored).toBe(0);
+  const refreshed = await host.preview(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    2,
+    "policy-a",
+  );
+  const saved = await host.replace(
+    TEXT,
+    7,
+    DEFAULT_SETTINGS,
+    refreshed.previewId,
+    "policy-a",
+  );
+  expect(saved.text).toContain(refreshed.findings[0].marker);
+});
+
+test("changed policy or draft cannot consume an old preview reservation", async () => {
+  await host.create("correct horse", null, true);
+  const preview = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy-a");
+  await expect(
+    host.replace(TEXT, 7, DEFAULT_SETTINGS, preview.previewId, "policy-b"),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+  await expect(
+    host.replace(
+      TEXT + " edited",
+      7,
+      DEFAULT_SETTINGS,
+      preview.previewId,
+      "policy-a",
+    ),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+  expect(host.restore(preview.findings[0].marker).restored).toBe(0);
+});

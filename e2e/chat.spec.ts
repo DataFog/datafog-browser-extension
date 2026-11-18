@@ -15,9 +15,7 @@ interface BadgeControls {
 async function found(badge: BadgeControls, count: number): Promise<void> {
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe(
-      `DataFog: ${count} item${count === 1 ? "" : "s"} found. Click to review.`,
-    );
+    .toBe(`${count} found · click to review`);
 }
 
 async function openBadge(badge: BadgeControls): Promise<void> {
@@ -46,8 +44,8 @@ test("the extension scans the editor and shows type counts", async ({
   await expect
     .poll(() => badge.state("ul").then((state) => state.text))
     .toContain("Card number: 1");
-  // The warning describes types and counts without exposing prompt values.
-  expect((await badge.state(".panel")).text).not.toContain("jane@example.com");
+  // The draft popup previews the finding before replacement.
+  expect((await badge.state(".panel")).text).toContain("jane@example.com");
 });
 
 test("checking and Redact still work after Chrome stops the idle service worker", async ({
@@ -67,6 +65,7 @@ test("checking and Redact still work after Chrome stops the idle service worker"
     await extension.worker.evaluate(() => "stoppedByTest" in globalThis),
   ).toBe(false);
   await openBadge(badge);
+  await badge.click(".more-toggle");
   await badge.click(".redact");
   await expect(composer).toHaveText(
     "my email is [EMAIL] and card [CREDIT_CARD] typed later",
@@ -85,10 +84,11 @@ test("the badge keeps one round size in every state, as the box grows and as the
   await found(badge, 2);
   await expectBadgeFitsBox(badge, box, 56, "50%");
   await openBadge(badge);
+  await badge.click(".more-toggle");
   await badge.click(".redact");
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog: no sensitive data found");
+    .toBe("Checked · nothing found");
   await expectBadgeFitsBox(badge, box, 56, "50%");
 
   // A long prompt makes the box taller; the badge keeps its size, level with
@@ -130,7 +130,7 @@ for (const { entity, label, text } of modelDetectors) {
     await chat.locator("#prompt-textarea").fill(text);
     await expect
       .poll(() => badge.state(".dot").then((state) => state.title))
-      .toContain("found. Click to review.");
+      .toContain("found · click to review");
     await openBadge(badge);
     await expect
       .poll(() => badge.state("ul").then((state) => state.text))
@@ -157,7 +157,7 @@ for (const { entity, label, text } of optInDetectors) {
     await chat.locator("#prompt-textarea").fill(text);
     await expect
       .poll(() => badge.state(".dot").then((state) => state.title))
-      .toBe("DataFog: no sensitive data found");
+      .toBe("Checked · nothing found");
 
     const options = await extension.options();
     await expect(options.locator(`input[value="${entity}"]`)).not.toBeChecked();
@@ -185,11 +185,12 @@ test("Redact, Undo and Redo preserve the prompt and edits invalidate history", a
   await composer.fill(SAMPLE);
   await found(badge, 2);
   await openBadge(badge);
+  await badge.click(".more-toggle");
   await badge.click(".redact");
   await expect(composer).toHaveText(redacted);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog: no sensitive data found");
+    .toBe("Checked · nothing found");
 
   await openBadge(badge);
   await expect
@@ -207,7 +208,7 @@ test("Redact, Undo and Redo preserve the prompt and edits invalidate history", a
   await composer.fill(`${redacted} edited`);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog: no sensitive data found");
+    .toBe("Checked · nothing found");
   await openBadge(badge);
   await expect
     .poll(() => badge.state(".undo").then((state) => state.disabled))
@@ -233,13 +234,14 @@ test("Redact replaces a link chip, so its target is redacted too", async ({
     .poll(() => badge.state(".dot").then((state) => state.title))
     .toContain("found");
   await openBadge(badge);
+  await badge.click(".more-toggle");
   await badge.click(".redact");
 
   await expect(composer).toContainText("[EMAIL]");
   expect(await composer.innerHTML()).not.toContain("jane@example.com");
 });
 
-test("Dismiss leaves text intact and an edit restores the warning", async ({
+test("Keep as is leaves text intact and an edit restores the warning", async ({
   chat,
   badge,
 }) => {
@@ -251,7 +253,7 @@ test("Dismiss leaves text intact and an edit restores the warning", async ({
   await expect(composer).toHaveText(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog");
+    .toBe("datafog");
   await expect(chat.locator("#sent-count")).toHaveText("0");
 
   await composer.fill(`${SAMPLE} and jane@example.com`);
@@ -400,7 +402,7 @@ for (const attachment of ["file picker", "drop", "image paste"] as const) {
     await chat.locator("#prompt-textarea").fill("A message with an attachment");
     await expect
       .poll(() => badge.state(".dot").then((state) => state.title))
-      .toBe("DataFog: no sensitive data found");
+      .toBe("Checked · nothing found");
 
     if (attachment === "file picker") {
       await chat.locator('input[type="file"]').setInputFiles({
@@ -458,6 +460,7 @@ test("settings: disabling a detector persists and leaves that type untouched", a
   await openBadge(badge);
   expect((await badge.state("ul")).text).toContain("Card number: 1");
   expect((await badge.state("ul")).text).not.toContain("Email address");
+  await badge.click(".more-toggle");
   await badge.click(".redact");
   await expect(chat.locator("#prompt-textarea")).toHaveText(
     "my email is jane@example.com and card [CREDIT_CARD]",
@@ -471,20 +474,27 @@ test("settings: exact allowlist survives reopening and Redact preserves allowed 
   badge,
   extension,
 }) => {
-  const options = await extension.options();
-  await options.locator("#allowlist").fill("jane@example.com");
-  await saveOptions(options);
+  const panel = await extension.panel();
+  await panel.locator('[data-view="rules"]').click();
+  await panel.locator("#allowlist-value").fill("jane@example.com");
+  await panel.locator("#allowlist-add button").click();
+  await expect(panel.locator("#allowlist li")).toContainText(
+    "jane@example.com",
+  );
   await chat.locator("#prompt-textarea").fill(SAMPLE);
   await found(badge, 1);
   await openBadge(badge);
   expect((await badge.state("ul")).text).toContain("Card number: 1");
+  await badge.click(".more-toggle");
   await badge.click(".redact");
   await expect(chat.locator("#prompt-textarea")).toHaveText(
     "my email is jane@example.com and card [CREDIT_CARD]",
   );
-  const reopened = await extension.options();
-  await expect(reopened.locator("#allowlist")).toHaveValue("jane@example.com");
-  await reopened.close();
+  await panel.reload();
+  await panel.locator('[data-view="rules"]').click();
+  await expect(panel.locator("#allowlist li")).toContainText(
+    "jane@example.com",
+  );
   await chat.locator("#prompt-textarea").fill("other@example.com");
   await found(badge, 1);
 });
@@ -502,7 +512,7 @@ test("settings: off greys out the badge and disabling checks also disables send 
   await chat.locator("#prompt-textarea").fill(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toContain("disabled");
+    .toContain("is off for this site");
   await chat.locator('[data-testid="send-button"]').click();
   await expect(chat.locator("#sent-count")).toHaveText("1");
 
@@ -523,11 +533,12 @@ test("non-English text and emoji survive detection, redaction and Undo", async (
   await composer.fill(text);
   await found(badge, 1);
   await openBadge(badge);
+  await badge.click(".more-toggle");
   await badge.click(".redact");
   await expect(composer).toHaveText("こんにちは 👩🏽‍💻 café — correo [EMAIL] 🙂");
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog: no sensitive data found");
+    .toBe("Checked · nothing found");
   await openBadge(badge);
   await badge.click(".undo");
   await expect(composer).toHaveText(text);

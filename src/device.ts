@@ -1,12 +1,8 @@
 /**
- * Remember device: a WebCrypto key that can't be exported, kept in this
- * extension's IndexedDB, unlocks the vault for 30 days without the password.
- *
- * FogVault holds the vault's seed wrapped under this key. Forgetting the
- * device deletes the key, which leaves its slot in the vault unusable, so
- * the vault's keys never change. FogVault needs every slot's
- * identity registered to open the vault, so forgotten identities are kept,
- * with no key.
+ * Non-exportable profile-local WebCrypto keys, compatible with FogVault device
+ * identities. Automatic keys have no expiry. Legacy keys are retained and
+ * promoted only after a verified unwrap. Settings and marker indexes share
+ * this key in authenticated ciphertext, committed before policy activation.
  */
 
 import type { KeyProvider, ProviderIdentity } from "@datafog/fogvault-browser";
@@ -29,6 +25,8 @@ export interface DeviceRecord {
   key: CryptoKey | null;
   /** When it was remembered, in epoch milliseconds. */
   rememberedAt: number;
+  /** Automatic access has no expiry. Legacy keys are promoted after verification. */
+  automatic?: boolean;
 }
 
 /** What the host needs from remembered devices. */
@@ -52,6 +50,8 @@ export interface Devices {
   setPaused(paused: boolean): Promise<void>;
   /** Delete everything, for a deleted vault. */
   clear(): Promise<void>;
+  promote?(): Promise<void>;
+  existing?(): DeviceRecord | null;
 }
 
 /**
@@ -201,6 +201,9 @@ export class DeviceKeys implements Devices {
         transaction.addEventListener("error", () =>
           reject(failure("device_storage")),
         );
+        transaction.addEventListener("abort", () =>
+          reject(failure("device_storage")),
+        );
       });
       const result = await work({
         devices: transaction.objectStore(STORE),
@@ -220,6 +223,26 @@ export class DeviceKeys implements Devices {
     });
   }
 
+  existing(): DeviceRecord | null {
+    return this.records.find((record) => record.key) ?? null;
+  }
+
+  async readRouting(): Promise<import("./messages").VaultRouting | null> {
+    return (
+      (await this.run(async ({ settings }) =>
+        settle(settings.get("routing")),
+      )) ?? null
+    );
+  }
+
+  async writeRouting(
+    routing: import("./messages").VaultRouting,
+  ): Promise<void> {
+    await this.run(async ({ settings }) =>
+      settle(settings.put(routing, "routing")),
+    );
+  }
+
   providers(): KeyProvider[] {
     return this.records.map(providerFor);
   }
@@ -230,7 +253,11 @@ export class DeviceKeys implements Devices {
 
   rememberedUntil(now: number): number | null {
     const record = this.current(now);
-    return record ? record.rememberedAt + REMEMBER_MS : null;
+    return record
+      ? record.automatic
+        ? Number.MAX_SAFE_INTEGER
+        : record.rememberedAt + REMEMBER_MS
+      : null;
   }
 
   async prune(now: number): Promise<void> {
@@ -247,7 +274,9 @@ export class DeviceKeys implements Devices {
   private current(now: number): DeviceRecord | null {
     return (
       this.records.find(
-        (record) => record.key && now - record.rememberedAt < REMEMBER_MS,
+        (record) =>
+          record.key &&
+          (record.automatic || now - record.rememberedAt < REMEMBER_MS),
       ) ?? null
     );
   }
@@ -262,10 +291,87 @@ export class DeviceKeys implements Devices {
       keyId: toBase64(crypto.getRandomValues(new Uint8Array(16))),
       key,
       rememberedAt: now,
+      automatic: true,
     };
     await this.run(async ({ devices }) => settle(devices.put(record)));
     this.records.push(record);
     return identityOf(record.keyId);
+  }
+
+  /** Promote an existing, successfully verified local key without replacing it. */
+  async promote(): Promise<void> {
+    const records = this.records.map((record) => ({
+      ...record,
+      automatic: !!record.key,
+    }));
+    await this.run(async ({ devices, settings }) => {
+      for (const record of records) await settle(devices.put(record));
+      await settle(settings.put(false, "paused"));
+    });
+    this.records = records;
+    this.pausedNow = false;
+  }
+
+  /** Read authenticated ciphertext using the same non-exportable local key. */
+  async readPreferences(): Promise<unknown> {
+    const envelope = await this.run(async ({ settings }) =>
+      settle<
+        { keyId: string; iv: Uint8Array; ciphertext: ArrayBuffer } | undefined
+      >(settings.get("preferences")),
+    );
+    if (!envelope) return null;
+    const key = this.records.find(
+      (record) => record.keyId === envelope.keyId,
+    )?.key;
+    if (!key) throw failure("preferences_key_missing");
+    try {
+      const bytes = await crypto.subtle.decrypt(
+        {
+          name: "AES-GCM",
+          iv: new Uint8Array(envelope.iv),
+          additionalData: new TextEncoder().encode("datafog/preferences/v1"),
+        },
+        key,
+        envelope.ciphertext,
+      );
+      const plain = new Uint8Array(bytes);
+      try {
+        return JSON.parse(new TextDecoder().decode(plain));
+      } finally {
+        plain.fill(0);
+      }
+    } catch {
+      throw failure("preferences_unavailable");
+    }
+  }
+
+  /** A committed and verified envelope precedes every effective policy change. */
+  async writePreferences(value: unknown): Promise<void> {
+    const record = this.records.find((item) => item.key);
+    if (!record?.key) throw failure("preferences_key_missing");
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const plain = new TextEncoder().encode(JSON.stringify(value));
+    let ciphertext: ArrayBuffer;
+    try {
+      ciphertext = await crypto.subtle.encrypt(
+        {
+          name: "AES-GCM",
+          iv,
+          additionalData: new TextEncoder().encode("datafog/preferences/v1"),
+        },
+        record.key,
+        plain,
+      );
+    } finally {
+      plain.fill(0);
+    }
+    await this.run(async ({ settings }) =>
+      settle(
+        settings.put({ keyId: record.keyId, iv, ciphertext }, "preferences"),
+      ),
+    );
+    if (JSON.stringify(await this.readPreferences()) !== JSON.stringify(value))
+      throw failure("preferences_verification_failed");
   }
 
   async forget(): Promise<void> {

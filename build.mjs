@@ -33,12 +33,14 @@ function prepare(out, files) {
 // The extension's license ships with it; it also covers Core's own code
 prepare("dist", [
   "LICENSE",
+  "fonts",
   "icons",
   "manifest.json",
   "offscreen.html",
   "options.html",
   "panel.html",
   "theme.css",
+  "welcome.html",
 ]);
 // Its licenses, under third-party/, ship with it
 cpSync(fogvault, "dist/fogvault", { recursive: true });
@@ -82,6 +84,12 @@ const builds = await Promise.all([
     ...common,
     entryPoints: ["src/panel.ts"],
     outfile: "dist/panel.js",
+    format: "iife",
+  }),
+  context({
+    ...common,
+    entryPoints: ["src/welcome.ts"],
+    outfile: "dist/welcome.js",
     format: "iife",
   }),
   context({

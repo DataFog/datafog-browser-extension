@@ -1,14 +1,15 @@
 # DataFog browser extension
 
-DataFog checks what you type into ChatGPT, Claude, Gemini, Grok and DeepSeek for sensitive data, such as email addresses, card numbers, API keys, names and mailing addresses, before you send it. Checks run on your device with [DataFog Core](https://github.com/DataFog/datafog-core); nothing you type is sent anywhere. A badge beside the chat box shows what was found, and lets you redact or pseudonymize it.
+DataFog checks what you type into ChatGPT, Claude, Gemini, Grok and DeepSeek for sensitive data, such as email addresses, card numbers, API keys, names and mailing addresses, before you send it. Checks run on your device with [DataFog Core](https://github.com/DataFog/datafog-core); nothing you type is sent anywhere. A badge beside the chat box shows what was found, and lets you replace or redact it.
 
 ## Features
 
-- **Checks as you type**, and right away when you paste. The badge shows how many values were found, by type, never the values themselves.
-- **Redact** replaces each value with its type, such as `[EMAIL]`, with **Undo** and **Redo**.
-- **Pseudonymize** replaces each value with a marker, such as `[[EMAIL_7KQ4ZM]]`, after you review them in the side panel, one at a time or all at once. The originals are kept in an encrypted vault on your device.
-- **Restore** shows the original values in place of the markers in the chat's latest answer.
-- **Always allow** values DataFog should never flag, such as your own work email, and **Always flag** phrases it should always find, such as a project or client name. Mark a value **Not sensitive** in a review to skip it while the vault is unlocked.
+- **Checks as you type**, and right away when you paste. Hover or focus the circle for checking status; click to preview findings and placeholders.
+- **Replace** saves originals to your encrypted vault before inserting markers such as `[[EMAIL_7KQ4ZM]]`. Progress, errors, Undo and Redo stay in the draft popup.
+- **More → Redact** replaces values with labels such as `[EMAIL]` without saving reversible mappings. Local Undo remains available until you edit the draft.
+- **Keep as is** leaves only this draft revision unchanged. **Always allow** saves a lasting exception, and **Always flag** takes precedence.
+- **Show originals / Hide originals** toggles known markers for one assistant answer. Original values appear in extension-owned local display; the provider's underlying text remains markers.
+- **FogVault** stores original mappings, rules and preferences encrypted on this device with automatic local key access. An existing password-protected vault may require its old password once to migrate.
 - **Choose what to check for**, grouped by how accurately each type is found, and which sites to check in the settings. Changes save as you make them.
 - **Hold sends** (optional, off by default): pauses a message with sensitive data once, with **Send anyway**.
 - **Warns you** when a file is attached, since files aren't checked, and when a chat box can't be found, so the page isn't protected.
@@ -34,7 +35,7 @@ npm run build
 2. Choose **Load unpacked** and select the `dist/` folder.
 3. Open a supported chat site and type, for example: `my email is jane@example.com and card 4111 1111 1111 1111`.
 
-Click the DataFog tab on the right edge of the page, or the toolbar icon, to open the side panel. Its **Settings** button opens the settings.
+Choose **More → Open sidebar** in the draft popup, or click the extension toolbar icon, to manage saved originals, rules and preferences.
 
 ## Uninstall
 
@@ -48,8 +49,8 @@ Removing DataFog deletes its vault, settings and lists from Chrome. Values behin
 - Checks text in the chat box only, not attached files.
 - Detection isn't exhaustive. Names and mailing addresses come from a small model that misses some in everyday chat text; other types are pattern-based.
 - Redaction is one way: `[EMAIL]` can't be turned back into the original.
-- Restore covers only the latest answer.
-- The Always allow and Always flag lists are saved unencrypted in Chrome's storage for DataFog, on your device.
+- Unknown or deleted markers cannot be restored.
+- Access to the Chrome profile is the trust boundary: automatic local key access is not an additional password barrier. Missing keys or damaged storage produce an error; the extension does not silently reset existing data.
 - Chat sites change their pages without notice, which can stop DataFog from finding the chat box until it's updated.
 
 ## Privacy

@@ -2,44 +2,77 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>DataFog settings</title>
+    <title>datafog settings</title>
     <link rel="stylesheet" href="theme.css" />
     <style>
       body {
-        font:
-          14px/1.5 system-ui,
-          -apple-system,
-          "Segoe UI",
-          sans-serif;
-        background: var(--background);
+        font: 13px/1.5 var(--sans);
+        background: var(--surface);
         color: var(--text);
-        max-width: 560px;
-        margin: 16px auto 32px;
+        max-width: 600px;
+        margin: 0 auto 48px;
         padding: 0 16px;
+      }
+      svg.lucide {
+        flex: none;
+      }
+      [hidden] {
+        display: none !important;
       }
       /* Stays in view so "Saved" shows wherever the change was made */
       header {
         position: sticky;
         top: 0;
         z-index: 2;
-        padding: 16px 0 4px;
-        background: var(--background);
-        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 16px 0 12px;
+        background: var(--surface);
       }
       header p {
-        margin: 0 0 8px;
+        margin: 0;
       }
       h1 {
-        font-size: 20px;
-        margin: 0 0 4px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0;
+        font-size: 22px;
+        font-weight: 300;
+        letter-spacing: -0.035em;
+      }
+      h1 svg {
+        width: 26px;
+        height: auto;
+      }
+      /* Sections are rows split by hairlines, not boxes */
+      .card {
+        padding: 8px 0 20px;
+        border-top: 1px solid var(--line);
       }
       h2 {
-        font-size: 15px;
-        margin: 24px 0 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 12px 0 8px;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+      }
+      h2 svg {
+        color: var(--muted);
+      }
+      h3 {
+        margin: 16px 0 4px;
+        font-size: 13px;
+        font-weight: 500;
       }
       .muted {
+        margin: 0 0 8px;
         color: var(--muted);
-        font-size: 13px;
+        font-size: 12px;
       }
       fieldset {
         border: 0;
@@ -48,22 +81,30 @@
         display: grid;
         gap: 4px;
       }
-      h3 {
-        font-size: 14px;
-        margin: 16px 0 4px;
+      #sites {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
       }
       #types {
         display: grid;
         gap: 16px;
       }
       .group {
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
         column-gap: 16px;
       }
       legend {
         position: relative;
-        font-weight: 600;
         margin-bottom: 4px;
+        color: var(--muted);
+        font: 10px/1.6 var(--mono);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 28px;
       }
       .info {
         display: inline-grid;
@@ -73,8 +114,9 @@
         border: 1px solid var(--line);
         border-radius: 50%;
         color: var(--muted);
-        font-size: 11px;
+        font: 10px var(--sans);
         cursor: help;
+        vertical-align: middle;
       }
       [role="tooltip"] {
         position: absolute;
@@ -85,11 +127,12 @@
         max-width: min(320px, calc(100vw - 32px));
         padding: 8px 10px;
         border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--field);
+        border-radius: var(--radius-control);
+        background: var(--surface);
         color: var(--text);
-        font-size: 12px;
-        font-weight: 400;
+        font: 12px/1.4 var(--sans);
+        letter-spacing: 0;
+        text-transform: none;
         visibility: hidden;
       }
       .info:hover + [role="tooltip"],
@@ -97,95 +140,192 @@
         visibility: visible;
       }
       input[type="checkbox"] {
-        accent-color: var(--text);
+        accent-color: var(--accent);
       }
-      textarea {
+      textarea,
+      input:not([type]) {
         width: 100%;
-        min-height: 96px;
-        font:
-          13px ui-monospace,
-          monospace;
         box-sizing: border-box;
         background: var(--field);
         color: var(--text);
         border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 8px;
+        border-radius: var(--radius-control);
+        padding: 8px 12px;
+        font: inherit;
+      }
+      textarea {
+        min-height: 96px;
+        font: 12px/1.5 var(--mono);
+      }
+      textarea:focus-visible,
+      input:focus-visible,
+      button:focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 1px;
       }
       #status {
-        margin-left: 4px;
         color: var(--ok);
-        font-weight: 600;
+        font-weight: 500;
+      }
+      #status.failed {
+        color: var(--error);
       }
       a {
-        color: inherit;
+        color: var(--accent-text);
       }
       button {
-        padding: 6px 14px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 32px;
+        padding: 0 14px;
         border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--field);
+        border-radius: var(--radius-pill);
+        background: var(--surface);
         color: var(--text);
         font: inherit;
         cursor: pointer;
       }
-      #status.failed {
+      button:hover:not(:disabled) {
+        background: var(--hover);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      button.danger {
+        background: var(--error);
+        border-color: var(--error);
+        color: #fff;
+      }
+      .warning {
+        margin: 0 0 8px;
         color: var(--error);
+      }
+      .buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      #delete label {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+      }
+      #delete-status:empty {
+        display: none;
+      }
+      .segmented {
+        display: inline-flex;
+        gap: 2px;
+        padding: 2px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-pill);
+      }
+      .segmented label {
+        min-height: 28px;
+        padding: 0 14px;
+        border-radius: var(--radius-pill);
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .segmented input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .segmented label:has(input:checked) {
+        background: var(--text);
+        color: var(--surface);
+      }
+      .segmented label:has(input:focus-visible) {
+        outline: 2px solid var(--focus);
+        outline-offset: 1px;
+      }
+      .about p {
+        margin: 0 0 4px;
+        color: var(--muted);
       }
     </style>
   </head>
   <body>
     <header>
-      <h1>DataFog settings</h1>
+      <h1 id="brand">datafog settings</h1>
       <p class="muted">
-        Changes save as you make them. <span id="status" role="status"></span>
+        Changes save as you make them.
+        <span id="status" role="status"></span>
       </p>
     </header>
 
-    <h2>Sites</h2>
-    <p class="muted">Check prompts on these chat sites.</p>
-    <fieldset id="sites"></fieldset>
-    <h2>What to look for</h2>
-    <div id="types"></div>
-    <h2>Behavior</h2>
-    <label
-      ><input type="checkbox" id="block-sends" /> Hold my message when something
-      sensitive is found, until I choose what to do</label
-    >
-    <h2>Your lists</h2>
-    <h3>Always allow</h3>
-    <p class="muted">
-      One value per line, matched exactly, such as your own work email.
-    </p>
-    <textarea id="allowlist" spellcheck="false"></textarea>
-    <h3>Always flag</h3>
-    <p class="muted">
-      One phrase per line, such as a project or client name. Matched as whole
-      words, ignoring case, and flagged even if allowed above or marked not
-      sensitive.
-    </p>
-    <textarea id="denylist" spellcheck="false"></textarea>
-    <h2>Defaults</h2>
-    <p class="muted">
-      Check every site for the types on by default, and stop holding messages.
-      Your lists are kept.
-    </p>
-    <button id="restore" type="button">Restore defaults</button>
-    <h2>About</h2>
-    <p>
-      DataFog <span id="version"></span>. Checks run on this device; nothing you
-      type is sent anywhere. Read the
-      <a
-        href="https://datafog.ai/privacy-policy"
-        target="_blank"
-        rel="noopener noreferrer"
-        >privacy policy</a
-      >.
-    </p>
-    <p>
-      Questions or problems? Email
-      <a href="mailto:help@datafog.ai">help@datafog.ai</a>.
-    </p>
+    <section class="card">
+      <h2 data-icon="globe">Sites</h2>
+      <fieldset id="sites" aria-label="Chat sites to check"></fieldset>
+    </section>
+    <section class="card">
+      <h2 data-icon="search">What to look for</h2>
+      <div id="types"></div>
+    </section>
+    <section class="card">
+      <h2 data-icon="preferences">Behavior</h2>
+      <label
+        ><input type="checkbox" id="block-sends" /> Hold my message when
+        something sensitive is found, until I choose what to do</label
+      >
+    </section>
+    <section class="card">
+      <h2 data-icon="theme">Appearance</h2>
+      <fieldset id="theme" class="segmented" aria-label="Theme">
+        <label
+          ><input
+            type="radio"
+            name="theme"
+            value="system"
+            checked
+          />System</label
+        >
+        <label><input type="radio" name="theme" value="light" />Light</label>
+        <label><input type="radio" name="theme" value="dark" />Dark</label>
+      </fieldset>
+    </section>
+    <section class="card">
+      <h2 data-icon="retry">Defaults</h2>
+      <p class="muted">Resets sites, types and behavior.</p>
+      <button id="restore" type="button">Restore defaults</button>
+    </section>
+    <section class="card danger" aria-labelledby="vault-heading">
+      <h2 id="vault-heading" data-icon="lock">Vault</h2>
+      <p class="muted">Encrypted on this device.</p>
+      <button id="delete-open" type="button" data-icon="delete">
+        Delete vault data
+      </button>
+      <form id="delete" hidden>
+        <p class="warning">
+          Deletes saved originals, rules, preferences and the local key. Tokens
+          already in chats can’t be shown again.
+        </p>
+        <label
+          >Type DELETE to confirm<input id="delete-confirm" autocomplete="off"
+        /></label>
+        <div class="buttons">
+          <button id="delete-submit" class="danger" type="submit" disabled>
+            Delete</button
+          ><button id="delete-cancel" type="button">Cancel</button>
+        </div>
+      </form>
+      <p id="delete-status" role="status"></p>
+    </section>
+    <section class="card about">
+      <h2 data-icon="info">About</h2>
+      <p>datafog <span id="version"></span>.</p>
+    </section>
+    <section class="card about">
+      <h2 data-icon="support">Support</h2>
+      <p>
+        Questions or problems? Email
+        <a href="mailto:help@datafog.ai">help@datafog.ai</a>.
+      </p>
+    </section>
 
     <script src="options.js"></script>
   </body>

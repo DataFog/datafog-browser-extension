@@ -11,7 +11,6 @@ import {
   found,
   openBadge,
   saveOptions,
-  createVault,
 } from "./fixtures";
 
 const EMAIL = "jane@example.com";
@@ -23,9 +22,13 @@ test("live: signed-in ChatGPT detects the README sample", async ({
   await composer.fill(SAMPLE);
   await found(badge, 2);
   await openBadge(badge);
-  const counts = (await badge.state("ul")).text;
-  expect(counts).toContain("Email address: 1");
-  expect(counts).toContain("Card number: 1");
+  const preview = (await badge.state(".preview")).text;
+  expect(preview).toContain("Email address");
+  expect(preview).toContain(EMAIL);
+  expect(preview).toContain("Card number");
+  expect(preview).toContain("4111 1111 1111 1111");
+  expect(preview.match(/\[\[EMAIL_[A-Z0-9]+\]\]/g)).toHaveLength(1);
+  expect(preview.match(/\[\[CREDIT_CARD_[A-Z0-9]+\]\]/g)).toHaveLength(1);
 });
 
 test("live: Redact, Undo, Redo and an actual editor change", async ({
@@ -35,6 +38,7 @@ test("live: Redact, Undo, Redo and an actual editor change", async ({
   await composer.fill(SAMPLE);
   await found(badge, 2);
   await openBadge(badge);
+  await badge.click(".more-toggle");
   await badge.click(".redact");
   await expect(composer).toHaveText(
     "my email is [EMAIL] and card [CREDIT_CARD]",
@@ -65,7 +69,7 @@ test("live: Dismiss returns after editing the real composer", async ({
   await badge.click(".dismiss");
   await expect
     .poll(async () => (await badge.state(".dot")).title)
-    .toBe("DataFog");
+    .toBe("datafog");
   await composer.fill(`Please contact ${EMAIL}`);
   await found(badge, 1);
 });
@@ -85,7 +89,7 @@ for (const [entity, text] of [
     await composer.fill(text);
     await expect
       .poll(async () => (await badge.state(".dot")).title)
-      .toBe("DataFog: no sensitive data found");
+      .toBe("Checked · nothing found");
     const options = await extension.options();
     await options.locator(`input[value="${entity}"]`).check();
     await saveOptions(options);
@@ -101,9 +105,11 @@ test("live: allowlist and global off apply to the real composer", async ({
 }) => {
   await composer.fill(SAMPLE);
   await found(badge, 2);
-  const options = await extension.options();
-  await options.locator("#allowlist").fill(EMAIL);
-  await saveOptions(options);
+  const panel = await extension.panel();
+  await panel.locator('[data-view="rules"]').click();
+  await panel.locator("#allowlist-value").fill(EMAIL);
+  await panel.locator("#allowlist-add button").click();
+  await expect(panel.locator("#allowlist")).toContainText(EMAIL);
   await composer.fill(`${SAMPLE} updated`);
   await found(badge, 1);
   const settings = await extension.options();
@@ -112,53 +118,42 @@ test("live: allowlist and global off apply to the real composer", async ({
   await composer.fill(`${SAMPLE} checking disabled`);
   await expect
     .poll(async () => (await badge.state(".dot")).title)
-    .toContain("disabled");
+    .toContain("is off for this site");
 });
 
-test("live: Pseudonymize reviews, replaces and undoes in ChatGPT", async ({
+test("live: Replace saves automatically and undoes in ChatGPT", async ({
   composer,
   badge,
-  extension,
 }) => {
-  const panel = await extension.panel();
-  await createVault(panel);
   await composer.fill(EMAIL);
   await found(badge, 1);
   await openBadge(badge);
   await badge.click(".pseudonymize");
-  await expect(panel.locator("#review-items")).toContainText(EMAIL);
-  await expect(composer).toHaveText(EMAIL);
-  await panel.locator("#approve").click();
   await expect(composer).toHaveText(/\[\[EMAIL_[A-Z0-9]+\]\]/);
   await openBadge(badge);
   await badge.click(".undo");
   await expect(composer).toHaveText(EMAIL);
 });
 
-test("live: Not sensitive is ignored until the vault locks", async ({
+test("live: Always allow persists and rechecks an unchanged draft", async ({
   composer,
   badge,
   extension,
 }) => {
-  const panel = await extension.panel();
-  await createVault(panel);
   await composer.fill(EMAIL);
   await found(badge, 1);
   await openBadge(badge);
-  await badge.click(".pseudonymize");
-  await panel
-    .locator("#review-items")
-    .getByRole("button", { name: "Not sensitive" })
-    .click();
-  await expect(panel.locator("#not-sensitive")).toContainText(EMAIL);
-  await composer.fill(`Contact ${EMAIL}`);
+  await badge.click(".more-toggle");
+  await badge.click(".allow");
   await expect
     .poll(async () => (await badge.state(".dot")).title)
-    .toBe("DataFog: no sensitive data found");
-  await panel.locator("#lock").click();
-  await expect(panel.locator("#unlock")).toBeVisible();
-  await composer.fill(`Please contact ${EMAIL}`);
-  await found(badge, 1);
+    .toBe("Checked · nothing found");
+  const panel = await extension.panel();
+  await panel.locator('[data-view="rules"]').click();
+  await expect(panel.locator("#not-sensitive")).toContainText(EMAIL);
+  await panel.reload();
+  await panel.locator('[data-view="rules"]').click();
+  await expect(panel.locator("#not-sensitive")).toContainText(EMAIL);
 });
 
 for (const method of ["button", "Enter"] as const) {
@@ -174,7 +169,7 @@ for (const method of ["button", "Enter"] as const) {
     const options = await extension.options();
     await options.locator("#block-sends").check();
     await saveOptions(options);
-    // Send-blocking state is loaded when the content script starts.
+    // Reload additionally exercises persisted send-blocking preferences.
     await chat.reload();
     await requireSignedIn(chat);
     await requireTemporaryChat(chat);
@@ -199,7 +194,7 @@ for (const method of ["button", "Enter"] as const) {
   });
 }
 
-test("live: pseudonyms survive a real response and restore, copy and hide", async ({
+test("live: placeholders survive a real response and answer-scoped Show/Hide", async ({
   extension,
 }) => {
   test.slow();
@@ -208,20 +203,16 @@ test("live: pseudonyms survive a real response and restore, copy and hide", asyn
   await requireTemporaryChat(chat);
   const composer = composerIn(chat);
   const badge = extension.badge(chat);
-  const panel = await extension.panel(undefined, chat);
-  await createVault(panel);
   await composer.fill(
     `Automated DataFog regression test. Repeat this test email exactly, including any bracketed marker replacing it: ${EMAIL}. After that write a short sentence confirming this is synthetic test data.`,
   );
   await found(badge, 1);
   await openBadge(badge);
   await badge.click(".pseudonymize");
-  await expect(panel.locator("#review-items .marker")).toHaveCount(1);
-  const marker = (await panel.locator("#review-items .marker").innerText())
-    .replace("→ ", "")
-    .trim();
-  await panel.locator("#approve").click();
-  await expect(composer).toContainText(marker);
+  await expect(composer).toContainText(/\[\[EMAIL_[A-Z0-9]+\]\]/);
+  const marker = (await composer.innerText()).match(
+    /\[\[EMAIL_[A-Z0-9]+\]\]/,
+  )![0];
   await sendButtonIn(chat).click();
   const answer = answersIn(chat).last();
   await expect(answer).toContainText(marker, { timeout: test.info().timeout });
@@ -233,25 +224,17 @@ test("live: pseudonyms survive a real response and restore, copy and hide", asyn
       .getByRole("button", { name: "Copy", exact: true })
       .last(),
   ).toBeVisible({ timeout: test.info().timeout });
-  await panel.locator("#restore-latest").click();
+  const control = extension.shadow(chat, "datafog-answer-control");
+  await control.click("button");
   await expect
-    .poll(() => chat.locator("datafog-original").count(), {
-      timeout: test.info().timeout,
-    })
-    .toBeGreaterThan(0);
+    .poll(async () => (await control.state("button")).text)
+    .toContain("Hide originals");
+  await expect(chat.locator("datafog-original")).toHaveCount(1);
   expect(
-    (await extension.shadow(chat, "datafog-original").state("span")).text,
-  ).toBe(EMAIL);
-  await extension.context.grantPermissions([
-    "clipboard-read",
-    "clipboard-write",
-  ]);
-  await panel.bringToFront();
-  await panel.locator("#copy-restored").click();
-  await expect
-    .poll(() => panel.evaluate(() => navigator.clipboard.readText()))
-    .toContain(EMAIL);
-  await panel.locator("#hide-originals").click();
+    (await extension.shadow(chat, "datafog-original").state("*")).text,
+  ).toContain(EMAIL);
+  await expect(answer).not.toContainText(EMAIL);
+  await control.click("button");
   await expect(chat.locator("datafog-original")).toHaveCount(0);
   await expect(answer).toContainText(marker);
 });
@@ -267,6 +250,7 @@ test("live: temporary chat supports detection and Redact", async ({
   await composer.fill(SAMPLE);
   await found(badge, 2);
   await openBadge(badge);
+  await badge.click(".more-toggle");
   await badge.click(".redact");
   await expect(composer).toContainText("[EMAIL]");
 });
@@ -295,6 +279,7 @@ for (const [surface, variable] of [
     await composer.fill(SAMPLE);
     await found(badge, 2);
     await openBadge(badge);
+    await badge.click(".more-toggle");
     await badge.click(".redact");
     await expect(composer).toContainText("[EMAIL]");
     await composer.fill("");

@@ -24,8 +24,9 @@ import {
   type VaultRouting,
   type VaultStatus,
 } from "./messages";
-import { blockingSends, loadSettings } from "./settings";
+import { blockingSends, DEFAULT_SETTINGS, type Settings } from "./settings";
 import { PENDING_UPDATE, updateWaiting } from "./update";
+import { UNREACHED_TABS } from "./welcome-state";
 
 let opening: Promise<void> | undefined;
 
@@ -93,19 +94,66 @@ function settled<T>(response: T | ErrorResponse | undefined): T {
  * @param request The request.
  * @returns Its response.
  */
-async function forwardVault<T>(request: VaultRequest): Promise<T> {
+interface StorageResponse<T> {
+  result: T;
+  storage?: { routing?: VaultRouting; migrated?: boolean; deleted?: boolean };
+}
+function isStorageResponse<T>(
+  response: T | StorageResponse<T>,
+): response is StorageResponse<T> {
+  return (
+    typeof response === "object" && response !== null && "result" in response
+  );
+}
+
+async function forwardVault<T>(
+  request: VaultRequest | OffscreenRequest["request"],
+  host?: string,
+): Promise<T> {
   await ensureOffscreen();
+  const bootstrap = await chrome.storage.local.get<{
+    settings?: Partial<Settings>;
+    vaultDeleting?: boolean;
+  }>(["settings", "vaultDeleting"]);
+  if (bootstrap.vaultDeleting && request.type !== "vault-delete")
+    throw coded("vault_deletion_incomplete");
   const forwarded: OffscreenRequest = {
     target: "offscreen",
     request,
-    settings: await loadSettings(),
+    settings: DEFAULT_SETTINGS,
+    legacySettings: bootstrap.settings,
     routing: await loadRouting(),
+    host,
   };
-  return settled(
-    await chrome.runtime.sendMessage<OffscreenRequest, T | ErrorResponse>(
-      forwarded,
-    ),
+  const response = settled<T | StorageResponse<T>>(
+    await chrome.runtime.sendMessage<
+      OffscreenRequest,
+      T | StorageResponse<T> | ErrorResponse
+    >(forwarded),
   );
+  if (!isStorageResponse(response)) return response;
+  const { result, storage } = response;
+  try {
+    if (storage?.deleted)
+      await chrome.storage.local.remove(["vault", "settings", "vaultDeleting"]);
+    else if (storage?.routing) {
+      await chrome.storage.local.set({ vault: storage.routing });
+      // The offscreen host reports migration only after ciphertext readback.
+      if (storage.migrated && bootstrap.settings !== undefined)
+        await chrome.storage.local.remove("settings");
+    }
+  } catch (error) {
+    if (
+      request.type === "pseudonymize" &&
+      typeof result === "object" &&
+      result !== null &&
+      "saved" in result &&
+      result.saved === true
+    )
+      return { ...result, warning: "metadata_cleanup_incomplete" };
+    throw error;
+  }
+  return result;
 }
 
 /**
@@ -180,22 +228,15 @@ async function hideInTab(windowId: number): Promise<object> {
   return {};
 }
 
-/** Once the vault locks, put the markers back in every tab. */
-async function hideIfLocked(): Promise<void> {
-  const { state } = await forwardVault<VaultStatus>({ type: "vault-status" });
-  if (state === "unlocked") return;
+/** Have every tab check its chat box again, since what's skipped changed. */
+async function recheckTabs(policyVersion?: string): Promise<void> {
   for (const { id } of await chrome.tabs.query({})) {
     // Tabs without DataFog's content script don't answer
     if (id !== undefined)
-      await askTab(id, { type: "hide-originals" }).catch(() => {});
-  }
-}
-
-/** Have every tab check its chat box again, since what's skipped changed. */
-async function recheckTabs(): Promise<void> {
-  for (const { id } of await chrome.tabs.query({})) {
-    // Tabs without DataFog's content script don't answer
-    if (id !== undefined) await askTab(id, { type: "recheck" }).catch(() => {});
+      await askTab(id, {
+        type: "recheck",
+        ...(policyVersion ? { policyVersion } : {}),
+      }).catch(() => {});
   }
 }
 
@@ -283,13 +324,22 @@ async function handlePanel(request: PanelRequest): Promise<unknown> {
     request.type === "review-not-sensitive" ||
     request.type === "choice-clear"
   ) {
-    const status = await forwardVault(request);
-    void recheckTabs().catch(() => {});
-    return status;
+    let policyVersion: string | undefined;
+    try {
+      const status = await forwardVault<VaultStatus>(request);
+      policyVersion = status.policyVersion;
+      await chrome.storage.local.set({
+        policyVersion: policyVersion ?? crypto.randomUUID(),
+      });
+      return status;
+    } finally {
+      await recheckTabs(policyVersion);
+    }
   }
   if (request.type === "vault-delete") {
+    await chrome.storage.local.set({ vaultDeleting: true });
     const status = await forwardVault<VaultStatus>(request);
-    await chrome.storage.local.remove("vault");
+    await recheckTabs();
     return status;
   }
   if (request.type !== "vault-create") return forwardVault(request);
@@ -306,10 +356,15 @@ async function handlePanel(request: PanelRequest): Promise<unknown> {
  * @returns True for an extension page.
  */
 function fromExtensionPage(sender: chrome.runtime.MessageSender): boolean {
+  if (sender.id !== chrome.runtime.id) return false;
+  // The side panel has no tab
+  if (sender.tab === undefined)
+    return sender.url?.startsWith(chrome.runtime.getURL("")) === true;
+  // The settings and welcome pages open in tabs and use the vault from there
+  const page = sender.url?.split(/[?#]/)[0];
   return (
-    sender.id === chrome.runtime.id &&
-    sender.tab === undefined &&
-    sender.url?.startsWith(chrome.runtime.getURL("")) === true
+    page === chrome.runtime.getURL("options.html") ||
+    page === chrome.runtime.getURL("welcome.html")
   );
 }
 
@@ -368,10 +423,32 @@ async function handle(
   const tabId = tab?.id;
   if (request.type === "pseudonymize") {
     if (!tab || tabId === undefined) throw coded("no_tab");
-    // Opened before any await, so Chrome still sees the user's click
-    if (!panels.has(tab.windowId)) await chrome.sidePanel.open({ tabId });
-    return forwardVault({ type: "pseudonymize", text: request.text, tabId });
+    return forwardVault(
+      {
+        type: "pseudonymize",
+        text: request.text,
+        tabId,
+        ...(request.previewId ? { previewId: request.previewId } : {}),
+      },
+      host,
+    );
   }
+  if (request.type === "settings-get") return forwardVault(request, host);
+  if (request.type === "settings-save" || request.type === "always-allow") {
+    let policyVersion: string | undefined;
+    try {
+      const result = await forwardVault<{ saved: true; policyVersion: string }>(
+        request,
+        host,
+      );
+      policyVersion = result.policyVersion;
+      await chrome.storage.local.set({ policyVersion });
+      return result;
+    } finally {
+      await recheckTabs(policyVersion);
+    }
+  }
+  if (request.type === "restore") return forwardVault(request, host);
   if (request.type === "open-panel") {
     const panel = tab && panels.get(tab.windowId);
     // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a port, not a window
@@ -400,16 +477,15 @@ async function handle(
   }
 
   if (request.type === "block-sends") {
-    return { blockSends: blockingSends(await loadSettings(host)) };
+    return {
+      blockSends: blockingSends(
+        await forwardVault<Settings>({ type: "settings-get" }, host),
+      ),
+    };
   }
 
-  await ensureOffscreen();
-  const forwarded: OffscreenRequest = {
-    target: "offscreen",
-    request,
-    settings: await loadSettings(host),
-  };
-  return chrome.runtime.sendMessage(forwarded);
+  if (request.type === "scan") return forwardVault({ ...request, tabId }, host);
+  return forwardVault(request, host);
 }
 
 // Registered synchronously, as Manifest V3 requires
@@ -420,8 +496,7 @@ chrome.runtime.onMessage.addListener(
     respond,
   ) => {
     // The vault's notices to the side panel also say when it locked
-    if ("target" in request && request.target === "panel")
-      void hideIfLocked().catch(() => {});
+
     // Messages for the offscreen document or the side panel aren't for us
     if ("target" in request) return false;
     let pending: Promise<unknown>;
@@ -456,3 +531,42 @@ chrome.runtime.onConnect.addListener((port) => {
 
 // The toolbar icon opens the side panel; settings are linked from there
 void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+
+/**
+ * Run the content script in chat tabs that were open before install or an
+ * update; Chrome only runs it on pages that load afterwards. A tab that
+ * already has a live copy keeps it (see single.ts).
+ *
+ * @returns The tabs it couldn't reach, which need a reload instead.
+ */
+async function protectOpenTabs(): Promise<number[]> {
+  const matches = chrome.runtime.getManifest().content_scripts?.[0]?.matches;
+  if (!matches?.length) return [];
+  const tabs = await chrome.tabs.query({ url: matches });
+  const unreached: number[] = [];
+  await Promise.all(
+    tabs.map(async ({ id, discarded }) => {
+      // A discarded tab reloads when it's next shown, and gets it then
+      if (id === undefined || discarded) return;
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: id },
+          files: ["content.js"],
+        });
+      } catch {
+        unreached.push(id);
+      }
+    }),
+  );
+  return unreached;
+}
+
+chrome.runtime.onInstalled.addListener(({ reason }) => {
+  void (async () => {
+    const unreached = await protectOpenTabs().catch(() => []);
+    await chrome.storage.local.set({ [UNREACHED_TABS]: unreached });
+    // Welcome only a new install: never an update or a reload
+    if (reason === "install")
+      await chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
+  })();
+});

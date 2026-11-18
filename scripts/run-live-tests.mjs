@@ -1,10 +1,12 @@
 /** Run the authenticated suite locally against an already-open Chrome. */
 import { createHash, randomUUID } from "node:crypto";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { lstatSync, readFileSync, readlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { withSuspendedLocalExtension } from "./live-extension-suspension.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -97,17 +99,26 @@ function browserEndpoint() {
   return url.origin;
 }
 
-function runNode(args, env = process.env) {
-  const result = spawnSync(process.execPath, args, {
-    cwd: root,
-    env,
-    stdio: "inherit",
+export function runNode(args, env = process.env) {
+  // Keep CDP event handling alive while the child tests create page targets.
+  // A synchronous child would leave this client's auto-attached targets paused.
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, args, {
+      cwd: root,
+      env,
+      stdio: "inherit",
+    });
+    child.once("error", reject);
+    child.once("exit", (status, signal) => {
+      if (status === 0) resolve();
+      else
+        reject(
+          new Error(
+            `The local live check did not pass${signal ? ` (${signal})` : ""}.`,
+          ),
+        );
+    });
   });
-  if (result.error) throw result.error;
-  if (result.status !== 0)
-    throw new Error(
-      `The local live check did not pass${result.signal ? ` (${result.signal})` : ""}.`,
-    );
 }
 
 export async function runLiveTests(args = []) {
@@ -139,15 +150,30 @@ export async function runLiveTests(args = []) {
       ? "full"
       : "selected",
   };
-  runNode([path.join(root, "build.mjs")], env);
-  runNode(
-    [
-      require.resolve("@playwright/test/cli"),
-      "test",
-      "--config=playwright.live.config.ts",
-      ...args,
-    ],
-    env,
+  await withSuspendedLocalExtension(
+    endpoint,
+    root,
+    async (originalId, originalPath) => {
+      if (originalId) {
+        env.LIVE_SUSPENDED_EXTENSION_ID = originalId;
+        env.LIVE_SUSPENDED_EXTENSION_PATH = originalPath;
+      }
+      await runNode([path.join(root, "build.mjs")], env);
+      await runNode(
+        [
+          require.resolve("@playwright/test/cli"),
+          "test",
+          "--config=playwright.live.config.ts",
+          ...args,
+        ],
+        env,
+      );
+    },
+    undefined,
+    {
+      id: process.env.LIVE_SUSPENDED_EXTENSION_ID,
+      path: process.env.LIVE_SUSPENDED_EXTENSION_PATH,
+    },
   );
 
   const receiptPath = path.join(root, ".playwright/live-receipt.json");

@@ -17,12 +17,16 @@ export const NO_CHAT_BOX_UPDATE =
   "DataFog can't find the chat box, so this page isn't being checked. A DataFog update is ready and may fix this: open DataFog and choose Update now.";
 
 export type Request =
-  | { type: "scan"; seq: number; text: string }
+  | { type: "scan"; seq: number; text: string; tabId?: number }
   | { type: "redact"; text: string }
-  | { type: "pseudonymize"; text: string }
+  | { type: "pseudonymize"; text: string; previewId?: string }
   | { type: "protection"; protected: boolean }
   | { type: "open-panel" }
-  | { type: "block-sends" };
+  | { type: "block-sends" }
+  | { type: "restore"; text: string }
+  | { type: "always-allow"; entityType: string; value: string }
+  | { type: "settings-get" }
+  | { type: "settings-save"; settings: Settings };
 
 /** A content script request that needs Core. */
 export type CoreRequest = Exclude<
@@ -31,6 +35,10 @@ export type CoreRequest = Exclude<
   | { type: "protection" }
   | { type: "open-panel" }
   | { type: "block-sends" }
+  | { type: "restore" }
+  | { type: "always-allow" }
+  | { type: "settings-get" }
+  | { type: "settings-save" }
 >;
 
 /**
@@ -70,7 +78,10 @@ export type VaultRequest =
       }
     >
   | { type: "restore"; text: string }
-  | { type: "pseudonymize"; text: string; tabId: number }
+  | { type: "pseudonymize"; text: string; tabId: number; previewId?: string }
+  | { type: "always-allow"; entityType: string; value: string }
+  | { type: "settings-get" }
+  | { type: "settings-save"; settings: Settings }
   | { type: "review-source" }
   | { type: "review-approve" }
   | { type: "review-mark-sensitive"; index: number };
@@ -85,6 +96,8 @@ export interface OffscreenRequest {
   request: CoreRequest | VaultRequest;
   settings: Settings;
   routing?: VaultRouting | null;
+  legacySettings?: Partial<Settings>;
+  host?: string;
 }
 
 /** A request the service worker sends a chat tab. */
@@ -94,7 +107,7 @@ export type TabRequest =
   | { type: "show-originals"; values: RestoredValue[] }
   | { type: "hide-originals" }
   /** Values marked not sensitive changed; check the chat box again. */
-  | { type: "recheck" }
+  | { type: "recheck"; policyVersion?: string }
   | { type: "apply-pseudonyms"; before: string; response: RedactResponse };
 
 /** Tells an open side panel the vault or its review changed. */
@@ -108,6 +121,10 @@ export interface PanelNotice {
  * chrome.storage.local so the vault can be reopened.
  */
 export interface VaultRouting {
+  /** New automatic-only stores have no user-held recovery password. */
+  automatic?: boolean;
+  /** Once set, missing preference ciphertext is corruption, never defaults. */
+  preferences?: 1;
   recordId: string;
   namespace: string;
 }
@@ -129,6 +146,12 @@ export interface ValueChoice {
 
 export interface VaultStatus {
   state: VaultState;
+  access?: "ready" | "migration-required" | "unavailable";
+  commit?:
+    "idle" | "saving" | "confirmed" | "uncertain" | "reconciling" | "failed";
+  deletion?: "idle" | "deleting" | "complete" | "partial-failure";
+  originals?: ReviewItem[];
+  policyVersion?: string;
   /** Pseudonymize was asked for while locked; unlocking prepares it. */
   waiting: boolean;
   review: ReviewItem[] | null;
@@ -189,6 +212,9 @@ export interface MarkedSensitive extends Pseudonymized {
 
 export interface ScanResponse {
   seq: number;
+  policyVersion?: string;
+  findings?: ReviewItem[];
+  previewId?: string;
   enabled: boolean;
   counts: Record<string, number>;
   blockSends: boolean;

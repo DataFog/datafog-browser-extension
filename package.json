@@ -24,7 +24,8 @@
   "dependencies": {
     "@datafog/core-fogvault-browser": "^1.6.0",
     "@datafog/fogvault-browser": "0.1.0",
-    "@datafog/wasm": "^1.6.0"
+    "@datafog/wasm": "^1.6.0",
+    "lucide": "1.75.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.1",

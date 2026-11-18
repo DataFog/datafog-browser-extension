@@ -9,22 +9,13 @@ const PHRASE = "Project Atlas";
  * @param extension The loaded extension.
  */
 async function flag(extension: Extension): Promise<void> {
-  const options = await extension.options();
-  await options.locator("#denylist").fill(PHRASE);
-  await options.locator("#allowlist").fill(PHRASE);
-  // Leaving the box saves it without waiting for typing to stop
-  await options.locator("#allowlist").blur();
-  await expect
-    .poll(() =>
-      extension.worker.evaluate(async () => {
-        const { settings } = await chrome.storage.local.get<{
-          settings?: { allowlist?: string[]; denylist?: string[] };
-        }>("settings");
-        return [settings?.allowlist, settings?.denylist];
-      }),
-    )
-    .toEqual([[PHRASE], [PHRASE]]);
-  await options.close();
+  const panel = await extension.panel();
+  await panel.locator('[data-view="rules"]').click();
+  for (const list of ["denylist", "allowlist"]) {
+    await panel.locator(`#${list}-value`).fill(PHRASE);
+    await panel.locator(`#${list}-add button`).click();
+    await expect(panel.locator(`#${list} li`)).toContainText(PHRASE);
+  }
 }
 
 /**
@@ -55,6 +46,7 @@ test("deny list: a phrase is flagged and redacted even when allowed", async ({
   const badge = extension.badge(chat);
 
   await badge.click(".dot");
+  await badge.click(".more-toggle");
   await badge.click(".redact");
 
   await expect(chat.locator("#prompt-textarea")).toHaveText(
@@ -66,6 +58,7 @@ test("deny list: a phrase added in the side panel is flagged right away", async 
   extension,
 }) => {
   const panel = await extension.panel();
+  await panel.locator('[data-view="rules"]').click();
   await panel.locator("#denylist-value").fill(PHRASE);
   await panel.locator("#denylist-add button").click();
   await expect(panel.locator("#denylist li")).toContainText(PHRASE);
@@ -73,9 +66,10 @@ test("deny list: a phrase added in the side panel is flagged right away", async 
   await typePlan(extension);
 
   await panel.locator("#denylist li button").click();
-  await expect(panel.locator("#denylist-note")).toHaveText("No phrases yet.");
-  const options = await extension.options();
-  await expect(options.locator("#denylist")).toHaveValue("");
+  await expect(panel.locator("#denylist li")).toHaveCount(0);
+  await panel.reload();
+  await panel.locator('[data-view="rules"]').click();
+  await expect(panel.locator("#denylist li")).toHaveCount(0);
 });
 
 test("deny list: adding a phrase confirms it and checks the open chat again", async ({
@@ -86,13 +80,14 @@ test("deny list: adding a phrase confirms it and checks the open chat again", as
   await chat.locator("#prompt-textarea").fill("Ship project atlas Friday");
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toContain("no sensitive data found");
+    .toContain("nothing found");
 
   const panel = await extension.panel();
+  await panel.locator('[data-view="rules"]').click();
   await panel.locator("#denylist-value").fill(PHRASE);
   await panel.locator("#denylist-add button").click();
-  await expect(panel.locator("#denylist-status")).toHaveText("Added");
-  await expect(panel.locator("#denylist li.added")).toContainText(PHRASE);
+  await expect(panel.locator("#save-status")).toHaveText("Saved");
+  await expect(panel.locator("#denylist li")).toContainText(PHRASE);
 
   // Counted without editing the chat box
   await expect
@@ -101,31 +96,19 @@ test("deny list: adding a phrase confirms it and checks the open chat again", as
 
   await panel.locator("#denylist-value").fill(PHRASE);
   await panel.locator("#denylist-add button").click();
-  await expect(panel.locator("#denylist-status")).toHaveText(
-    "Already in the list",
-  );
+  await expect(panel.locator("#save-status")).toHaveText("Saved");
   await expect(panel.locator("#denylist li")).toHaveCount(1);
 });
 
-test("deny list: Pseudonymize replaces a phrase with a marker", async ({
+test("deny list: Replace saves and replaces a phrase with a marker", async ({
   extension,
 }) => {
   await flag(extension);
-  const panel = await extension.panel();
-  await panel.locator("#create-password").fill("correct horse battery staple");
-  await panel.locator("#create-confirm").fill("correct horse battery staple");
-  await panel.locator("#create-submit").click();
-  await expect(panel.locator("#vault-state")).toHaveAttribute(
-    "aria-label",
-    "Unlocked",
-  );
   const chat = await typePlan(extension);
   const badge = extension.badge(chat);
 
   await badge.click(".dot");
   await badge.click(".pseudonymize");
-  await expect(panel.locator("#review-items")).toContainText("project atlas");
-  await panel.locator("#approve").click();
 
   await expect(chat.locator("#prompt-textarea")).toHaveText(
     /Ship \[\[DENYLIST_[A-Z0-9]+\]\] Friday/,

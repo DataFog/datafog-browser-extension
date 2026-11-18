@@ -90,9 +90,7 @@ export async function requireSignedIn(page: Page): Promise<void> {
 export async function found(badge: ClosedShadow, count: number): Promise<void> {
   await expect
     .poll(async () => (await badge.state(".dot")).title)
-    .toBe(
-      `DataFog: ${count} item${count === 1 ? "" : "s"} found. Click to review.`,
-    );
+    .toBe(`${count} found · click to review`);
 }
 
 export async function openBadge(badge: ClosedShadow): Promise<void> {
@@ -110,14 +108,6 @@ export async function saveOptions(options: Page): Promise<void> {
   });
   await expect(options.locator("#status")).toHaveText("Saved");
   await options.close();
-}
-
-export async function createVault(panel: Page): Promise<void> {
-  const password = "synthetic live-test vault password";
-  await panel.locator("#create-password").fill(password);
-  await panel.locator("#create-confirm").fill(password);
-  await panel.locator("#create-submit").click();
-  await expect(panel.locator("#lock")).toBeVisible();
 }
 
 export const test = base.extend<{
@@ -157,7 +147,8 @@ export const test = base.extend<{
       live: true,
       storageState: useOpenProfile ? undefined : authPath,
       cdpEndpoint,
-      replaceHelperExtension: useHelperProfile,
+      suspendedExtensionId: process.env.LIVE_SUSPENDED_EXTENSION_ID,
+      suspendedExtensionPath: process.env.LIVE_SUSPENDED_EXTENSION_PATH,
     });
     try {
       await extension.start();
@@ -167,8 +158,11 @@ export const test = base.extend<{
       });
       await use(extension);
     } finally {
-      await extension.stop();
-      await rm(profile, { recursive: true, force: true });
+      try {
+        await extension.stop();
+      } finally {
+        await rm(profile, { recursive: true, force: true });
+      }
     }
   },
   chat: async ({ extension }, use) => {

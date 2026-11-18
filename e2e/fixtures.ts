@@ -4,6 +4,7 @@ import {
   expect,
   type Browser,
   type BrowserContext,
+  type CDPSession,
   type Locator,
   type Page,
   type Worker,
@@ -12,6 +13,10 @@ import { constants } from "node:fs";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  TestExtensionInstallation,
+  type ExtensionInstaller,
+} from "./extension-installation";
 
 export { expect };
 export const SAMPLE =
@@ -288,6 +293,19 @@ function browserChannel(): "chrome" | "msedge" {
   return browser;
 }
 
+function extensionInstaller(session: CDPSession): ExtensionInstaller {
+  return {
+    list: async () =>
+      (await session.send("Extensions.getExtensions")).extensions,
+    load: async (extensionPath) =>
+      (await session.send("Extensions.loadUnpacked", { path: extensionPath }))
+        .id,
+    uninstall: async (id) => {
+      await session.send("Extensions.uninstall", { id });
+    },
+  };
+}
+
 export class Extension {
   context!: BrowserContext;
   worker!: Worker;
@@ -300,6 +318,8 @@ export class Extension {
   private borrowedBrowser?: Browser;
   private ownedPages = new Set<Page>();
   private currentChat?: Page;
+  private readonly installation: TestExtensionInstallation;
+  private readonly suspendedOriginal?: { id: string; path: string };
 
   constructor(
     private profile: string,
@@ -308,9 +328,30 @@ export class Extension {
       live?: boolean;
       storageState?: string;
       cdpEndpoint?: string;
-      replaceHelperExtension?: boolean;
+      suspendedExtensionId?: string;
+      suspendedExtensionPath?: string;
     } = {},
-  ) {}
+  ) {
+    this.installation = new TestExtensionInstallation(
+      path.join(profile, "unpacked-extension"),
+    );
+    const id = config.suspendedExtensionId;
+    const originalPath = config.suspendedExtensionPath;
+    if (id || originalPath) {
+      if (
+        !id ||
+        !originalPath ||
+        !/^[a-p]{32}$/.test(id) ||
+        !path.isAbsolute(originalPath) ||
+        !config.cdpEndpoint
+      ) {
+        throw new Error(
+          "An inherited suspension requires the exact extension id, absolute path, and active-browser endpoint",
+        );
+      }
+      this.suspendedOriginal = { id, path: originalPath };
+    }
+  }
 
   async start(): Promise<void> {
     const extensionPath = path.join(this.profile, "unpacked-extension");
@@ -368,27 +409,16 @@ export class Extension {
       this.authLoaded = true;
     }
     const installer = await this.context.browser()!.newBrowserCDPSession();
-    if (this.borrowedBrowser) {
-      // Replace only the helper's unpacked DataFog build in the dedicated
-      // test profile, avoiding two content scripts in each ChatGPT tab.
-      const { extensions } = await installer.send("Extensions.getExtensions");
-      for (const extension of extensions) {
-        if (
-          path.resolve(extension.path) === path.resolve("dist") &&
-          this.config.replaceHelperExtension
-        )
-          await installer.send("Extensions.uninstall", { id: extension.id });
-        else if (extension.enabled && extension.name.startsWith("DataFog"))
-          throw new Error(
-            "This browser already has DataFog installed. Use the dedicated sign-in profile so the live suite does not change an existing vault.",
-          );
-      }
+    try {
+      const api = extensionInstaller(installer);
+      this.id = await this.installation.load(
+        api,
+        Boolean(this.borrowedBrowser),
+        this.suspendedOriginal,
+      );
+    } finally {
+      await installer.detach();
     }
-    const { id } = await installer.send("Extensions.loadUnpacked", {
-      path: extensionPath,
-    });
-    await installer.detach();
-    this.id = id;
     const isExtensionWorker = (worker: Worker) =>
       worker.url().startsWith(`chrome-extension://${this.id}/`);
     this.worker =
@@ -401,6 +431,35 @@ export class Extension {
         await readFile(path.join(this.profile, "DevToolsActivePort"), "utf8")
       ).split("\n")[0];
     }
+    await this.closeWelcome();
+  }
+
+  /**
+   * A new install opens the welcome page. Tests start without it; the
+   * welcome tests open it themselves.
+   */
+  private async closeWelcome(): Promise<void> {
+    const url = `chrome-extension://${this.id}/welcome.html`;
+    for (let tries = 0; tries < 30; tries++) {
+      const welcome = this.context.pages().find((page) => page.url() === url);
+      if (welcome) {
+        await welcome.close();
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  /**
+   * Open the welcome page, as a new install would.
+   *
+   * @returns The page.
+   */
+  async welcome(): Promise<Page> {
+    const page = await this.context.newPage();
+    this.ownedPages.add(page);
+    await page.goto(`chrome-extension://${this.id}/welcome.html`);
+    return page;
   }
 
   async newChat(options: ChatOptions = {}): Promise<Page> {
@@ -410,8 +469,11 @@ export class Extension {
     const page = await this.context.newPage();
     this.ownedPages.add(page);
     this.currentChat = page;
-    await page.goto(url);
-    await page.locator("datafog-tab").waitFor({ state: "attached" });
+    await page.goto(url, {
+      waitUntil: this.config.live ? "domcontentloaded" : "load",
+    });
+    if (options.composer !== "none")
+      await page.locator("datafog-badge").waitFor({ state: "attached" });
     return page;
   }
 
@@ -447,7 +509,11 @@ export class Extension {
     }
     chat ??= await this.newChat();
     await chat.bringToFront();
-    await this.shadow(chat, "datafog-tab").click("button");
+    const badge = this.badge(chat);
+    if (!(await badge.state(".panel")).visible) await badge.click(".dot");
+    if (!(await badge.state(".more")).visible)
+      await badge.click(".more-toggle");
+    await badge.click(".sidebar");
     // Chrome's side panel is a native extension view, not an extension tab.
     // Playwright does not auto-attach it when created. A second public CDP
     // connection attaches existing page targets without weakening sender checks.
@@ -489,7 +555,7 @@ export class Extension {
     if (!panel) throw new Error("Native side panel target was not attached");
     await expect(
       panel
-        .locator("#create, #unlock, #unlocked")
+        .locator("#unlocked, #vault-error")
         .filter({ visible: true })
         .first(),
     ).toBeVisible();
@@ -623,39 +689,54 @@ export class Extension {
   }
 
   async stop(traces?: (name: string) => string): Promise<string[]> {
-    if (!this.context) return [];
-    if (this.borrowedBrowser) {
-      if (this.id) {
-        const installer = await this.borrowedBrowser.newBrowserCDPSession();
+    const paths: string[] = [];
+    const failures: unknown[] = [];
+    const attempt = async (cleanup: () => Promise<void>) => {
+      try {
+        await cleanup();
+      } catch (error) {
+        failures.push(error);
+      }
+    };
+    if (this.context && !this.borrowedBrowser) {
+      const contexts = [
+        this.context,
+        ...this.attached.flatMap((browser) => browser.contexts()),
+      ];
+      for (const [index, context] of contexts.entries()) {
+        const file = traces?.(`trace-${index}.zip`);
         try {
-          await installer.send("Extensions.uninstall", { id: this.id });
+          await context.tracing.stop(file ? { path: file } : {});
+          if (file) paths.push(file);
+        } catch {
+          /* Reloads may have closed a traced target. */
+        }
+      }
+    }
+    const browser = this.borrowedBrowser ?? this.context?.browser();
+    if (browser)
+      await attempt(async () => {
+        const installer = await browser.newBrowserCDPSession();
+        try {
+          await this.installation.remove(extensionInstaller(installer));
         } finally {
           await installer.detach();
         }
-      }
-      for (const page of this.ownedPages)
-        if (!page.isClosed()) await page.close();
-      for (const connection of this.attached) await connection.close();
-      // Closing a connectOverCDP connection disconnects this client; the
-      // independently launched sign-in browser stays open for the user.
-      await this.borrowedBrowser.close();
-      return [];
-    }
-    const paths: string[] = [];
-    const contexts = [
-      this.context,
-      ...this.attached.flatMap((b) => b.contexts()),
-    ];
-    for (const [i, context] of contexts.entries()) {
-      const file = traces?.(`trace-${i}.zip`);
-      try {
-        await context.tracing.stop(file ? { path: file } : {});
-        if (file) paths.push(file);
-      } catch {
-        /* A restart or runtime reload may have closed this target. */
-      }
-    }
-    await this.context.close();
+      });
+    // Continue releasing test resources even if uninstall or a page close fails.
+    for (const page of this.ownedPages)
+      if (!page.isClosed()) await attempt(() => page.close());
+    this.ownedPages.clear();
+    for (const connection of this.attached)
+      await attempt(() => connection.close());
+    this.attached = [];
+    if (this.borrowedBrowser) {
+      // Disconnect this CDP client; leave the independently launched sign-in
+      // browser and every preexisting user tab open.
+      await attempt(() => this.borrowedBrowser!.close());
+    } else if (this.context) await attempt(() => this.context.close());
+    if (failures.length)
+      throw new AggregateError(failures, "Test extension cleanup failed");
     return paths;
   }
 }
@@ -677,15 +758,18 @@ export const test = base.extend<{
       await use(extension);
     } finally {
       const failed = testInfo.status !== testInfo.expectedStatus;
-      const traces = await extension.stop(
-        failed ? (name) => testInfo.outputPath(name) : undefined,
-      );
-      for (const file of traces)
-        await testInfo.attach(path.basename(file), {
-          path: file,
-          contentType: "application/zip",
-        });
-      await rm(profile, { recursive: true, force: true });
+      try {
+        const traces = await extension.stop(
+          failed ? (name) => testInfo.outputPath(name) : undefined,
+        );
+        for (const file of traces)
+          await testInfo.attach(path.basename(file), {
+            path: file,
+            contentType: "application/zip",
+          });
+      } finally {
+        await rm(profile, { recursive: true, force: true });
+      }
     }
   },
   chat: async ({ extension }, use) => {
