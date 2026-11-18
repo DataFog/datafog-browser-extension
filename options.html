@@ -108,6 +108,15 @@
       a {
         color: inherit;
       }
+      button {
+        padding: 6px 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--field);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
       #status.failed {
         color: var(--error);
       }
@@ -142,6 +151,12 @@
       sensitive.
     </p>
     <textarea id="denylist" spellcheck="false"></textarea>
+    <h2>Defaults</h2>
+    <p class="muted">
+      Check every site for the types on by default, and stop holding messages.
+      Your lists are kept.
+    </p>
+    <button id="restore" type="button">Restore defaults</button>
     <h2>About</h2>
     <p>
       DataFog <span id="version"></span>. Checks run on this device; nothing you

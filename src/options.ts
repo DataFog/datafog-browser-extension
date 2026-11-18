@@ -5,6 +5,7 @@
  */
 
 import {
+  DEFAULT_SETTINGS,
   LABELS,
   loadSettings,
   saveSettings,
@@ -233,5 +234,29 @@ async function refreshLists(): Promise<void> {
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && "settings" in changes) void refreshLists();
 });
+
+/**
+ * Put the sites, types and holding sends back as they were on install,
+ * keeping the user's lists.
+ */
+async function restoreDefaults(): Promise<void> {
+  if (
+    !window.confirm(
+      "Restore the default sites, types and behavior? Your lists are kept.",
+    )
+  )
+    return;
+  const { off, entities, blockSends: hold } = DEFAULT_SETTINGS;
+  await save({ off, entities, blockSends: hold });
+  for (const box of document.querySelectorAll<HTMLInputElement>("#sites input"))
+    box.checked = !off.includes(box.value);
+  for (const box of document.querySelectorAll<HTMLInputElement>("#types input"))
+    box.checked = entities.includes(box.value);
+  blockSends.checked = hold;
+}
+
+document
+  .querySelector("#restore")!
+  .addEventListener("click", () => void restoreDefaults());
 
 void render();

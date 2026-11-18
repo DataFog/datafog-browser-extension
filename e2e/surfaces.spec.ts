@@ -201,6 +201,25 @@ for (const colorScheme of ["light", "dark"] as const) {
   });
 }
 
+test("settings restore defaults after confirming, keeping the lists", async ({
+  extension,
+}) => {
+  const options = await extension.options();
+  await options.locator("#site-claude").uncheck();
+  await options.locator('input[value="PHONE"]').check();
+  await options.locator("#denylist").fill("Project Falcon");
+  await options.locator("#denylist").blur();
+  await expect(options.locator("#status")).toHaveText("Saved");
+
+  options.once("dialog", (dialog) => void dialog.accept());
+  await options.locator("#restore").click();
+  await expect(options.locator("#site-claude")).toBeChecked();
+  await options.reload();
+  await expect(options.locator("#site-claude")).toBeChecked();
+  await expect(options.locator('input[value="PHONE"]')).not.toBeChecked();
+  await expect(options.locator("#denylist")).toHaveValue("Project Falcon");
+});
+
 test("pastes several thousand words and records typing and scan timings", async ({
   chat,
   badge,

@@ -168,6 +168,47 @@ test("says when a change couldn't be saved, and keeps saving later ones", async 
   expect($("#status").classList.contains("failed")).toBe(false);
 });
 
+test("restores the default sites, types and behavior, keeping the lists", async () => {
+  stored = {
+    settings: {
+      off: ["claude.ai"],
+      entities: ["EMAIL", "PHONE"],
+      blockSends: true,
+      allowlist: ["me@work.example"],
+      denylist: ["Acme"],
+    },
+  };
+  await start();
+  const confirm = vi.fn(() => false);
+  vi.stubGlobal("confirm", confirm);
+  click("#restore");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(stored.settings?.off).toEqual(["claude.ai"]);
+
+  confirm.mockReturnValue(true);
+  click("#restore");
+  await vi.waitFor(() => expect($("#status").textContent).toBe("Saved"));
+  expect(stored.settings).toMatchObject({
+    off: [],
+    entities: DEFAULT_SETTINGS.entities,
+    blockSends: false,
+    allowlist: ["me@work.example"],
+    denylist: ["Acme"],
+  });
+  const checked = [
+    ...document.querySelectorAll<HTMLInputElement>("#types input:checked"),
+  ].map((box) => box.value);
+  expect(checked.toSorted()).toEqual(DEFAULT_SETTINGS.entities.toSorted());
+  expect(
+    document.querySelector<HTMLInputElement>("#site-claude")!.checked,
+  ).toBe(true);
+  expect(
+    document.querySelector<HTMLInputElement>("#block-sends")!.checked,
+  ).toBe(false);
+  expect(list("#denylist").value).toBe("Acme");
+});
+
 test("saves a list once typing stops, trimmed and without repeats", async () => {
   await start();
   type("#denylist", " Project Falcon \nProject Falcon\n\nAcme");
