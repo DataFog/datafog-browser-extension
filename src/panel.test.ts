@@ -109,35 +109,12 @@ test("keeps views independent and renders sensitive values as text", async () =>
     document.querySelector<HTMLElement>('[data-section="rules"]')!.hidden,
   ).toBe(false);
 });
-test("uses the existing password once for legacy migration", async () => {
-  let migrated = false;
-  await start((request) => {
-    if (request.type === "vault-unlock") {
-      migrated = true;
-      return READY;
-    }
-    return migrated
-      ? READY
-      : { ...READY, state: "locked", access: "migration-required" };
-  });
-  expect($("unlock").hidden).toBe(false);
-  fill("unlock-password", "existing-secret");
-  await submit("unlock");
-  expect(send).toHaveBeenCalledWith({
-    type: "vault-unlock",
-    password: "existing-secret",
-    remember: true,
-  });
-  expect(
-    document.querySelector<HTMLInputElement>("#unlock-password")!.value,
-  ).toBe("");
-  expect($("unlocked").hidden).toBe(false);
-});
 test("failed access offers retry without creating or deleting data", async () => {
   let failed = true;
   await start(() => (failed ? { error: "automatic_key_missing" } : READY));
   expect($("retry-access").hidden).toBe(false);
   expect($("unlocked").hidden).toBe(true);
+  expect(document.querySelector('input[type="password"]')).toBeNull();
   failed = false;
   $("retry-access").click();
   await settle();

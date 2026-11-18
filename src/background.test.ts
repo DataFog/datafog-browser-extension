@@ -306,9 +306,7 @@ test("opens the side panel again after it closes", async () => {
 test("refuses vault requests from a web page", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-  expect(
-    await send({ type: "vault-unlock", password: "pw", remember: false }),
-  ).toEqual({
+  expect(await send({ type: "vault-delete" })).toEqual({
     error: "not_allowed",
   });
   expect(

@@ -22,7 +22,7 @@ Each assistant answer has independent content freshness, read progress and origi
 
 The existing FogVault workspace and device-slot APIs remain in use. A non-extractable local WebCrypto key is held in the existing `datafog-device` IndexedDB database. Settings are persisted as an authenticated AES-GCM envelope in that database, using the local device key. FogVault's existing encrypted database retains mappings and typed value choices. Only nonsensitive bootstrap routing and lifecycle metadata live outside encrypted payloads.
 
-Normal startup creates a key only for a new empty store. A missing key or corrupt store is an access failure, never permission to reset data or persist plaintext. A legacy password-only store requires its existing password once to enroll automatic local access. A forgotten password is not recoverable by this change. Existing remembered-device access is reused where available.
+Normal startup creates a key only for a new empty store. A missing key or corrupt store is an access failure, never permission to reset data or persist plaintext. Password-only stores are not supported: no such stores have been released, and the extension has no password entry or credential-migration path. Automatic local-key access remains the supported path. An inaccessible store is preserved and reported as unavailable; it is never silently replaced.
 
 Migration verifies the encrypted replacement before deleting old plaintext settings. A committed policy version controls scan freshness; saved preferences and rules propagate to unchanged open drafts only after durable commit. Settings failures show checking unavailable rather than substitute defaults.
 

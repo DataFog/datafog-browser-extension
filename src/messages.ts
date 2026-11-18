@@ -50,7 +50,6 @@ export type PanelRequest =
   | { type: "vault-status"; autoUnlock?: boolean }
   | { type: "update-status" }
   | { type: "vault-create"; password: string; remember: boolean }
-  | { type: "vault-unlock"; password: string; remember: boolean }
   | { type: "vault-lock" }
   | { type: "device-forget" }
   | { type: "vault-delete" }
@@ -146,7 +145,7 @@ export interface ValueChoice {
 
 export interface VaultStatus {
   state: VaultState;
-  access?: "ready" | "migration-required" | "unavailable";
+  access?: "ready" | "unavailable";
   commit?:
     "idle" | "saving" | "confirmed" | "uncertain" | "reconciling" | "failed";
   deletion?: "idle" | "deleting" | "complete" | "partial-failure";

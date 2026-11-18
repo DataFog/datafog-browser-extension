@@ -22,8 +22,7 @@ const status = element("vault-state");
 const error = element("vault-error");
 const saved = element("save-status");
 let activeView: "data" | "rules" = "data";
-let access: "initializing" | "ready" | "migration-required" | "unavailable" =
-  "initializing";
+let access: "initializing" | "ready" | "unavailable" = "initializing";
 let renderVersion = 0;
 /** How long "Saved" shows, in ms. */
 const SAVED_MS = 2000;
@@ -62,10 +61,7 @@ chip.addEventListener("click", () => toggleInfo(chip, "vault-info"));
 
 function failure(code: string): void {
   error.hidden = false;
-  error.textContent =
-    code === "Authentication"
-      ? "That password could not open the existing store. Your data is unchanged."
-      : `Your vault couldn't open. Nothing was lost. (${code})`;
+  error.textContent = `Your vault couldn't open. Nothing was lost. (${code})`;
 }
 async function ask<T>(
   request: PanelRequest | { type: "restore"; text: string },
@@ -183,12 +179,7 @@ async function refresh(): Promise<void> {
     ])
       element(id).replaceChildren();
   } else {
-    access =
-      response.access === "migration-required"
-        ? "migration-required"
-        : response.state === "unlocked"
-          ? "ready"
-          : "unavailable";
+    access = response.state === "unlocked" ? "ready" : "unavailable";
     error.hidden = true;
     element("originals").replaceChildren(
       ...(response.originals ?? []).map((item) =>
@@ -219,15 +210,9 @@ async function refresh(): Promise<void> {
       ),
     );
   }
-  status.textContent =
-    access === "ready"
-      ? "ready"
-      : access === "migration-required"
-        ? "needs migration"
-        : "unavailable";
+  status.textContent = access === "ready" ? "ready" : "unavailable";
   element("vault-chip").dataset.access = access;
   element("unlocked").hidden = access !== "ready";
-  element("unlock").hidden = access !== "migration-required";
   element("retry-access").hidden = access !== "unavailable";
   if (access !== "ready") return;
   try {
@@ -256,23 +241,6 @@ for (const name of ["allowlist", "denylist"] as ListName[])
     });
   });
 element("retry-access").addEventListener("click", () => void refresh());
-element("unlock").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const password =
-    document.querySelector<HTMLInputElement>("#unlock-password")!.value;
-  document.querySelector<HTMLInputElement>("#unlock-password")!.value = "";
-  void mutate(async () => {
-    const response = await ask<VaultStatus>({
-      type: "vault-unlock",
-      password,
-      remember: true,
-    });
-    if ("error" in response) {
-      failure(response.error);
-      throw new Error(response.error);
-    }
-  });
-});
 element("lookup").addEventListener("submit", (event) => {
   event.preventDefault();
   const text =

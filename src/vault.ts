@@ -1,7 +1,7 @@
 /**
  * FogVault owns encrypted mappings; Core owns matching and workspace commits.
  * Normal access uses a non-exportable local device key without expiry. Legacy
- * password-only data requires a one-time credential migration. Original values
+ * password-only stores are unsupported. Original values
  * never leave the extension except as extension-owned local display.
  */
 
@@ -48,14 +48,11 @@ export type Vault = Pick<
   FogVault,
   | "create"
   | "open"
-  | "unlock"
   | "lock"
   | "close"
   | "reconcileLatest"
   | "describeAccess"
   | "unlockDevice"
-  | "enrollDevice"
-  | "protectAccess"
 >;
 
 /** The parts of Core's adapter the host uses. */
@@ -297,7 +294,7 @@ export class VaultHost<V extends Vault = Vault> {
       state,
       commit: this.commitState.phase,
       deletion: this.deletionState.phase,
-      access: state === "unlocked" ? "ready" : "migration-required",
+      access: state === "unlocked" ? "ready" : "unavailable",
       waiting: this.waiting !== null,
       review: this.review?.items ?? null,
       reviewError: this.error,
@@ -317,7 +314,7 @@ export class VaultHost<V extends Vault = Vault> {
     // Retain legacy keys even when an old pause/expiry prevented use. They are
     // promoted only after a successful unwrap; no credential is fabricated.
     await this.unlockWithDevice(routing);
-    if (!this.owner || this.owner.closed) throw failure("migration_required");
+    if (!this.owner || this.owner.closed) throw failure("vault_key_missing");
     await this.deps.devices.promote?.();
   }
 
@@ -640,46 +637,6 @@ export class VaultHost<V extends Vault = Vault> {
     this.touch();
     await this.prepareWaiting();
     return { status: this.status(made), routing: made };
-  }
-
-  /**
-   * Unlock the vault with the password and reopen its workspace, remembering
-   * this device if asked.
-   *
-   * A vault made before remember device has no device slot. Adding one
-   * re-encrypts it with new keys.
-   *
-   * @param password The password.
-   * @param routing Where the workspace lives.
-   * @param remember Whether to remember this device for 30 days.
-   * @returns The status.
-   */
-  async unlock(
-    password: string,
-    routing: VaultRouting | null,
-    remember: boolean,
-  ): Promise<VaultStatus> {
-    if (!routing) throw failure("no_vault");
-    if (this.owner && !this.owner.closed) return this.status(routing);
-    const identity = remember ? await this.newDevice() : null;
-    const vault = await this.openVault();
-    await vault.unlock(password);
-    await this.deps.devices.setPaused(false);
-    if (identity) {
-      const source = { kind: "password" as const, password };
-      const { profile } = await vault.describeAccess();
-      if (profile === "password-or-device")
-        await vault.enrollDevice(source, identity);
-      else
-        await vault.protectAccess(source, {
-          password,
-          profile: "password-or-device",
-          devices: [identity],
-          recovery: false,
-        });
-    }
-    await this.openWorkspace(vault, routing);
-    return this.status(routing);
   }
 
   /**

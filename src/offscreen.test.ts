@@ -137,22 +137,14 @@ test("keeps legacy global off semantics after encrypted migration", async () => 
 });
 test("missing existing key refuses checking without resetting the store", async () => {
   state.access.mockRejectedValueOnce(
-    Object.assign(new Error(), { code: "migration_required" }),
+    Object.assign(new Error(), { code: "vault_key_missing" }),
   );
   expect(await forward({ type: "scan", seq: 4, text: "a@b.co" })).toEqual({
-    error: "migration_required",
+    error: "vault_key_missing",
   });
   expect(state.create).not.toHaveBeenCalled();
   expect(state.write).not.toHaveBeenCalled();
   expect(countFindings).not.toHaveBeenCalled();
-});
-test("a legacy store exposes one-time migration, never false readiness", async () => {
-  state.access.mockRejectedValueOnce(
-    Object.assign(new Error(), { code: "migration_required" }),
-  );
-  expect(await forward({ type: "vault-status" })).toMatchObject({
-    result: { access: "migration-required", reviewError: "migration_required" },
-  });
 });
 test("migration write failure retains legacy source and prevents scanning", async () => {
   state.write.mockRejectedValueOnce(
@@ -207,7 +199,7 @@ test("missing previously initialized ciphertext is never silently replaced with 
 
 test("a lost automatic-only key does not advertise a nonexistent recovery password", async () => {
   state.access.mockRejectedValueOnce(
-    Object.assign(new Error(), { code: "migration_required" }),
+    Object.assign(new Error(), { code: "vault_key_missing" }),
   );
   const response = await new Promise((resolve) =>
     listener(

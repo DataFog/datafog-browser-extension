@@ -147,7 +147,7 @@ async function commitPreferences(next: Preferences): Promise<void> {
 type AccessState =
   | { phase: "unloaded" | "initializing" }
   | { phase: "ready"; routing: VaultRouting }
-  | { phase: "migration-required" | "unavailable"; error: string };
+  | { phase: "unavailable"; error: string };
 let accessState: AccessState = { phase: "unloaded" };
 
 async function access(routing: VaultRouting | null): Promise<VaultRouting> {
@@ -195,23 +195,13 @@ async function access(routing: VaultRouting | null): Promise<VaultRouting> {
         password.fill(0);
       }
     }
-    try {
-      await host.automaticAccess(currentRouting);
-    } catch (error) {
-      if (
-        currentRouting.automatic &&
-        toError(error).error === "migration_required"
-      )
-        throw Object.assign(new Error(), { code: "vault_key_missing" });
-      throw error;
-    }
+    await host.automaticAccess(currentRouting);
     accessState = { phase: "ready", routing: currentRouting };
     return currentRouting;
   } catch (error) {
     const code = toError(error).error;
     accessState = {
-      phase:
-        code === "migration_required" ? "migration-required" : "unavailable",
+      phase: "unavailable",
       error: code,
     };
     throw error;
@@ -320,10 +310,6 @@ async function handle(message: OffscreenRequest): Promise<unknown> {
   await loaded;
   const { request } = message;
   let routing = message.routing ?? (await devices.readRouting());
-  if (request.type === "vault-unlock") {
-    await host.unlock(request.password, routing, true);
-    await host.automaticAccess(routing);
-  }
   if (request.type === "vault-delete") {
     const result = await host.deleteVault(routing);
     policyState = { phase: "unloaded" };
@@ -337,10 +323,7 @@ async function handle(message: OffscreenRequest): Promise<unknown> {
       return {
         result: {
           ...host.status(routing),
-          access:
-            accessState.phase === "migration-required"
-              ? "migration-required"
-              : "unavailable",
+          access: "unavailable",
           reviewError: toError(error).error,
         },
       };
@@ -407,7 +390,6 @@ async function handle(message: OffscreenRequest): Promise<unknown> {
       result = { saved: true, policyVersion: await policyVersion(stored) };
       break;
     case "vault-status":
-    case "vault-unlock":
       result = {
         ...host.status(routing),
         access: accessState.phase === "ready" ? "ready" : "unavailable",

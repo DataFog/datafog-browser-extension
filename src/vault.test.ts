@@ -219,24 +219,7 @@ beforeEach(() => {
       unlocked: true as const,
       receipt: RECEIPT,
     })),
-    enrollDevice: vi.fn(async (_source, identity) => {
-      slots.push(keyIdOf(identity));
-      return { receipt: RECEIPT, key_effect: "Preserved" as const };
-    }),
-    protectAccess: vi.fn(async (_source, target) => {
-      profile = "password-or-device";
-      slots = target.devices.map(keyIdOf);
-      return {
-        receipt: RECEIPT,
-        key_effect: "FreshRootAndContentKeys" as const,
-      };
-    }),
     open: vi.fn(async () => ({ opened: true as const })),
-    unlock: vi.fn(async (password: string) => {
-      if (password !== "correct horse")
-        throw Object.assign(new Error(), { code: "Integrity" });
-      return { unlocked: true as const, receipt: RECEIPT };
-    }),
     lock: vi.fn(async () => ({ locked: true as const })),
     close: vi.fn(async () => ({ closed: true as const })),
     reconcileLatest: vi.fn(async () => ({
@@ -449,25 +432,20 @@ test("says when there's nothing to pseudonymize", async () => {
   });
 });
 
-test("waits for an unlock, then prepares the review", async () => {
-  const routing = await create();
+test("automatic access prepares a waiting review without a password", async () => {
+  const { routing } = await host.create("correct horse", null, true);
   await host.lock(routing);
-
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
   expect(host.status(routing)).toMatchObject({
     state: "locked",
     waiting: true,
   });
-
-  await expect(host.unlock("wrong", routing, false)).rejects.toMatchObject({
-    code: "Integrity",
+  await host.automaticAccess(routing);
+  expect(host.status(routing)).toMatchObject({
+    state: "unlocked",
+    waiting: false,
   });
-  expect(host.status(routing).state).toBe("locked");
-
-  const status = await host.unlock("correct horse", routing, false);
-  expect(status.state).toBe("unlocked");
-  expect(status.waiting).toBe(false);
-  expect(status.review).toHaveLength(2);
+  expect(host.status(routing).review).toHaveLength(2);
 });
 
 test("discards the plan when the review is cancelled or replaced", async () => {
@@ -572,8 +550,8 @@ test("locks after idling again once the device is forgotten", async () => {
   expect(host.status(routing).state).toBe("locked");
 });
 
-test("locks after a lost save, and settles it at the next unlock", async () => {
-  const routing = await create();
+test("locks after a lost save, and settles it with automatic access", async () => {
+  const { routing } = await host.create("correct horse", null, true);
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
   const requestId = new Uint8Array([9]);
   owner.failNextSave = Object.assign(new Error(), {
@@ -590,7 +568,7 @@ test("locks after a lost save, and settles it at the next unlock", async () => {
   });
   expect(vi.mocked(vault.lock)).toHaveBeenCalled();
 
-  await host.unlock("correct horse", routing, false);
+  await host.automaticAccess(routing);
   expect(vi.mocked(vault.reconcileLatest)).toHaveBeenCalledWith(requestId);
 });
 
@@ -600,7 +578,6 @@ test("deletes the vault without its password", async () => {
 
   const status = await host.deleteVault(routing);
 
-  expect(vi.mocked(vault.unlock)).not.toHaveBeenCalled();
   expect(vi.mocked(vault.close)).toHaveBeenCalled();
   expect(deleteStore).toHaveBeenCalledWith("datafog");
   expect(status).toMatchObject({ state: "none", review: null });
@@ -690,62 +667,6 @@ test("unlocks with a remembered device on use, for 30 days", async () => {
     rememberedUntil: null,
   });
   expect(devices.records.every((record) => record.key === null)).toBe(true);
-});
-
-test("asks for the password after a manual lock", async () => {
-  const { routing } = await host.create("correct horse", null, true);
-
-  await host.lock(routing, true);
-  await host.unlockWithDevice(routing);
-  expect(host.status(routing).state).toBe("locked");
-  expect(vi.mocked(vault.unlockDevice)).not.toHaveBeenCalled();
-
-  await host.unlock("correct horse", routing, false);
-  await host.lock(routing);
-  await host.unlockWithDevice(routing);
-  expect(host.status(routing).state).toBe("unlocked");
-});
-
-test("remembers the device at unlock, keeping the vault's keys", async () => {
-  const routing = await create();
-  await host.lock(routing);
-
-  const unlocked = await host.unlock("correct horse", routing, true);
-
-  expect(vi.mocked(vault.enrollDevice)).toHaveBeenCalled();
-  expect(vi.mocked(vault.protectAccess)).not.toHaveBeenCalled();
-  expect(unlocked.rememberedUntil).toBe(now + REMEMBER_MS);
-});
-
-test("gives an older password-only vault new keys to remember a device", async () => {
-  const routing = await create();
-  await host.lock(routing);
-  profile = "password";
-
-  const unlocked = await host.unlock("correct horse", routing, true);
-
-  expect(vi.mocked(vault.protectAccess)).toHaveBeenCalledWith(
-    { kind: "password", password: "correct horse" },
-    expect.objectContaining({ profile: "password-or-device", recovery: false }),
-  );
-  expect(unlocked.state).toBe("unlocked");
-});
-
-test("forgets the device, and stays locked when its key fails", async () => {
-  const { routing } = await host.create("correct horse", null, true);
-
-  expect((await host.forgetDevice(routing)).rememberedUntil).toBeNull();
-
-  await host.unlock("correct horse", routing, true);
-  await host.lock(routing);
-  vi.mocked(vault.unlockDevice).mockRejectedValueOnce(
-    Object.assign(new Error(), { code: "ProviderFailure" }),
-  );
-  await host.unlockWithDevice(routing);
-  expect(host.status(routing)).toMatchObject({
-    state: "locked",
-    rememberedUntil: null,
-  });
 });
 
 test("automatic access preserves a failing existing key and never creates a replacement", async () => {

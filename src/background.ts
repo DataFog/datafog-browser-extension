@@ -372,7 +372,6 @@ const PANEL_REQUESTS = new Set<string>([
   "vault-status",
   "update-status",
   "vault-create",
-  "vault-unlock",
   "vault-lock",
   "vault-delete",
   "device-forget",

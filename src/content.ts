@@ -725,10 +725,7 @@ async function transform(kind: "redact" | "pseudonymize"): Promise<void> {
   if ("error" in response) {
     updateAction({
       kind: "failed",
-      message:
-        response.error === "migration_required"
-          ? "Your old store needs its password once. Open the sidebar to move it into the vault."
-          : `Couldn’t ${kind === "redact" ? "redact" : "confirm the encrypted save"}. Your draft is unchanged. Retry the action to reconcile storage. (${response.error})`,
+      message: `Couldn’t ${kind === "redact" ? "redact" : "confirm the encrypted save"}. Your draft is unchanged. Retry the action to reconcile storage. (${response.error})`,
     });
     return;
   }

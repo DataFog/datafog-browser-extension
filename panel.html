@@ -74,8 +74,7 @@
       .chip[data-access="ready"] .dot {
         background: var(--ok);
       }
-      .chip[data-access="unavailable"] .dot,
-      .chip[data-access="migration-required"] .dot {
+      .chip[data-access="unavailable"] .dot {
         background: var(--accent-text);
       }
 
@@ -421,23 +420,6 @@
     <button id="retry-access" type="button" data-icon="retry" hidden>
       Retry
     </button>
-    <form id="unlock" class="card" hidden>
-      <div class="heading"><h2>Move your old store into the vault</h2></div>
-      <p class="empty">
-        Enter its password once. After that it opens on its own.
-      </p>
-      <label
-        ><span class="sr">Existing password</span
-        ><input
-          id="unlock-password"
-          type="password"
-          placeholder="Existing password"
-          autocomplete="current-password"
-          required
-      /></label>
-      <button type="submit" class="primary">Migrate</button>
-      <div></div>
-    </form>
     <div id="unlocked" hidden>
       <section data-section="data">
         <div class="card">
