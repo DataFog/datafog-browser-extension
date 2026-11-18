@@ -131,6 +131,22 @@ The exact deletion scope, confirmation wording, and partial-failure recovery pol
 
 **Events:** the service worker injects the content script into open chat tabs at install and after every update (`scripting` + host permissions for the five sites). A starting copy asks over a DOM event whether another copy is present. A live copy answers and the newcomer stops; an orphaned copy (its extension context is gone after an update) retires instead. A retired copy removes its circle and answer controls, stops observing, and never holds a send. Tabs the service worker cannot reach are listed for a reload on the welcome page. A copy that starts while the vault is still opening retries its first settings read with backoff before reporting checking as unavailable.
 
+## 13. Choosing draft findings
+
+**Owner:** the current composer revision and its accepted preview, coordinated with the vault's single prepared Core change.
+
+**States:** all chosen; some skipped; none chosen; refreshing selection; preview expired; failed refresh. Every finding starts chosen. Replace displays a count when only part of the draft is chosen, and Replace/Redact are disabled when none are chosen.
+
+**Events:** toggle a finding; prepare the chosen findings; accept the exact refreshed markers and preview identity; Replace; Redact; Always allow skipped; same-draft rescan; edit; policy change. The draft is unchanged while refreshing a choice. A selection response may only update its owning draft and policy revision. Replace commits the exact accepted preparation; it never substitutes unseen tokens. Redact leaves skipped values as typed. Always allow applies only to skipped values. A same-draft rescan retains choices; an edit resets them.
+
+## 14. Managing saved originals
+
+**Owner:** each saved-original row and the vault's durable commit lifecycle.
+
+**States:** menu closed; menu open; copying; allowing; awaiting Forget confirmation; forgetting; confirmed forgotten; failed or uncertain operation. An allowed value is marked with an Allowed chip and no longer offers the same allow action.
+
+**Events:** open/close menu; Copy original; Always allow this value; Forget; confirm/cancel; commit acknowledgement; reconciliation; refresh open views. Copy is an explicit clipboard action. Always allow commits the typed exception before reporting success. Forget requires confirmation and retires the original's token through Core; it does not edit provider messages. Successful retirement removes the saved row and invalidates any shown original in open answers. Cancelling or a confirmed failed write preserves the original; uncertain outcomes require reconciliation, never an invented success. Saved original/token pairs are not editable.
+
 ## What disappears or gets simpler
 
 | Existing behavior                                                       | Proposed change                                                                                                                 |

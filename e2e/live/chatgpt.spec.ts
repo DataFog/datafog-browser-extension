@@ -143,6 +143,7 @@ test("live: Always allow persists and rechecks an unchanged draft", async ({
   await composer.fill(EMAIL);
   await found(badge, 1);
   await openBadge(badge);
+  await badge.click('.choose[aria-label="Replace jane@example.com"]');
   await badge.click(".more-toggle");
   await badge.click(".allow");
   await expect
@@ -237,6 +238,22 @@ test("live: placeholders survive a real response and answer-scoped Show/Hide", a
   await control.click("button");
   await expect(chat.locator("datafog-original")).toHaveCount(0);
   await expect(answer).toContainText(marker);
+  // Forget is a durable retirement, not just removal from the sidebar list.
+  await control.click("button");
+  await expect(chat.locator("datafog-original")).toHaveCount(1);
+  const panel = await extension.panel(undefined, chat);
+  const row = panel.locator("#originals li").filter({ hasText: marker });
+  await row.locator(".original-menu-toggle").click();
+  await row.locator('[data-action="forget"]').click();
+  await row.locator('[data-action="confirm-forget"]').click();
+  await expect(row).toHaveCount(0);
+  await expect(chat.locator("datafog-original")).toHaveCount(0);
+  await expect(answer).toContainText(marker);
+  await panel.locator("#lookup-marker").fill(marker);
+  await panel.locator("#lookup button").click();
+  await expect(panel.locator("#lookup-result")).toContainText(
+    "No original saved",
+  );
 });
 
 test("live: temporary chat supports detection and Redact", async ({
@@ -285,3 +302,25 @@ for (const [surface, variable] of [
     await composer.fill("");
   });
 }
+
+test("live: choosing findings preserves the skipped value and commits the displayed marker", async ({
+  composer,
+  badge,
+}) => {
+  const card = "4111 1111 1111 1111";
+  await composer.fill(`Contact ${EMAIL} / ${card}`);
+  await found(badge, 2);
+  await openBadge(badge);
+  await badge.click(`.choose[aria-label="Replace ${card}"]`);
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).text)
+    .toBe("Replace 1");
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).disabled)
+    .toBe(false);
+  const marker = (await badge.state(".preview")).text.match(
+    /\[\[EMAIL_[A-Z0-9]+\]\]/,
+  )![0];
+  await badge.click(".pseudonymize");
+  await expect(composer).toHaveText(`Contact ${marker} / ${card}`);
+});

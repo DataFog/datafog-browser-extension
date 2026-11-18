@@ -17,8 +17,22 @@ export const NO_CHAT_BOX_UPDATE =
   "datafog can't find the chat box, so this page isn't being checked. A datafog update is ready and may fix this: open datafog and choose Update now.";
 
 export type Request =
-  | { type: "scan"; seq: number; text: string; tabId?: number }
-  | { type: "redact"; text: string }
+  | {
+      type: "scan";
+      seq: number;
+      text: string;
+      tabId?: number;
+      keep?: KeepPlace[];
+    }
+  | {
+      type: "select";
+      seq: number;
+      text: string;
+      tabId?: number;
+      previewId: string;
+      keep: KeepPlace[];
+    }
+  | { type: "redact"; text: string; keep?: KeepPlace[] }
   | { type: "pseudonymize"; text: string; previewId?: string }
   | { type: "protection"; protected: boolean }
   | { type: "open-panel" }
@@ -53,6 +67,7 @@ export type PanelRequest =
   | { type: "vault-lock" }
   | { type: "device-forget" }
   | { type: "vault-delete" }
+  | { type: "forget-original"; marker: string }
   | { type: "review-approve" }
   | { type: "review-cancel" }
   /** Pseudonymize only the review's value at this index. */
@@ -131,7 +146,15 @@ export interface VaultRouting {
 export type VaultState = "none" | "locked" | "unlocked";
 
 /** One value a review would replace, shown only in the side panel. */
+export interface KeepPlace {
+  start: number;
+  end: number;
+}
+
 export interface ReviewItem {
+  start?: number;
+  end?: number;
+  kept?: boolean;
   entityType: string;
   original: string;
   marker: string;

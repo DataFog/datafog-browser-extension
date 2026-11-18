@@ -133,6 +133,8 @@ function makeOwner(): FakeOwner {
     failNextSave: null,
     prepare: (text, findings, operationId) =>
       wrap(workspace.prepare(text, findings, operationId)),
+    prepareForget: (codes, operationId) =>
+      wrap(workspace.prepareForget(codes, operationId)),
     prepareReview: (inputs, operationId) =>
       wrap(workspace.prepareReview(inputs, operationId)),
     preparePolicyChanges: (edits, operationId) =>
@@ -323,7 +325,13 @@ test("gives a value the same marker the next time", async () => {
   await host.pseudonymize("Write to jane@example.com", 7, DEFAULT_SETTINGS);
 
   expect(host.status(routing).review).toEqual([
-    { entityType: "EMAIL", original: "jane@example.com", marker: first },
+    {
+      entityType: "EMAIL",
+      original: "jane@example.com",
+      marker: first,
+      start: 9,
+      end: 25,
+    },
   ]);
 });
 
@@ -801,4 +809,148 @@ test("changed policy or draft cannot consume an old preview reservation", async 
     ),
   ).rejects.toMatchObject({ code: "preview_expired" });
   expect(host.restore(preview.findings[0].marker).restored).toBe(0);
+});
+
+test("selection keeps only one repeated occurrence and commits refreshed exact tokens", async () => {
+  await host.create("correct horse", null, true);
+  const text = "🙂 jane@example.com and jane@example.com";
+  const first = await host.preview(text, DEFAULT_SETTINGS, 7, 1, "policy");
+  const place = {
+    start: first.findings[0].start!,
+    end: first.findings[0].end!,
+  };
+  const selected = await host.select(
+    text,
+    DEFAULT_SETTINGS,
+    7,
+    first.previewId!,
+    "policy",
+    [place],
+  );
+  expect(selected.previewId).not.toBe(first.previewId);
+  expect(selected.findings[0]).toMatchObject({ kept: true, marker: "" });
+  expect(selected.findings[1].marker).toMatch(/^\[\[EMAIL_/);
+  await expect(
+    host.replace(text, 7, DEFAULT_SETTINGS, first.previewId, "policy"),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+  const saved = await host.replace(
+    text,
+    7,
+    DEFAULT_SETTINGS,
+    selected.previewId,
+    "policy",
+  );
+  expect(saved.text).toBe(
+    "🙂 jane@example.com and " + selected.findings[1].marker,
+  );
+  expect(saved.edits).toHaveLength(1);
+  expect(host.restore(saved.text).text).toBe(text);
+});
+
+test("all-kept reservations cannot save and can select again after a rescan", async () => {
+  await host.create("correct horse", null, true);
+  const first = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  const keep = first.findings.map((item) => ({
+    start: item.start!,
+    end: item.end!,
+  }));
+  const none = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    first.previewId!,
+    "policy",
+    keep,
+  );
+  await expect(
+    host.replace(TEXT, 7, DEFAULT_SETTINGS, none.previewId, "policy"),
+  ).rejects.toMatchObject({ code: "nothing_found" });
+  const rescanned = await host.preview(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    2,
+    "policy",
+    keep,
+  );
+  expect(rescanned.findings.every((item) => item.kept)).toBe(true);
+  const one = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    rescanned.previewId!,
+    "policy",
+    [keep[1]],
+  );
+  const saved = await host.replace(
+    TEXT,
+    7,
+    DEFAULT_SETTINGS,
+    one.previewId,
+    "policy",
+  );
+  expect(saved.edits).toHaveLength(1);
+  expect(saved.text).toContain(one.findings[0].marker);
+});
+
+test("selection rejects stale draft policy tab and malformed occurrences before discarding valid plan", async () => {
+  await host.create("correct horse", null, true);
+  const first = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  for (const [text, tab, policy] of [
+    [TEXT + "x", 7, "policy"],
+    [TEXT, 8, "policy"],
+    [TEXT, 7, "new"],
+  ] as const)
+    await expect(
+      host.select(text, DEFAULT_SETTINGS, tab, first.previewId!, policy, []),
+    ).rejects.toMatchObject({ code: "preview_expired" });
+  await expect(
+    host.select(TEXT, DEFAULT_SETTINGS, 7, first.previewId!, "policy", [
+      { start: 0, end: 1 },
+    ]),
+  ).rejects.toMatchObject({ code: "selection_invalid" });
+  const selected = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    first.previewId!,
+    "policy",
+    [],
+  );
+  await host.preview(TEXT, DEFAULT_SETTINGS, 8, 2, "policy");
+  await expect(
+    host.select(TEXT, DEFAULT_SETTINGS, 7, selected.previewId, "policy", []),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+});
+
+test("forget retires only the confirmed marker and rejects malformed markers", async () => {
+  await host.create("correct horse", null, true);
+  const saved = await host.replace(TEXT, 7, DEFAULT_SETTINGS);
+  const markers = saved.text.match(/\[\[[A-Z0-9_]+\]\]/g)!;
+  await expect(host.forget("prefix" + markers[0])).rejects.toMatchObject({
+    code: "invalid_marker",
+  });
+  await host.forget(markers[0]);
+  expect(host.restore(markers[0]).restored).toBe(0);
+  expect(host.restore(markers[1]).restored).toBe(1);
+});
+
+test("uncertain forget reconciles before access and never reports an unconfirmed retirement", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+  await host.automaticAccess(routing);
+  const saved = await host.replace(TEXT, 7, DEFAULT_SETTINGS);
+  const marker = saved.text.match(/\[\[[A-Z0-9_]+\]\]/g)![0];
+  owner.failNextSave = Object.assign(new Error(), {
+    code: "OutcomeUnknown",
+    requestId: new Uint8Array([4]),
+  });
+  await expect(host.forget(marker)).rejects.toMatchObject({
+    code: "OutcomeUnknown",
+  });
+  expect(host.status(routing).commit).toBe("uncertain");
+  await host.automaticAccess(routing);
+  expect(vault.reconcileLatest).toHaveBeenCalledWith(new Uint8Array([4]));
+  expect(host.restore(marker).restored).toBe(1);
+  await host.forget(marker);
+  expect(host.restore(marker).restored).toBe(0);
 });

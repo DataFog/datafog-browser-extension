@@ -5,10 +5,12 @@ datafog checks what you type into ChatGPT, Claude, Gemini, Grok and DeepSeek for
 ## Features
 
 - **Checks as you type**, and right away when you paste. Hover or focus the circle for checking status; click to preview findings and placeholders.
+- **Choose findings** in the popup: uncheck values to keep them as typed. Replace and Redact affect the chosen findings; Always allow applies only to skipped values.
 - **Replace** saves originals to your encrypted vault before inserting markers such as `[[EMAIL_7KQ4ZM]]`. Progress, errors, Undo and Redo stay in the draft popup.
 - **More → Redact** replaces values with labels such as `[EMAIL]` without saving reversible mappings. Local Undo remains available until you edit the draft.
-- **Keep as is** leaves only this draft revision unchanged. **Always allow** saves a lasting exception, and **Always flag** takes precedence.
+- **Keep as is** leaves only this draft revision unchanged. **Always allow skipped** saves lasting exceptions for skipped values, and **Always flag** takes precedence.
 - **Show originals / Hide originals** toggles known markers for one assistant answer. Original values appear in extension-owned local display; the provider's underlying text remains markers.
+- **Manage saved originals** from each row’s menu: copy the original, always allow its typed value, or confirm Forget to retire its token. Forgotten tokens remain in chats but no longer restore.
 - **The vault** uses FogVault to store original mappings, rules and checking preferences encrypted on this device with automatic local-key access. There is no password entry or recovery password; losing the local key makes saved originals unrecoverable.
 - **Choose what to check for**, grouped by how accurately each type is found, and which sites to check in the settings. Changes save as you make them.
 - **Hold sends** (optional, off by default): pauses a message with sensitive data once, with **Send anyway**.

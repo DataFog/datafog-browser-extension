@@ -12,6 +12,8 @@ const state = vi.hoisted(() => ({
   access: vi.fn<() => Promise<void>>(),
   create: vi.fn(),
   replace: vi.fn(async () => ({ text: "[[EMAIL_A]]", edits: [], saved: true })),
+  select: vi.fn(async () => ({ findings: [], previewId: "selected" })),
+  forget: vi.fn(async () => {}),
   preview: vi.fn(async () => ({
     findings: [
       { entityType: "EMAIL", original: "a@b.co", marker: "[[EMAIL_A]]" },
@@ -48,6 +50,8 @@ vi.mock("./vault", () => ({
     create = state.create;
     replace = state.replace;
     preview = state.preview;
+    select = state.select;
+    forget = state.forget;
     status() {
       return { state: "locked", notSensitive: [] };
     }
@@ -264,4 +268,62 @@ test("an ambiguously saved policy revokes its old cache until durable readback r
   });
 
   expect(state.write).toHaveBeenCalledTimes(2); // Reconciliation reads, never overwrites.
+});
+
+test("selection uses the committed policy and keeps occurrence redaction local", async () => {
+  const keep = [{ start: 0, end: 6 }];
+  const response = await forward({
+    type: "select",
+    seq: 2,
+    text: "a@b.co",
+    tabId: 7,
+    previewId: "old",
+    keep,
+  });
+  expect(response).toMatchObject({
+    result: { previewId: "selected", seq: 2, counts: { EMAIL: 1 } },
+  });
+  expect(state.select).toHaveBeenCalledWith(
+    "a@b.co",
+    expect.any(Object),
+    7,
+    "old",
+    expect.any(String),
+    keep,
+  );
+  await forward({ type: "redact", text: "a@b.co", keep });
+  expect(redact).toHaveBeenCalledWith(
+    "a@b.co",
+    expect.any(Object),
+    expect.any(Function),
+    keep,
+  );
+});
+
+test("forget responds only after durable host retirement and exposes failures", async () => {
+  let finish!: () => void;
+  state.forget.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const respond = vi.fn();
+  const pending = forward({
+    type: "forget-original",
+    marker: "[[EMAIL_123456]]",
+  }).then(respond);
+  await vi.waitFor(() => expect(state.forget).toHaveBeenCalled());
+  expect(respond).not.toHaveBeenCalled();
+  finish();
+  await pending;
+  expect(respond).toHaveBeenCalledWith(
+    expect.objectContaining({ result: { saved: true } }),
+  );
+  state.forget.mockRejectedValueOnce(
+    Object.assign(new Error(), { code: "OutcomeUnknown" }),
+  );
+  expect(
+    await forward({ type: "forget-original", marker: "[[EMAIL_123456]]" }),
+  ).toEqual({ error: "OutcomeUnknown" });
 });

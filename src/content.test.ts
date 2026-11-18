@@ -1424,3 +1424,135 @@ test("Replace sends the accepted scan reservation and refreshes an expired previ
   await press("pseudonymize");
   expect(box.value).toBe("[[EMAIL_FRESH]]");
 });
+
+const CHOOSABLE = [
+  {
+    entityType: "EMAIL",
+    original: "jane@example.com",
+    marker: "[[EMAIL_A]]",
+    start: 0,
+    end: 16,
+  },
+  {
+    entityType: "EMAIL",
+    original: "john@example.com",
+    marker: "[[EMAIL_B]]",
+    start: 17,
+    end: 33,
+  },
+];
+function choices(): NodeListOf<HTMLButtonElement> {
+  return document
+    .querySelector("datafog-badge")!
+    .shadowRoot!.querySelectorAll<HTMLButtonElement>(".choose");
+}
+function selectionReply(request: Request): unknown {
+  if (request.type !== "scan" && request.type !== "select") return {};
+  return {
+    seq: request.seq,
+    enabled: true,
+    counts: { EMAIL: 2 },
+    blockSends: true,
+    previewId: request.type === "select" ? "chosen" : "initial",
+    findings: CHOOSABLE.map((item) => ({
+      ...item,
+      kept: request.keep?.some((place) => place.start === item.start) ?? false,
+      marker: request.keep?.some((place) => place.start === item.start)
+        ? ""
+        : "[[EMAIL_NEW]]",
+    })),
+  };
+}
+test("selection shows exact refreshed tokens, preserves choices on recheck and resets on edit", async () => {
+  const box = await start(async (request) => selectionReply(request));
+  await type(box, "jane@example.com john@example.com");
+  choices()[1].focus();
+  choices()[1].click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(choices()[1].getAttribute("aria-checked")).toBe("false");
+  expect(panelButton("pseudonymize").textContent).toBe("Replace 1");
+  expect(
+    document.querySelector("datafog-badge")!.shadowRoot!.activeElement,
+  ).toBe(choices()[1]);
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(choices()[1].getAttribute("aria-checked")).toBe("false");
+  await type(box, "jane@example.com john@example.com!");
+  expect(choices()[1].getAttribute("aria-checked")).toBe("true");
+});
+test("Redact only sends kept occurrence ranges and allow only saves skipped typed values", async () => {
+  const seen: Request[] = [];
+  const box = await start(async (request) => {
+    seen.push(request);
+    if (request.type === "redact") return { error: "test_failure" };
+    return selectionReply(request);
+  });
+  await type(box, "jane@example.com john@example.com");
+  choices()[1].click();
+  await vi.advanceTimersByTimeAsync(0);
+  await press("redact");
+  expect(seen).toContainEqual({
+    type: "redact",
+    text: "jane@example.com john@example.com",
+    keep: [{ start: 17, end: 33 }],
+  });
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  root.querySelector<HTMLButtonElement>(".allow")!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(seen.filter((request) => request.type === "always-allow")).toEqual([
+    { type: "always-allow", entityType: "EMAIL", value: "john@example.com" },
+  ]);
+});
+test("late selection response cannot restore a stale draft's checkbox choices or preview", async () => {
+  let resolve!: (value: unknown) => void;
+  const box = await start(async (request) =>
+    request.type === "select"
+      ? new Promise((done) => {
+          resolve = done;
+        })
+      : selectionReply(request),
+  );
+  await type(box, "jane@example.com john@example.com");
+  choices()[1].click();
+  await type(box, "new draft");
+  resolve({
+    seq: 0,
+    enabled: true,
+    counts: { EMAIL: 2 },
+    findings: CHOOSABLE.map((item) => ({ ...item, kept: true })),
+    previewId: "stale",
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("new draft");
+  expect(choices()[0].getAttribute("aria-checked")).toBe("true");
+  expect(panelButton("pseudonymize").textContent).toBe("Replace");
+});
+
+test("failed selection refreshes intended skips and disables both transforms when all are skipped", async () => {
+  let fail = true;
+  const box = await start(async (request) => {
+    if (request.type === "select" && fail) {
+      fail = false;
+      return { error: "preview_expired" };
+    }
+    return selectionReply(request);
+  });
+  await type(box, "jane@example.com john@example.com");
+  choices()[0].click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(choices()[0].getAttribute("aria-checked")).toBe("false");
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector(".progress")!.textContent,
+  ).toContain("preview was refreshed");
+  choices()[1].click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(panelButton("pseudonymize").disabled).toBe(true);
+  expect(panelButton("redact").disabled).toBe(true);
+  expect(panelButton("pseudonymize").textContent).toBe("Replace 0");
+  choices()[0].click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(panelButton("pseudonymize").disabled).toBe(false);
+  expect(panelButton("pseudonymize").textContent).toBe("Replace 1");
+});

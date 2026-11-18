@@ -357,6 +357,73 @@
       #lookup-result {
         margin: 0 0 8px;
       }
+      .original-row {
+        position: relative;
+        flex-wrap: wrap;
+      }
+      .forget-confirm,
+      .original-status {
+        flex-basis: 100%;
+      }
+      .original-menu {
+        position: absolute;
+        top: 36px;
+        right: 0;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        min-width: 208px;
+        padding: 4px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+      }
+      .original-menu button {
+        justify-content: flex-start;
+        gap: 6px;
+        border: 0;
+        border-radius: 8px;
+        min-height: 32px;
+        padding: 6px 8px;
+        font: inherit;
+      }
+      .original-menu button svg {
+        flex: none;
+        color: var(--muted);
+      }
+      .original-menu [data-action="forget"],
+      .original-menu [data-action="forget"] svg {
+        color: var(--error);
+      }
+      .forget-confirm {
+        text-align: right;
+        padding: 4px 0 12px;
+      }
+      .forget-confirm p {
+        text-align: left;
+        margin: 4px 0 8px;
+        color: var(--error);
+        line-height: 1.5;
+      }
+      .forget-confirm button {
+        font: inherit;
+        padding: 0 14px;
+      }
+      .forget-confirm [data-action="cancel-forget"] {
+        border-color: transparent;
+      }
+      .forget-confirm [data-action="confirm-forget"] {
+        background: var(--error);
+        border-color: var(--error);
+        color: #fff;
+      }
+      .original-status {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .original-status:empty {
+        display: none;
+      }
     </style>
   </head>
   <body>

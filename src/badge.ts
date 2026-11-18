@@ -134,12 +134,15 @@ const STYLE = `
   .panel ul { margin: 0 0 8px; padding: 0; list-style: none; }
   .counts li { color: var(--df-muted); font-size: 12px; }
   .preview li {
-    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px;
+    display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 2px 8px;
     align-items: center; padding: 6px 0; border-top: 1px solid var(--df-line);
   }
+  .preview .choose { grid-column:1; grid-row:1 / 3; width:24px; height:24px; padding:3px; border:1px solid var(--df-line); border-radius:999px; background:transparent; color:var(--df-accent-text); cursor:pointer; }
+  .preview .choose[aria-checked="false"] svg { visibility:hidden; }
+  .preview .choose:focus-visible { outline:2px solid var(--df-focus); outline-offset:2px; }
   .preview li:first-child { border-top: 0; }
   .preview .type {
-    grid-column: 1 / -1; color: var(--df-muted);
+    grid-column: 2 / -1; color: var(--df-muted);
     font: 10px/1.2 var(--df-mono); text-transform: uppercase; letter-spacing: 0.08em;
   }
   .preview .original {
@@ -147,6 +150,8 @@ const STYLE = `
     color: var(--df-muted);
   }
   .preview .to { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .preview .kept-token { padding: 2px 8px; border: 1px dashed var(--df-line); border-radius: 999px; color: var(--df-muted); font: 11px/1.4 system-ui, sans-serif; }
+  .preview [data-kept="true"] .original, .preview [data-kept="true"] .type { opacity: 0.65; }
   .preview .to svg { flex: none; color: var(--df-muted); }
   .token {
     display: inline-block; max-width: 150px; overflow: hidden;
@@ -290,6 +295,8 @@ export class Badge {
   private readonly moreButton: HTMLButtonElement;
   private readonly previewList: HTMLUListElement;
   private readonly progress: HTMLParagraphElement;
+  private choiceFocus = -1;
+  private readonly choose: ((index: number) => void) | undefined;
 
   /**
    * Build the badge and wire its buttons.
@@ -301,9 +308,11 @@ export class Badge {
       sidebar?: () => void;
       allow?: () => void;
       retry?: () => void;
+      choose?: (index: number) => void;
     },
     site: Site = siteFor(location.hostname),
   ) {
+    this.choose = actions.choose;
     this.shape = site.badge;
     const root = this.host.attachShadow({ mode: "closed" });
     followTheme(this.host);
@@ -636,13 +645,25 @@ export class Badge {
   }
 
   /** Values are confined to the extension-owned popup and inserted as text. */
-  preview(findings: readonly { original: string; marker: string }[]): void {
+  preview(
+    findings: readonly {
+      original: string;
+      marker: string;
+      entityType?: string;
+      kept?: boolean;
+    }[],
+  ): void {
+    const focused = this.previewList.querySelector(":focus");
+    const focusIndex = Array.from(
+      this.previewList.querySelectorAll(".choose"),
+    ).indexOf(focused!);
     this.previewList.replaceChildren(
-      ...findings.map(({ original, marker }) => {
+      ...findings.map(({ original, marker, entityType, kept }, index) => {
         const row = document.createElement("li");
         const type = document.createElement("span");
         type.className = "type";
-        const entity = /^\[\[([A-Z_]+?)_[A-Z0-9]+\]\]$/.exec(marker)?.[1];
+        const entity =
+          entityType ?? /^\[\[([A-Z_]+?)_[A-Z0-9]+\]\]$/.exec(marker)?.[1];
         type.textContent = entity ? (LABELS[entity] ?? entity) : "";
         const value = document.createElement("span");
         value.className = "original";
@@ -658,12 +679,34 @@ export class Badge {
         token.title = marker;
         token.textContent = marker;
         to.append(token);
-        row.append(...(entity ? [type] : []), value, to);
+        const check = document.createElement("button");
+        check.type = "button";
+        check.className = "choose";
+        check.setAttribute("role", "checkbox");
+        check.setAttribute("aria-label", `Replace ${original}`);
+        check.setAttribute("aria-checked", String(!kept));
+        check.innerHTML = icon("check", 14);
+        check.addEventListener("click", () => {
+          this.choiceFocus = index;
+          this.choose?.(index);
+        });
+        row.dataset.kept = String(Boolean(kept));
+        if (kept) {
+          const keptToken = document.createElement("span");
+          keptToken.className = "kept-token";
+          keptToken.textContent = "kept as typed";
+          to.replaceChildren(keptToken);
+        }
+        row.append(check, ...(entity ? [type] : []), value, to);
         return row;
       }),
     );
-    this.panel.querySelector<HTMLButtonElement>(".allow")!.disabled =
-      !findings.length || this.busy;
+    this.showActions();
+    if (focusIndex >= 0)
+      this.previewList
+        .querySelectorAll<HTMLButtonElement>(".choose")
+        .item(focusIndex)
+        ?.focus();
     this.syncLists();
     this.place();
   }
@@ -733,19 +776,37 @@ export class Badge {
     this.buttons.redact.hidden = !found;
     this.buttons.pseudonymize.hidden = !found;
     this.buttons.dismiss.hidden = !found;
-    this.panel.querySelector<HTMLButtonElement>(".allow")!.disabled =
-      this.busy ||
-      !found ||
-      rechecking ||
-      this.previewList.childElementCount === 0;
+    const skipped =
+      this.previewList.querySelectorAll('[data-kept="true"]').length;
+    const chosen = this.previewList.childElementCount - skipped;
+    const allow = this.panel.querySelector<HTMLButtonElement>(".allow")!;
+    allow.innerHTML = `${icon("allow")}Always allow skipped (${skipped})`;
+    allow.disabled = this.busy || !found || rechecking || skipped === 0;
+    this.buttons.pseudonymize.textContent = skipped
+      ? `Replace ${chosen}`
+      : "Replace";
+    for (const check of this.previewList.querySelectorAll<HTMLButtonElement>(
+      ".choose",
+    ))
+      check.disabled = this.busy || rechecking;
     this.actions.hidden = false;
     this.moreButton.hidden = false;
     for (const action of ["redact", "pseudonymize", "dismiss"] as const)
-      this.buttons[action].disabled = this.busy || rechecking;
+      this.buttons[action].disabled =
+        this.busy ||
+        rechecking ||
+        (action !== "dismiss" && skipped > 0 && chosen === 0);
     this.buttons.undo.hidden = !this.history.undo;
     this.buttons.redo.hidden = !this.history.redo;
     this.buttons.undo.disabled = this.busy || !this.history.undo;
     this.buttons.redo.disabled = this.busy || !this.history.redo;
+    if (!this.busy && !rechecking && this.choiceFocus >= 0) {
+      this.previewList
+        .querySelectorAll<HTMLButtonElement>(".choose")
+        .item(this.choiceFocus)
+        ?.focus();
+      this.choiceFocus = -1;
+    }
   }
 
   /**

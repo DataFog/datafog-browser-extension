@@ -336,6 +336,13 @@ async function handlePanel(request: PanelRequest): Promise<unknown> {
       await recheckTabs(policyVersion);
     }
   }
+  if (request.type === "forget-original") {
+    try {
+      return await forwardVault(request);
+    } finally {
+      await recheckTabs();
+    }
+  }
   if (request.type === "vault-delete") {
     await chrome.storage.local.set({ vaultDeleting: true });
     const status = await forwardVault<VaultStatus>(request);
@@ -374,6 +381,7 @@ const PANEL_REQUESTS = new Set<string>([
   "vault-create",
   "vault-lock",
   "vault-delete",
+  "forget-original",
   "device-forget",
   "review-approve",
   "review-cancel",
@@ -483,7 +491,8 @@ async function handle(
     };
   }
 
-  if (request.type === "scan") return forwardVault({ ...request, tabId }, host);
+  if (request.type === "scan" || request.type === "select")
+    return forwardVault({ ...request, tabId }, host);
   return forwardVault(request, host);
 }
 

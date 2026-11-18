@@ -14,7 +14,7 @@ import {
   type WorkspaceFinding,
 } from "@datafog/wasm";
 
-import type { RedactResponse, ValueChoice } from "./messages";
+import type { RedactResponse, ValueChoice, KeepPlace } from "./messages";
 import { MODEL_ENTITIES, type Settings } from "./settings";
 
 /**
@@ -230,23 +230,27 @@ export async function redact(
   text: string,
   settings: Settings,
   scanner: Scanner,
+  keep: KeepPlace[] = [],
 ): Promise<RedactResponse> {
-  if (!text.trim() || !looksForAnything(settings)) {
-    return { text, edits: [] };
-  }
-  const found = outsidePlaceholders(
-    text,
-    await scanner(text, settings.entities, settings.denylist),
-  );
-  const result = transform(text, found, redactConfig(settings));
-  return {
-    text: result.text,
-    edits: result.transformations.map((item) => ({
+  const edits = (await replaceable(text, settings, scanner))
+    .filter(
+      (item) =>
+        !keep.some(
+          (place) =>
+            place.start === item.sourceUtf16Range.start &&
+            place.end === item.sourceUtf16Range.end,
+        ),
+    )
+    .map((item) => ({
       start: item.sourceUtf16Range.start,
       end: item.sourceUtf16Range.end,
       replacement: item.replacement,
-    })),
-  };
+    }));
+  let result = text;
+  for (const edit of edits.toSorted((a, b) => b.start - a.start))
+    result =
+      result.slice(0, edit.start) + edit.replacement + result.slice(edit.end);
+  return { text: result, edits };
 }
 
 /**

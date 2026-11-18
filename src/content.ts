@@ -10,6 +10,8 @@ import { Badge } from "./badge";
 import {
   type BlockSendsResponse,
   type ErrorResponse,
+  type KeepPlace,
+  type ReviewItem,
   type RedactResponse,
   type Request,
   type ScanResponse,
@@ -85,7 +87,9 @@ type ActionState =
   | { kind: "superseded"; operationId: number };
 let actionState: ActionState = { kind: "idle" };
 let applying = false;
-let findings: { entityType: string; original: string; marker: string }[] = [];
+let findings: ReviewItem[] = [];
+let kept: KeepPlace[] = [];
+let choicesText = "";
 let previewId: string | undefined;
 /** Whether checking is on. Assumed on if the setting can't be read, so a scan reports why. */
 let enabled = true;
@@ -132,6 +136,7 @@ const badge = new Badge({
   send: sendAnyway,
   sidebar: () => void togglePanel(),
   allow: () => void alwaysAllow(),
+  choose: (index) => void chooseFinding(index),
   retry: () => void refreshPolicy(),
 });
 
@@ -248,6 +253,10 @@ async function scanNow(force = false): Promise<void> {
   const text = readText(composer);
   if (!force && scanState.kind !== "dirty" && text === lastScanned) return;
   lastScanned = text;
+  if (choicesText !== text) {
+    kept = [];
+    choicesText = text;
+  }
   // Anything typed since means the redaction no longer lines up with the text
   badge.offer({
     undo: sameText(text, redaction?.after),
@@ -264,7 +273,12 @@ async function scanNow(force = false): Promise<void> {
   const mine = ++seq;
   scanState = { kind: "checking", text, seq: mine };
   badge.show({ kind: "checking" });
-  const response = await ask<ScanResponse>({ type: "scan", seq: mine, text });
+  const response = await ask<ScanResponse>({
+    type: "scan",
+    seq: mine,
+    text,
+    ...(kept.length ? { keep: kept } : {}),
+  });
   if (mine !== seq || composer === null || readText(composer) !== text) return;
   if ("error" in response) {
     badge.show({ kind: "failed", code: response.error });
@@ -659,8 +673,75 @@ function updateAction(state: ActionState): void {
 }
 
 /** Transform a captured draft, applying only after a confirmed response. */
+async function chooseFinding(index: number): Promise<void> {
+  if (
+    !composer ||
+    actionState.kind === "working" ||
+    scanState.kind !== "checked" ||
+    !previewId
+  )
+    return;
+  const finding = findings[index];
+  if (finding?.start === undefined || finding.end === undefined) return;
+  const text = readText(composer);
+  const capturedRevision = revision;
+  const mine = ++operationId;
+  const scan = ++seq;
+  const next = kept.some(
+    (place) => place.start === finding.start && place.end === finding.end,
+  )
+    ? kept.filter(
+        (place) => place.start !== finding.start || place.end !== finding.end,
+      )
+    : [...kept, { start: finding.start, end: finding.end }];
+  const reservation = previewId;
+  previewId = undefined;
+  updateAction({
+    kind: "working",
+    message: "Updating selected previews…",
+    operationId: mine,
+    revision: capturedRevision,
+  });
+  const response = await ask<ScanResponse>({
+    type: "select",
+    text,
+    seq: scan,
+    previewId: reservation,
+    keep: next,
+  });
+  if (
+    mine !== operationId ||
+    scan !== seq ||
+    capturedRevision !== revision ||
+    !composer ||
+    readText(composer) !== text
+  )
+    return;
+  if (
+    "error" in response ||
+    (expectedPolicyVersion && response.policyVersion !== expectedPolicyVersion)
+  ) {
+    // Keep the user's intent, but never permit Replace with an unseen token.
+    kept = next;
+    await scanNow(true);
+    if (mine === operationId && revision === capturedRevision)
+      updateAction({
+        kind: "failed",
+        message:
+          "Selection preview was refreshed. Check the selected values before replacing.",
+      });
+    return;
+  }
+  kept = next;
+  findings = response.findings ?? [];
+  previewId = response.previewId;
+  badge.preview(findings);
+  updateAction({ kind: "idle" });
+}
+
 async function transform(kind: "redact" | "pseudonymize"): Promise<void> {
   if (!composer || actionState.kind === "working") return;
+  if (findings.length > 0 && findings.every((item) => item.kept)) return;
   const element = composer;
   const text = readText(element);
   const capturedRevision = revision;
@@ -676,7 +757,11 @@ async function transform(kind: "redact" | "pseudonymize"): Promise<void> {
   >(
     kind === "pseudonymize" && previewId
       ? { type: kind, text, previewId }
-      : { type: kind, text },
+      : {
+          type: kind,
+          text,
+          ...(kind === "redact" && kept.length ? { keep: kept } : {}),
+        },
   );
   if (
     mine !== operationId ||
@@ -766,7 +851,8 @@ async function pseudonymizeComposer(): Promise<void> {
 
 async function alwaysAllow(): Promise<void> {
   if (actionState.kind === "working" || !findings.length) return;
-  const captured = [...findings];
+  const captured = findings.filter((item) => item.kept);
+  if (!captured.length) return;
   const mine = ++operationId;
   updateAction({
     kind: "working",

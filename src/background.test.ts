@@ -760,3 +760,47 @@ test("the welcome page, open in a tab, may use the vault", async () => {
     state: "unlocked",
   });
 });
+
+test("forget is panel-only and refreshes revealed originals after success or uncertain failure", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const request = {
+    type: "forget-original",
+    marker: "[[EMAIL_123456]]",
+  } as const;
+  expect(await send(request)).toEqual({ error: "not_allowed" });
+  expect(sendMessage).not.toHaveBeenCalled();
+  queryTabs.mockResolvedValue([{ id: 7 }, { id: 8 }]);
+  sendMessage.mockResolvedValueOnce({ result: { saved: true } });
+  expect(await send(request, PANEL)).toEqual({ saved: true });
+  expect(tabMessage).toHaveBeenCalledWith(7, { type: "recheck" });
+  expect(tabMessage).toHaveBeenCalledWith(8, { type: "recheck" });
+  tabMessage.mockClear();
+  sendMessage.mockResolvedValueOnce({ error: "OutcomeUnknown" });
+  expect(await send(request, PANEL)).toEqual({ error: "OutcomeUnknown" });
+  expect(tabMessage).toHaveBeenCalledWith(7, { type: "recheck" });
+  warn.mockRestore();
+});
+
+test("selection uses sender tab rather than a caller supplied reservation tab", async () => {
+  sendMessage.mockResolvedValueOnce({ seq: 2 });
+  await send({
+    type: "select",
+    text: "a@b.co",
+    seq: 2,
+    tabId: 99,
+    previewId: "reserved",
+    keep: [],
+  });
+  expect(sendMessage).toHaveBeenCalledWith(
+    expect.objectContaining({
+      request: {
+        type: "select",
+        text: "a@b.co",
+        seq: 2,
+        tabId: 7,
+        previewId: "reserved",
+        keep: [],
+      },
+    }),
+  );
+});

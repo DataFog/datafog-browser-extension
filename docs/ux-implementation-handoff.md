@@ -9,7 +9,7 @@
 
 ## Implemented behavior
 
-The circle previews the current draft's findings and markers. The displayed concrete marker comes from the exact retained Core preparation, identified by a preview token. Core supports one live preparation per workspace: another tab or a policy change can expire that token. Replace then preserves the draft, refreshes the preview and requires an intentional retry; it never silently inserts a different code. Replace commits encrypted originals before applying placeholders; progress, failures and valid Undo/Redo stay in the popup. Keep as is belongs to the unchanged draft. More contains Redact, lasting Always allow and sidebar access. The floating page tab is removed.
+The circle previews the current draft's findings and markers. The displayed concrete marker comes from the exact retained Core preparation, identified by a preview token. Core supports one live preparation per workspace: another tab or a policy change can expire that token. Replace then preserves the draft, refreshes the preview and requires an intentional retry; it never silently inserts a different code. Replace commits encrypted originals before applying placeholders; progress, failures and valid Undo/Redo stay in the popup. Keep as is belongs to the unchanged draft. More contains Redact, lasting Always allow skipped and sidebar access. The floating page tab is removed.
 
 Answers independently toggle known originals in extension-owned display, including repeated and adjacent markers. Provider text stays unchanged. Unknown markers remain markers and receive a partial-result notice when mixed with known markers. The sidebar has exactly two tabs, Originals and Rules. Its gear opens settings, which owns checking preferences, appearance and vault deletion.
 
@@ -32,6 +32,16 @@ See [ADR 002](adr/002-automatic-fogvault-ux.md) for superseded decisions, matchi
 | Rules/preferences                | `PolicyState`, verified ciphertext writes and committed policy token                          |
 | Deletion/recovery                | `DeletionState` in `vault.ts`, durable deletion metadata and settings confirmation state      |
 
+## Revision 7: choosing findings and saved-original actions
+
+The popup now starts with each occurrence chosen. Unchecking keeps that occurrence as typed, including when the same original appears more than once. Selection is identified by UTF-16 source ranges and guarded by draft, tab, preview and committed policy identity. Replace uses the exact newly prepared markers; Redact respects the same kept occurrences. With nothing chosen, neither operation is available. Same-draft rescans retain choices, edits reset them, and Always allow applies only to skipped values.
+
+Saved-original rows offer Copy original, Always allow this value and confirmed Forget. Typed allowances show an Allowed chip. Forget uses Core's existing token-retirement API and durable commit/reconciliation boundary, removes the row and hides already-shown originals without changing provider messages. Cancellation and confirmed failures preserve mappings; uncertain writes are reconciled. No cryptography, database format or detector policy was changed.
+
+Validation: **331 unit tests across 22 files, 69 controlled Chrome tests, and all 16 authenticated ChatGPT tests passed**, with zero skips or flaky live results. The existing signed-in browser was used; no new authentication flow was needed. Full log: `.playwright/exports/revision7-final-all-checks.log`; preserved live receipt: `.playwright/exports/revision7-live-receipt.json` and `.txt`, run `4b9b6bee-3db6-4ccf-8141-d791ecbd74ed`. The final menu/kept-chip styling was additionally checked with the affected browser journeys and screenshots. A follow-up test initially clicked before an edited draft finished rechecking: the retained count and Replace label were not readiness signals. The trace showed Replace correctly disabled. The test now explicitly waits for actionable fresh results without dropping any assertion; all three affected journeys passed three consecutive repetitions (9/9). Failure output: `.playwright/exports/revision7-final-style-validation.log`; verified reruns: `.playwright/exports/revision7-style-journeys-verified.log`. Backend tests cover stale selection, repeated Unicode occurrences, all-kept reservations and uncertain Forget reconciliation; UI tests cover late selection responses, same-draft rescan retention, copy failure and pending/failed row actions.
+
+The disposable headed review is `.playwright/revision7-review.ts`, profile `/var/folders/kt/xxfb4y954tbfw5mpmgm4ybq00000gn/T/datafog-revision7-review-HlkVuO` (extension `bhejppobjnbdodobnbbgdpblilpmmojg`). Screenshots `.playwright/exports/revision7-choose-skip.png`, `revision7-original-menu.png` and `revision7-forget-confirm.png` were visually checked against the supplied references. The fixture sent no messages. The authenticated tests used synthetic temporary chats and removed their separately owned extension copies afterward; the existing installation and vault were preserved.
+
 ## Revision validation evidence
 
 The exact binary patch in `datafog-ux-revision.zip` passed `git apply --check --binary` before application. No hand merge was needed. Dependencies were installed with `npm ci` on Node `24.18.0`; audit reported zero vulnerabilities.
@@ -49,7 +59,7 @@ The revision notice-shipping gate passed formatting, lint, typecheck, build, **2
 
 Final full-gate evidence is `.playwright/exports/ux-revision-final-validation.log`. The package is `release/datafog-1.0.0.zip`; packaging output is `.playwright/exports/ux-revision-package.log`.
 
-Welcome progression (`WelcomeStep`) and content-copy lifecycle (`single.ts`) extend the ten behavior owners above to twelve.
+Welcome progression (`WelcomeStep`), content-copy lifecycle (`single.ts`), draft selection and saved-original row actions extend the ten behavior owners above to fourteen.
 
 ## Existing-browser validation and repaired failures
 

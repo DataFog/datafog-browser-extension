@@ -76,6 +76,7 @@ test("Always allow is committed and rechecks the unchanged draft across restart"
   await chat.locator("#prompt-textarea").fill(EMAIL);
   await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
   await badge.click(".dot");
+  await badge.click('.choose[aria-label="Replace jane@example.com"]');
   await badge.click(".more-toggle");
   await badge.click(".allow");
   await expect
@@ -246,4 +247,133 @@ test("another tab expiring a preview preserves the first draft until its refresh
   await expect(firstEditor).toHaveText(refreshedMarker);
   await expect(chat.locator("#sent-count")).toHaveText("0");
   await expect(other.locator("#sent-count")).toHaveText("0");
+});
+
+test("finding choices independently control repeated values for Replace and Redact", async ({
+  chat,
+  badge,
+}) => {
+  const editor = chat.locator("#prompt-textarea");
+  const source = `${EMAIL} / ${EMAIL}`;
+  await editor.fill(source);
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("2");
+  await badge.click(".dot");
+  await badge.click(".preview li:first-child .choose");
+  await expect
+    .poll(
+      async () =>
+        (await badge.state(".preview li:nth-child(2) .choose")).disabled,
+    )
+    .toBe(false);
+  await badge.click(".preview li:nth-child(2) .choose");
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).disabled)
+    .toBe(true);
+  await badge.click(".more-toggle");
+  expect((await badge.state(".redact")).disabled).toBe(true);
+  await badge.click(".more-toggle");
+  await expect
+    .poll(
+      async () =>
+        (await badge.state(".preview li:nth-child(2) .choose")).disabled,
+    )
+    .toBe(false);
+  await badge.click(".preview li:nth-child(2) .choose");
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).text)
+    .toBe("Replace 1");
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).disabled)
+    .toBe(false);
+  const marker = (await badge.state(".preview")).text.match(
+    /\[\[EMAIL_[A-Z0-9]+\]\]/,
+  )![0];
+  await badge.click(".pseudonymize");
+  await expect(editor).toHaveText(`${EMAIL} / ${marker}`);
+  await badge.click(".undo");
+  await expect(editor).toHaveText(source);
+  await editor.fill(`Edited ${source}`);
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("2");
+  if (!(await badge.state(".panel")).visible) await badge.click(".dot");
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).text)
+    .toBe("Replace");
+  // Rechecks intentionally retain the old count; wait for actionable fresh results.
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).disabled)
+    .toBe(false);
+  await badge.click(".preview li:first-child .choose");
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).disabled)
+    .toBe(false);
+  await badge.click(".more-toggle");
+  await badge.click(".redact");
+  await expect(editor).toHaveText(`Edited ${EMAIL} / [EMAIL]`);
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+});
+
+test("saved-original menu allows a value and confirmed Forget retires it across answers and restart", async ({
+  extension,
+  chat,
+  badge,
+}) => {
+  const editor = chat.locator("#prompt-textarea");
+  await editor.fill(EMAIL);
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
+  await badge.click(".dot");
+  await badge.click(".pseudonymize");
+  await expect(editor).toHaveText(/\[\[EMAIL_[A-Z0-9]+\]\]/);
+  const marker = await editor.innerText();
+  await chat.evaluate((token) => {
+    const article = document.createElement("article");
+    article.id = "forget-answer";
+    const response = document.createElement("div");
+    response.dataset.messageAuthorRole = "assistant";
+    response.textContent = token;
+    const actions = document.createElement("div");
+    actions.dataset.actions = "";
+    const copy = document.createElement("button");
+    copy.textContent = "Copy";
+    actions.append(copy);
+    article.append(response, actions);
+    document.querySelector("#answers")!.append(article);
+  }, marker);
+  const answerControl = extension.shadow(
+    chat,
+    "#forget-answer datafog-answer-control",
+  );
+  await answerControl.click("button");
+  await expect(chat.locator("datafog-original")).toHaveCount(1);
+  const panel = await extension.panel();
+  const row = panel.locator("#originals li").filter({ hasText: marker });
+  await row.locator(".original-menu-toggle").click();
+  await row.locator('[data-action="forget"]').click();
+  await row.locator('[data-action="cancel-forget"]').click();
+  await expect(row).toContainText(EMAIL);
+  await expect(chat.locator("datafog-original")).toHaveCount(1);
+  await row.locator(".original-menu-toggle").click();
+  await row.locator('[data-action="allow"]').click();
+  await expect(row.locator(".allowed")).toHaveText("Allowed");
+  await row.locator(".original-menu-toggle").click();
+  await expect(row.locator('[data-action="allow"]')).toHaveCount(0);
+  await row.locator('[data-action="forget"]').click();
+  await row.locator('[data-action="confirm-forget"]').click();
+  await expect(row).toHaveCount(0);
+  await expect(chat.locator("datafog-original")).toHaveCount(0);
+  await expect(
+    chat.locator("#forget-answer [data-message-author-role=assistant]"),
+  ).toHaveText(marker);
+  await panel.locator("#lookup-marker").fill(marker);
+  await panel.locator("#lookup button").click();
+  await expect(panel.locator("#lookup-result")).toContainText(
+    "No original saved",
+  );
+  await extension.restart();
+  await extension.newChat();
+  const reopened = await extension.panel();
+  await reopened.locator("#lookup-marker").fill(marker);
+  await reopened.locator("#lookup button").click();
+  await expect(reopened.locator("#lookup-result")).toContainText(
+    "No original saved",
+  );
 });

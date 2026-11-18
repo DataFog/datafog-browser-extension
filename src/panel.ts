@@ -4,6 +4,7 @@ import type {
   PanelNotice,
   PanelRequest,
   RestoredWithValues,
+  ReviewItem,
   VaultStatus,
 } from "./messages";
 import {
@@ -64,7 +65,10 @@ function failure(code: string): void {
   error.textContent = `Your vault couldn't open. Nothing was lost. (${code})`;
 }
 async function ask<T>(
-  request: PanelRequest | { type: "restore"; text: string },
+  request:
+    | PanelRequest
+    | { type: "restore"; text: string }
+    | { type: "always-allow"; entityType: string; value: string },
 ): Promise<T | ErrorResponse> {
   try {
     return (
@@ -139,6 +143,164 @@ function row(
   }
   return item;
 }
+/** Saved pairs are immutable; the row owns its menu and confirmation. */
+function originalRow(item: ReviewItem, allowed: boolean): HTMLLIElement {
+  const entry = row(item.original, {
+    kicker: LABELS[item.entityType] ?? item.entityType,
+    token: item.marker,
+  });
+  entry.classList.add("original-row");
+  if (allowed) {
+    const allowedChip = document.createElement("span");
+    allowedChip.className = "scope allowed";
+    allowedChip.textContent = "Allowed";
+    entry.append(allowedChip);
+  }
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "icon original-menu-toggle";
+  setIconButton(toggle, "more", `Actions for ${item.marker}`);
+  toggle.setAttribute("aria-expanded", "false");
+  const menu = document.createElement("div");
+  menu.className = "original-menu";
+  menu.hidden = true;
+  const confirmation = document.createElement("div");
+  confirmation.className = "forget-confirm";
+  confirmation.hidden = true;
+  const prompt = document.createElement("p");
+  prompt.append("Forget this original? Chats that already contain ");
+  const forgottenToken = document.createElement("span");
+  forgottenToken.className = "token";
+  forgottenToken.textContent = item.marker;
+  prompt.append(forgottenToken, " keep the token. It will no longer restore.");
+  confirmation.append(prompt);
+  const note = document.createElement("span");
+  note.className = "original-status";
+  note.setAttribute("role", "status");
+  let working = false;
+  const close = () => {
+    if (working) return;
+    menu.hidden = true;
+    confirmation.hidden = true;
+    toggle.setAttribute("aria-expanded", "false");
+  };
+  entry.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      close();
+      toggle.focus();
+    }
+  });
+  toggle.addEventListener("click", () => {
+    if (working) return;
+    if (!menu.hidden || !confirmation.hidden) {
+      close();
+      return;
+    }
+    menu.hidden = false;
+    toggle.setAttribute("aria-expanded", "true");
+    menu.querySelector<HTMLButtonElement>("button")?.focus();
+  });
+  function button(
+    label: string,
+    action: string,
+    run: () => void,
+    parent = menu,
+  ): HTMLButtonElement {
+    const control = document.createElement("button");
+    control.type = "button";
+    control.textContent = label;
+    if (parent === menu) {
+      const name =
+        action === "copy" ? "copy" : action === "allow" ? "allow" : "delete";
+      control.insertAdjacentHTML("afterbegin", icon(name, 14));
+    }
+    if (action === "confirm-forget") {
+      control.textContent = "Forget";
+      control.setAttribute("aria-label", label);
+    }
+    control.dataset.action = action;
+    control.addEventListener("click", run);
+    parent.append(control);
+    return control;
+  }
+  async function perform(kind: "copy" | "allow" | "forget"): Promise<void> {
+    if (working || busy) return;
+    working = true;
+    for (const control of entry.querySelectorAll("button"))
+      control.disabled = true;
+    note.textContent =
+      kind === "copy"
+        ? "Copying…"
+        : kind === "forget"
+          ? "Forgetting…"
+          : "Saving…";
+    try {
+      if (kind === "copy") await navigator.clipboard.writeText(item.original);
+      else {
+        const response = await ask<VaultStatus>(
+          kind === "forget"
+            ? { type: "forget-original", marker: item.marker }
+            : {
+                type: "always-allow",
+                entityType: item.entityType,
+                value: item.original,
+              },
+        );
+        if ("error" in response) throw new Error(response.error);
+      }
+      note.textContent =
+        kind === "copy"
+          ? "Copied"
+          : kind === "forget"
+            ? "Forgotten"
+            : "Allowed. Always flag still wins.";
+      saved.textContent = note.textContent;
+      working = false;
+      close();
+      if (kind !== "copy") await refresh();
+      else toggle.focus();
+    } catch {
+      note.textContent =
+        kind === "copy"
+          ? "Couldn't copy. Try again."
+          : kind === "forget"
+            ? "Forget could not be confirmed. Retry to reconcile your vault."
+            : "Save could not be confirmed. Retry to check the committed policy.";
+      saved.textContent = note.textContent;
+    } finally {
+      working = false;
+      for (const control of entry.querySelectorAll("button"))
+        control.disabled = false;
+    }
+  }
+  button("Copy original", "copy", () => void perform("copy"));
+  if (!allowed)
+    button("Always allow this value", "allow", () => void perform("allow"));
+  button("Forget", "forget", () => {
+    menu.hidden = true;
+    confirmation.hidden = false;
+    cancel.focus();
+  });
+  const cancel = button(
+    "Cancel",
+    "cancel-forget",
+    () => {
+      close();
+      toggle.focus();
+    },
+    confirmation,
+  );
+  button(
+    "Forget original",
+    "confirm-forget",
+    () => void perform("forget"),
+    confirmation,
+  );
+  entry.append(toggle, menu, confirmation, note);
+  return entry;
+}
+
 async function mutate(action: () => Promise<void>): Promise<void> {
   if (busy) return;
   busy = true;
@@ -162,6 +324,7 @@ async function mutate(action: () => Promise<void>): Promise<void> {
 }
 async function refresh(): Promise<void> {
   const version = ++renderVersion;
+  element("lookup-result").textContent = "";
   const response = await ask<VaultStatus>({
     type: "vault-status",
     autoUnlock: true,
@@ -183,10 +346,14 @@ async function refresh(): Promise<void> {
     error.hidden = true;
     element("originals").replaceChildren(
       ...(response.originals ?? []).map((item) =>
-        row(item.original, {
-          kicker: LABELS[item.entityType] ?? item.entityType,
-          token: item.marker,
-        }),
+        originalRow(
+          item,
+          response.notSensitive.some(
+            (choice) =>
+              choice.entityType === item.entityType &&
+              choice.value === item.original,
+          ),
+        ),
       ),
     );
     // Older tokens still restore through search, so only an empty list
@@ -245,8 +412,10 @@ element("lookup").addEventListener("submit", (event) => {
   event.preventDefault();
   const text =
     document.querySelector<HTMLInputElement>("#lookup-marker")!.value;
+  const version = renderVersion;
   element("lookup-result").textContent = "Looking up…";
   void ask<RestoredWithValues>({ type: "restore", text }).then((response) => {
+    if (version !== renderVersion) return;
     element("lookup-result").textContent =
       "error" in response
         ? "Couldn't read your vault. Try again."

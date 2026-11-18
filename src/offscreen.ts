@@ -341,16 +341,27 @@ async function handle(message: OffscreenRequest): Promise<unknown> {
   const settings = forSite(stored.settings, message.host);
   let result: unknown;
   switch (request.type) {
-    case "scan": {
+    case "scan":
+    case "select": {
       const version = await policyVersion(stored);
       const preview = settings.enabled
-        ? await host.preview(
-            request.text,
-            settings,
-            request.tabId ?? -1,
-            request.seq,
-            version,
-          )
+        ? request.type === "select"
+          ? await host.select(
+              request.text,
+              settings,
+              request.tabId ?? -1,
+              request.previewId,
+              version,
+              request.keep,
+            )
+          : await host.preview(
+              request.text,
+              settings,
+              request.tabId ?? -1,
+              request.seq,
+              version,
+              request.keep,
+            )
         : { findings: [] };
       result = {
         seq: request.seq,
@@ -365,7 +376,7 @@ async function handle(message: OffscreenRequest): Promise<unknown> {
       break;
     }
     case "redact":
-      result = await redact(request.text, settings, scanner);
+      result = await redact(request.text, settings, scanner, request.keep);
       break;
     case "settings-get":
       result = { ...settings, policyVersion: await policyVersion(stored) };
@@ -388,6 +399,10 @@ async function handle(message: OffscreenRequest): Promise<unknown> {
     case "always-allow":
       await host.allowValue(request.entityType, request.value);
       result = { saved: true, policyVersion: await policyVersion(stored) };
+      break;
+    case "forget-original":
+      await host.forget(request.marker);
+      result = { saved: true };
       break;
     case "vault-status":
       result = {

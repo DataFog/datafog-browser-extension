@@ -148,3 +148,139 @@ test("refreshes retained exact type exceptions on a committed-policy notice", as
   await settle();
   expect($("not-sensitive").textContent).toContain("me@example.com");
 });
+
+const ORIGINAL = {
+  entityType: "EMAIL",
+  original: "jane@example.com",
+  marker: "[[EMAIL_A]]",
+};
+function rowButton(action: string): HTMLButtonElement {
+  return document.querySelector<HTMLButtonElement>(
+    `#originals [data-action="${action}"]`,
+  )!;
+}
+function openOriginalMenu(): void {
+  document.querySelector<HTMLButtonElement>(".original-menu-toggle")!.click();
+}
+test("original menu copies safely, handles clipboard failure and restores focus on Escape", async () => {
+  const writeText = vi
+    .spyOn(navigator.clipboard, "writeText")
+    .mockRejectedValueOnce(new Error("denied"))
+    .mockResolvedValue(undefined);
+  await start(() => ({ ...READY, originals: [ORIGINAL] }));
+  openOriginalMenu();
+  expect(document.activeElement).toBe(rowButton("copy"));
+  rowButton("copy").click();
+  await settle();
+  expect($("originals").textContent).toContain("Couldn't copy");
+  rowButton("copy").click();
+  await settle();
+  expect(writeText).toHaveBeenLastCalledWith(ORIGINAL.original);
+  expect($("originals").textContent).toContain("Copied");
+  openOriginalMenu();
+  rowButton("copy").dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+  );
+  expect(document.querySelector<HTMLElement>(".original-menu")!.hidden).toBe(
+    true,
+  );
+  expect(document.activeElement).toBe(
+    document.querySelector(".original-menu-toggle"),
+  );
+});
+test("original Always allow saves the typed choice and hides the action after confirmed refresh", async () => {
+  let allowed = false;
+  await start((request) => {
+    if (request.type === "always-allow") {
+      expect(request).toEqual({
+        type: "always-allow",
+        entityType: "EMAIL",
+        value: ORIGINAL.original,
+      });
+      allowed = true;
+    }
+    return {
+      ...READY,
+      originals: [ORIGINAL],
+      notSensitive: allowed
+        ? [{ entityType: "EMAIL", value: ORIGINAL.original }]
+        : [],
+    };
+  });
+  openOriginalMenu();
+  rowButton("allow").click();
+  await settle();
+  expect($("originals").querySelector(".allowed")!.textContent).toBe("Allowed");
+  expect(rowButton("allow")).toBeNull();
+});
+test("forget requires row confirmation, preserves data on cancel/failure and retries", async () => {
+  let fail = true;
+  let forgotten = false;
+  await start((request) => {
+    if (request.type === "forget-original") {
+      if (fail) return { error: "write_failed" };
+      forgotten = true;
+    }
+    return { ...READY, originals: forgotten ? [] : [ORIGINAL] };
+  });
+  openOriginalMenu();
+  rowButton("forget").click();
+  expect(document.activeElement).toBe(rowButton("cancel-forget"));
+  rowButton("cancel-forget").click();
+  expect(send).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: "forget-original" }),
+  );
+  openOriginalMenu();
+  rowButton("forget").click();
+  rowButton("confirm-forget").click();
+  await settle();
+  expect($("originals").textContent).toContain("Forget could not be confirmed");
+  expect($("originals").textContent).toContain(ORIGINAL.original);
+  fail = false;
+  rowButton("confirm-forget").click();
+  await settle();
+  expect(send).toHaveBeenCalledWith({
+    type: "forget-original",
+    marker: ORIGINAL.marker,
+  });
+  expect($("originals").children).toHaveLength(0);
+  expect($("save-status").textContent).toBe("Forgotten");
+});
+
+test("forget disables duplicate confirmation and invalidates an in-flight lookup on vault refresh", async () => {
+  let finishForget!: (value: unknown) => void;
+  let finishLookup!: (value: unknown) => void;
+  await start((request) =>
+    request.type === "forget-original"
+      ? new Promise((done) => {
+          finishForget = done;
+        })
+      : request.type === "restore"
+        ? new Promise((done) => {
+            finishLookup = done;
+          })
+        : { ...READY, originals: [ORIGINAL] },
+  );
+  fill("lookup-marker", ORIGINAL.marker);
+  await submit("lookup");
+  openOriginalMenu();
+  rowButton("forget").click();
+  rowButton("confirm-forget").click();
+  expect(rowButton("confirm-forget").disabled).toBe(true);
+  rowButton("confirm-forget").click();
+  expect(
+    send.mock.calls.filter(([request]) => request.type === "forget-original"),
+  ).toHaveLength(1);
+  listener({ target: "panel", type: "vault-changed" });
+  await settle();
+  finishLookup({
+    restored: 1,
+    text: ORIGINAL.original,
+    values: [],
+    unrestored: 0,
+  });
+  await settle();
+  expect($("lookup-result").textContent).not.toContain(ORIGINAL.original);
+  finishForget({ saved: true });
+  await settle();
+});

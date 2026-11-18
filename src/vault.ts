@@ -19,6 +19,7 @@ import type { WorkspaceFinding, WorkspacePreview } from "@datafog/wasm";
 
 import type {
   CreatedVault,
+  KeepPlace,
   MarkedSensitive,
   Pseudonymized,
   RestoredValue,
@@ -60,6 +61,7 @@ export type Owner = Pick<
   FogVaultWorkspace,
   | "prepare"
   | "prepareReview"
+  | "prepareForget"
   | "preparePolicyChanges"
   | "policy"
   | "commit"
@@ -93,6 +95,7 @@ export interface VaultDeps<V extends Vault> {
 /** A prepared review, waiting for approval in the side panel. */
 interface Review extends ReviewSource {
   plan: WorkspaceVaultPlan;
+  all?: { items: ReviewItem[]; ranges: KeepPlace[] };
   items: ReviewItem[];
   /** Each item's place in the text, in UTF-8 bytes, as Core counts. */
   ranges: { start: number; end: number }[];
@@ -332,6 +335,7 @@ export class VaultHost<V extends Vault = Vault> {
     tabId = -1,
     revision = 0,
     policyVersion = "",
+    keep?: KeepPlace[],
   ): Promise<{ findings: ReviewItem[]; previewId?: string }> {
     if (
       !this.review ||
@@ -343,13 +347,127 @@ export class VaultHost<V extends Vault = Vault> {
       await this.pseudonymize(text, tabId, settings);
     }
     if (this.error && this.error !== "nothing_found") throw failure(this.error);
-    const findings = this.review?.items.map((item) => ({ ...item })) ?? [];
+    const findings =
+      (this.review?.all?.items ?? this.review?.items)?.map((item) => ({
+        ...item,
+      })) ?? [];
     this.waiting = null;
     this.error = null;
     if (!this.review) return { findings };
     const previewId = crypto.randomUUID();
     this.reservation = { id: previewId, tabId, revision, policyVersion };
+    if (keep)
+      return this.select(
+        text,
+        settings,
+        tabId,
+        previewId,
+        policyVersion,
+        keep.filter((place) =>
+          findings.some(
+            (item) => item.start === place.start && item.end === place.end,
+          ),
+        ),
+      );
     return { findings, previewId };
+  }
+
+  /** Refresh an exact reservation for chosen occurrences, never by value. */
+  async select(
+    text: string,
+    settings: Settings,
+    tabId: number,
+    previewId: string,
+    policyVersion: string,
+    keep: KeepPlace[],
+  ): Promise<{ findings: ReviewItem[]; previewId: string }> {
+    const review = this.review;
+    const owner = this.owner;
+    if (
+      !review ||
+      !owner ||
+      owner.closed ||
+      review.text !== text ||
+      this.reservation?.id !== previewId ||
+      this.reservation.tabId !== tabId ||
+      this.reservation.policyVersion !== policyVersion ||
+      !sameChecks(review.settings, settings)
+    )
+      throw failure("preview_expired");
+    const reservation = this.reservation;
+    const all = review.all ?? { items: review.items, ranges: review.ranges };
+    if (
+      !Array.isArray(keep) ||
+      keep.some(
+        (place) =>
+          !Number.isInteger(place.start) ||
+          !Number.isInteger(place.end) ||
+          !all.items.some(
+            (item) => item.start === place.start && item.end === place.end,
+          ),
+      )
+    )
+      throw failure("selection_invalid");
+    const items = all.items.map((item) => ({
+      ...item,
+      kept: keep.some(
+        (place) => place.start === item.start && place.end === item.end,
+      ),
+      marker: "",
+    }));
+    const chosen = items.flatMap((item, index) => (item.kept ? [] : [index]));
+    this.drop();
+    const plan = owner.prepare(
+      text,
+      chosen.map((index) =>
+        findingAt(review.found, all.ranges[index], all.items[index]),
+      ),
+      this.deps.randomId(),
+    );
+    const preview = plan.preview();
+    if (preview.transformations.length !== chosen.length) {
+      plan.discard();
+      throw failure("preview_expired");
+    }
+    for (const change of preview.transformations) {
+      const item = items.find(
+        (candidate) =>
+          !candidate.kept &&
+          candidate.start === change.sourceUtf16Range.start &&
+          candidate.end === change.sourceUtf16Range.end,
+      );
+      if (!item) {
+        plan.discard();
+        throw failure("preview_expired");
+      }
+      item.marker = preview.text.slice(
+        change.outputUtf16Range.start,
+        change.outputUtf16Range.end,
+      );
+    }
+    this.review = {
+      ...review,
+      plan,
+      items: chosen.map((index) => items[index]),
+      ranges: chosen.map((index) => all.ranges[index]),
+      all: { items, ranges: all.ranges },
+    };
+    const next = crypto.randomUUID();
+    this.reservation = { ...reservation, id: next };
+    return { findings: items, previewId: next };
+  }
+
+  /** Retire one exact saved marker through Core's durable commit boundary. */
+  async forget(marker: string): Promise<void> {
+    const owner = this.owner;
+    if (!owner || owner.closed) throw failure("vault_unavailable");
+    const code = /^\[\[[A-Z][A-Z0-9_]*_([0-9A-HJKMNP-TV-Z]{6})\]\]$/.exec(
+      marker,
+    )?.[1];
+    if (!code) throw failure("invalid_marker");
+    this.drop();
+    await this.save(owner, owner.prepareForget([code], this.deps.randomId()));
+    this.deps.notify();
   }
 
   async replace(
@@ -372,7 +490,8 @@ export class VaultHost<V extends Vault = Vault> {
     } else {
       await this.pseudonymize(text, tabId, settings);
     }
-    if (!this.review) throw failure(this.error ?? "nothing_found");
+    if (!this.review || this.review.items.length === 0)
+      throw failure(this.error ?? "nothing_found");
     const saved = await this.approve(settings);
     this.reservation = null;
     return { ...saved.response, saved: true };
@@ -919,6 +1038,8 @@ export class VaultHost<V extends Vault = Vault> {
             end: sourceByteRange.end,
           })),
           items: preview.transformations.map((item) => ({
+            start: item.sourceUtf16Range.start,
+            end: item.sourceUtf16Range.end,
             entityType: labelOf(
               preview.text.slice(
                 item.outputUtf16Range.start,

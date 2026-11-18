@@ -12,6 +12,7 @@ import {
   ArrowRight,
   Check,
   CircleAlert,
+  Copy,
   Ellipsis,
   Eraser,
   ExternalLink,
@@ -45,6 +46,7 @@ import {
 export const ICONS = {
   arrow: ArrowRight,
   check: Check,
+  copy: Copy,
   alert: CircleAlert,
   more: Ellipsis,
   redact: Eraser,

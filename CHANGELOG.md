@@ -4,6 +4,8 @@ Notable changes to the datafog browser extension. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+- Choose which findings Replace or Redact affects, with exact refreshed placeholder previews and Always allow limited to skipped values. Manage each saved original with Copy, a lasting allow exception, and confirmed Forget that retires its token and hides open restored displays.
+
 - Replace sensitive draft text directly from the circle popup after saving originals in the vault, with preview, Undo and Redo. Keep as is applies only to the current draft; More contains Redact, Always allow and sidebar access.
 - Show or hide originals independently in each assistant answer while preserving the chat provider's marker text.
 - Access FogVault automatically and save rules and preferences encrypted. No password or credential-migration flow is exposed; missing keys preserve existing data and report an error.
