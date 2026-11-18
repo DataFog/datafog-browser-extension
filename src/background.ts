@@ -13,6 +13,7 @@ import {
   type OffscreenRequest,
   type PanelNotice,
   type PanelRequest,
+  type MarkedSensitive,
   type Pseudonymized,
   type Request,
   type RestoredInPage,
@@ -205,6 +206,39 @@ async function recheckTabs(): Promise<void> {
  * @returns The vault's status afterwards.
  */
 async function approveReview(): Promise<unknown> {
+  await checkReviewSource();
+  const saved = await forwardVault<Pseudonymized>({ type: "review-approve" });
+  await applyPseudonyms(saved);
+  return forwardVault({ type: "vault-status" });
+}
+
+/**
+ * Save one reviewed value and put its marker in the chat box, unless the chat
+ * box changed since the review was prepared, then review the values left.
+ *
+ * @param index The value's place in the review.
+ * @returns The vault's status afterwards.
+ */
+async function markSensitive(index: number): Promise<unknown> {
+  await checkReviewSource();
+  const saved = await forwardVault<MarkedSensitive>({
+    type: "review-mark-sensitive",
+    index,
+  });
+  await applyPseudonyms(saved);
+  if (saved.remaining > 0) {
+    // Reviewed as the chat box now reads, with the marker in place
+    const { text } = await askTab<{ text: string | null }>(saved.tabId, {
+      type: "chat-text",
+    });
+    if (text !== null)
+      await forwardVault({ type: "pseudonymize", text, tabId: saved.tabId });
+  }
+  return forwardVault({ type: "vault-status" });
+}
+
+/** Drop the review if its chat box no longer has the text it was found in. */
+async function checkReviewSource(): Promise<void> {
   const { source } = await forwardVault<{ source: ReviewSource | null }>({
     type: "review-source",
   });
@@ -216,13 +250,19 @@ async function approveReview(): Promise<unknown> {
     await forwardVault({ type: "review-cancel" });
     throw coded("chat_box_changed");
   }
-  const saved = await forwardVault<Pseudonymized>({ type: "review-approve" });
+}
+
+/**
+ * Have the tab put saved markers in its chat box.
+ *
+ * @param saved The tab, the text they were found in, and the edits.
+ */
+async function applyPseudonyms(saved: Pseudonymized): Promise<void> {
   await askTab(saved.tabId, {
     type: "apply-pseudonyms",
     before: saved.text,
     response: saved.response,
   });
-  return forwardVault({ type: "vault-status" });
 }
 
 /**
@@ -233,6 +273,8 @@ async function approveReview(): Promise<unknown> {
  */
 async function handlePanel(request: PanelRequest): Promise<unknown> {
   if (request.type === "review-approve") return approveReview();
+  if (request.type === "review-mark-sensitive")
+    return markSensitive(request.index);
   if (request.type === "restore-latest") return restoreLatest(request.windowId);
   if (request.type === "hide-originals") return hideInTab(request.windowId);
   if (request.type === "update-status") return { ready: await updateWaiting() };
@@ -281,6 +323,7 @@ const PANEL_REQUESTS = new Set<string>([
   "device-forget",
   "review-approve",
   "review-cancel",
+  "review-mark-sensitive",
   "review-not-sensitive",
   "choice-clear",
   "restore-latest",

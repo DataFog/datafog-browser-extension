@@ -453,6 +453,49 @@ test("saves an approved review and has the tab apply it", async () => {
   });
 });
 
+test("saves one reviewed value, applies it, and reviews the values left", async () => {
+  const marked = "a@b.co and [[EMAIL_7KQ4ZM]]";
+  sendMessage.mockImplementation(async (message: OffscreenRequest) => {
+    switch (message.request.type) {
+      case "review-source":
+        return { source: { tabId: 7, text: "a@b.co and c@d.co" } };
+      case "review-mark-sensitive":
+        return {
+          tabId: 7,
+          text: "a@b.co and c@d.co",
+          response: {
+            text: marked,
+            edits: [{ start: 11, end: 17, replacement: "[[EMAIL_7KQ4ZM]]" }],
+          },
+          remaining: 1,
+        };
+      default:
+        return { state: "unlocked" };
+    }
+  });
+  let chatText = "a@b.co and c@d.co";
+  tabMessage.mockImplementation(async (_tabId, request) => {
+    if (request.type === "apply-pseudonyms") chatText = request.response.text;
+    return request.type === "chat-text" ? { text: chatText } : {};
+  });
+
+  expect(
+    await send({ type: "review-mark-sensitive", index: 1 }, PANEL),
+  ).toEqual({ state: "unlocked" });
+  const sent = sendMessage.mock.calls.map(([message]) => message.request);
+  expect(sent).toContainEqual({ type: "review-mark-sensitive", index: 1 });
+  expect(sent).toContainEqual({ type: "pseudonymize", text: marked, tabId: 7 });
+});
+
+test("refuses to mark a value sensitive for a web page", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  expect(await send({ type: "review-mark-sensitive", index: 0 })).toEqual({
+    error: "not_allowed",
+  });
+  expect(sendMessage).not.toHaveBeenCalled();
+  warn.mockRestore();
+});
+
 test("drops the review when the chat box changed since", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
   sendMessage.mockImplementation(offscreenForApproval);
