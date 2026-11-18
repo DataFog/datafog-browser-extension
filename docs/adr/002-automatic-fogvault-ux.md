@@ -28,6 +28,12 @@ Migration verifies the encrypted replacement before deleting old plaintext setti
 
 Chrome profile access remains the trust boundary. This is persistent encrypted storage, not zero data retention. No new retention expiry or full-chat storage policy is introduced.
 
+### Appearance bootstrap exception
+
+The appearance choice is a deliberate, narrow exception to encrypted preferences. Only the `theme` enum (`system`, `light` or `dark`) is stored unencrypted in `chrome.storage.local`. It contains no prompt text, original values, allow/flag entries, detection choices, site preferences or key material. Surfaces need it before vault access is ready so the circle, popup, sidebar, settings and answer controls can use a consistent theme, including while storage is unavailable.
+
+Detection settings, rules, typed exceptions and original mappings remain encrypted. Theme changes do not change the checking policy. Deleting vault data retains this appearance choice and unrelated onboarding metadata; it still removes the vault's original mappings, rules, encrypted checking preferences and local key. This exception does not authorize storing other preferences or sensitive values in plaintext.
+
 ## Rules and compatibility
 
 Existing typed Not sensitive choices retain their type-aware normalization and become lasting Always allow exceptions. Existing literal allowlist semantics remain distinct and preserved; Always flag retains its existing whole-word, case-insensitive precedence. New popup exceptions use the typed choice path rather than silently broadening existing values to arbitrary substring rules.
