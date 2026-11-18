@@ -14,8 +14,20 @@
         background: var(--background);
         color: var(--text);
         max-width: 560px;
-        margin: 32px auto;
+        margin: 16px auto 32px;
         padding: 0 16px;
+      }
+      /* Stays in view so "Saved" shows wherever the change was made */
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        padding: 16px 0 4px;
+        background: var(--background);
+        border-bottom: 1px solid var(--line);
+      }
+      header p {
+        margin: 0 0 8px;
       }
       h1 {
         font-size: 20px;
@@ -123,10 +135,12 @@
     </style>
   </head>
   <body>
-    <h1>DataFog settings</h1>
-    <p class="muted">
-      Changes save as you make them. <span id="status" role="status"></span>
-    </p>
+    <header>
+      <h1>DataFog settings</h1>
+      <p class="muted">
+        Changes save as you make them. <span id="status" role="status"></span>
+      </p>
+    </header>
 
     <h2>Sites</h2>
     <p class="muted">Check prompts on these chat sites.</p>
