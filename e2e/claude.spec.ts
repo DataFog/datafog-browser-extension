@@ -29,7 +29,6 @@ for (const sendMethod of ["button", "Enter"] as const) {
   }) => {
     const options = await extension.options();
     await options.locator("#block-sends").check();
-    await options.locator("#save").click();
     await expect(options.locator("#status")).toHaveText("Saved");
     await options.close();
     const chat = await extension.newChat({ site: "claude" });
@@ -61,7 +60,6 @@ test("settings: turning Claude off leaves ChatGPT checked", async ({
   const options = await extension.options();
   await expect(options.locator("#site-chatgpt")).toBeChecked();
   await options.locator("#site-claude").uncheck();
-  await options.locator("#save").click();
   await expect(options.locator("#status")).toHaveText("Saved");
   await options.close();
 

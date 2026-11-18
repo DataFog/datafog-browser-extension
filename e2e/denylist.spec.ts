@@ -12,8 +12,18 @@ async function flag(extension: Extension): Promise<void> {
   const options = await extension.options();
   await options.locator("#denylist").fill(PHRASE);
   await options.locator("#allowlist").fill(PHRASE);
-  await options.locator("#save").click();
-  await expect(options.locator("#status")).toHaveText("Saved");
+  // Leaving the box saves it without waiting for typing to stop
+  await options.locator("#allowlist").blur();
+  await expect
+    .poll(() =>
+      extension.worker.evaluate(async () => {
+        const { settings } = await chrome.storage.local.get<{
+          settings?: { allowlist?: string[]; denylist?: string[] };
+        }>("settings");
+        return [settings?.allowlist, settings?.denylist];
+      }),
+    )
+    .toEqual([[PHRASE], [PHRASE]]);
   await options.close();
 }
 

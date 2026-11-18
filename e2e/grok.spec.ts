@@ -31,7 +31,6 @@ for (const sendMethod of ["button", "Enter"] as const) {
   }) => {
     const options = await extension.options();
     await options.locator("#block-sends").check();
-    await options.locator("#save").click();
     await expect(options.locator("#status")).toHaveText("Saved");
     await options.close();
     const chat = await extension.newChat({ site: "grok" });

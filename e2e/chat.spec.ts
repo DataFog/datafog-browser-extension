@@ -28,7 +28,6 @@ async function openBadge(badge: BadgeControls): Promise<void> {
 }
 
 async function saveOptions(options: Page): Promise<void> {
-  await options.locator("#save").click();
   await expect(options.locator("#status")).toHaveText("Saved");
   await options.close();
 }

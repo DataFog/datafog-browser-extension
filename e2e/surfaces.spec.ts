@@ -179,6 +179,47 @@ for (const colorScheme of ["light", "dark"] as const) {
   });
 }
 
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`settings page follows the ${colorScheme} theme`, async ({
+    extension,
+  }) => {
+    const options = await extension.options();
+    await options.emulateMedia({ colorScheme });
+    const dark = colorScheme === "dark";
+    await expect(options.locator("body")).toHaveCSS(
+      "background-color",
+      dark ? "rgb(26, 34, 38)" : "rgb(255, 255, 255)",
+    );
+    await expect(options.locator("body")).toHaveCSS(
+      "color",
+      dark ? "rgb(238, 240, 239)" : "rgb(31, 31, 31)",
+    );
+    await expect(options.locator("#allowlist")).toHaveCSS(
+      "background-color",
+      dark ? "rgb(35, 45, 49)" : "rgb(245, 245, 245)",
+    );
+  });
+}
+
+test("settings restore defaults after confirming, keeping the lists", async ({
+  extension,
+}) => {
+  const options = await extension.options();
+  await options.locator("#site-claude").uncheck();
+  await options.locator('input[value="PHONE"]').check();
+  await options.locator("#denylist").fill("Project Falcon");
+  await options.locator("#denylist").blur();
+  await expect(options.locator("#status")).toHaveText("Saved");
+
+  options.once("dialog", (dialog) => void dialog.accept());
+  await options.locator("#restore").click();
+  await expect(options.locator("#site-claude")).toBeChecked();
+  await options.reload();
+  await expect(options.locator("#site-claude")).toBeChecked();
+  await expect(options.locator('input[value="PHONE"]')).not.toBeChecked();
+  await expect(options.locator("#denylist")).toHaveValue("Project Falcon");
+});
+
 test("pastes several thousand words and records typing and scan timings", async ({
   chat,
   badge,
