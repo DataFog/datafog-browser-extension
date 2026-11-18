@@ -4,6 +4,8 @@ Notable changes to the DataFog browser extension. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-18
+
 The first release: a Chrome extension that checks what you type into AI chat sites for sensitive data, on your device, before you send it.
 
 ### Added
