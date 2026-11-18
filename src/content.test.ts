@@ -736,9 +736,9 @@ test("anchors the badge to the form, not the editor inside it", async () => {
   await vi.advanceTimersByTimeAsync(20);
   const root = document.querySelector("datafog-badge")!.shadowRoot!;
   const wrap = root.querySelector<HTMLElement>(".wrap")!;
-  // Level with the form's bottom edge, and as tall as the empty form
+  // Level with the form's bottom edge, at ChatGPT's fixed size
   expect(wrap.style.bottom).toBe("316px");
-  expect(wrap.style.getPropertyValue("--size")).toBe("52px");
+  expect(wrap.style.getPropertyValue("--size")).toBe("56px");
 });
 
 /**

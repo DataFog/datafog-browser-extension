@@ -107,17 +107,6 @@ export class ClosedShadow {
 }
 
 /**
- * The size of a measured badge: the chat box's height while empty, kept
- * between 28 and 128 pixels.
- *
- * @param emptyHeight The chat box's height while it was empty.
- * @returns The badge's width and height, in pixels.
- */
-export function measuredSize(emptyHeight: number): number {
-  return Math.min(128, Math.max(28, Math.round(emptyHeight)));
-}
-
-/**
  * Check the badge's size and corner radius, and that it's level with the
  * chat box's bottom edge.
  *

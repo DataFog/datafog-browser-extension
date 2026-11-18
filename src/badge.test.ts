@@ -118,50 +118,31 @@ test("stays on screen when the chat box fills the page", async () => {
   expect(wrap.style.bottom).toBe("704px");
 });
 
-test("takes the empty chat box's height, stays round, and keeps its size as the box grows", async () => {
-  const { badge, box, scroller, wrap } = mount();
-  setBox(scroller, { top: 0, right: 1024, bottom: 768, left: 0 });
-  setBox(box, { top: 400, right: 800, bottom: 480, left: 100 });
-
-  badge.rest(true);
-  await new Promise(requestAnimationFrame);
-  expect(wrap.style.getPropertyValue("--size")).toBe("80px");
-  expect(wrap.style.getPropertyValue("--radius")).toBe("50%");
-  expect(wrap.style.bottom).toBe("288px");
-
-  badge.rest(false);
-  setBox(box, { top: 280, right: 800, bottom: 480, left: 100 });
-  badge.reposition();
-  await new Promise(requestAnimationFrame);
-  expect(wrap.style.getPropertyValue("--size")).toBe("80px");
-  expect(wrap.style.bottom).toBe("288px");
-});
-
-test("keeps a fixed size on a site whose chat box changes height between chats", async () => {
-  const { badge, box, scroller, wrap } = mount(siteFor("claude.ai"));
-  setBox(scroller, { top: 0, right: 1024, bottom: 768, left: 0 });
-  setBox(box, { top: 377, right: 800, bottom: 480, left: 100 });
-
-  badge.rest(true);
-  await new Promise(requestAnimationFrame);
-  expect(wrap.style.getPropertyValue("--size")).toBe("44px");
-  expect(wrap.style.getPropertyValue("--radius")).toBe("14px");
-  expect(wrap.style.bottom).toBe("288px");
-});
-
 test.each([
-  { height: 20, size: "28px" },
-  { height: 400, size: "128px" },
+  { host: "chatgpt.com", size: "56px", radius: "50%" },
+  { host: "claude.ai", size: "44px", radius: "14px" },
+  { host: "gemini.google.com", size: "64px", radius: "50%" },
+  { host: "grok.com", size: "58px", radius: "50%" },
+  { host: "chat.deepseek.com", size: "60px", radius: "24px" },
 ])(
-  "keeps the badge between 28 and 128 pixels: $height",
-  async ({ height, size }) => {
-    const { badge, box, scroller, wrap } = mount();
+  "keeps $host's size as the box grows and the window resizes",
+  async ({ host, size, radius }) => {
+    const { badge, box, scroller, wrap } = mount(siteFor(host));
     setBox(scroller, { top: 0, right: 1024, bottom: 768, left: 0 });
-    setBox(box, { top: 700 - height, right: 800, bottom: 700, left: 100 });
-
-    badge.rest(true);
+    const sizes = [];
+    for (const top of [420, 280, 100]) {
+      setBox(box, { top, right: 800, bottom: 480, left: 100 });
+      badge.reposition();
+      await new Promise(requestAnimationFrame);
+      sizes.push(wrap.style.getPropertyValue("--size"));
+    }
+    window.dispatchEvent(new Event("resize"));
     await new Promise(requestAnimationFrame);
-    expect(wrap.style.getPropertyValue("--size")).toBe(size);
+    sizes.push(wrap.style.getPropertyValue("--size"));
+
+    expect(sizes).toEqual([size, size, size, size]);
+    expect(wrap.style.getPropertyValue("--radius")).toBe(radius);
+    expect(wrap.style.bottom).toBe("288px");
   },
 );
 

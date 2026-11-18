@@ -39,13 +39,6 @@ const GAP = 8;
 /** Room the page tab takes at the page's right edge, in pixels. */
 const TAB_ROOM = 40;
 
-/**
- * The badge's smallest and largest size, in pixels, so it stays easy to
- * click and doesn't crowd the page beside an unusually tall chat box.
- */
-const MIN_SIZE = 28;
-const MAX_SIZE = 128;
-
 const STYLE = `
   :host { all: initial; }
   .wrap {
@@ -195,9 +188,7 @@ export class Badge {
     undo: false,
     redo: false,
   };
-  private shape: BadgeShape;
-  /** Whether the chat box is empty, so its height is the badge's size. */
-  private resting = false;
+  private readonly shape: BadgeShape;
   private anchor: Element | null = null;
   private kind: BadgeState["kind"] = "hidden";
   private resize = new ResizeObserver(() => this.reposition());
@@ -303,18 +294,6 @@ export class Badge {
     this.anchor = anchor;
     this.resize.observe(anchor);
     this.place();
-  }
-
-  /**
-   * Say whether the chat box is empty. While it is, a site's badge that's
-   * measured takes the box's height, and keeps it as text makes it grow.
-   *
-   * @param empty Whether the chat box holds no text.
-   */
-  rest(empty: boolean): void {
-    if (empty === this.resting) return;
-    this.resting = empty;
-    if (empty) this.reposition();
   }
 
   /**
@@ -482,7 +461,6 @@ export class Badge {
     const box = visibleBox(this.anchor);
     this.wrap.style.visibility = box ? "" : "hidden";
     if (!box) return;
-    if (this.resting) this.fit(this.anchor);
     const fromRight = window.innerWidth - box.right;
     const fromBottom = window.innerHeight - box.bottom;
     const { size } = this.shape;
@@ -497,21 +475,6 @@ export class Badge {
           )
     }px`;
     this.placePanel();
-  }
-
-  /**
-   * Take the empty chat box's height, on a site whose badge is measured.
-   *
-   * @param anchor The chat box.
-   */
-  private fit(anchor: Element): void {
-    if (!this.shape.measured) return;
-    const { height } = anchor.getBoundingClientRect();
-    if (height <= 0) return;
-    const size = Math.round(Math.min(MAX_SIZE, Math.max(MIN_SIZE, height)));
-    if (size === this.shape.size) return;
-    this.shape = { ...this.shape, size };
-    this.applyShape();
   }
 
   /** Size and round the badge to its shape, the same in every state. */
