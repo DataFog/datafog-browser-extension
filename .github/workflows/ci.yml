@@ -98,7 +98,7 @@ jobs:
 
       - name: Upload browser report and failure traces
         if: ${{ failure() && !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: extension-integration-${{ matrix.os }}-${{ matrix.browser }}
           retention-days: 7
