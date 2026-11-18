@@ -55,6 +55,57 @@ export const GERMAN_ENTITIES = [
   "DE_RESIDENCE_PERMIT_NUMBER",
 ];
 
+/** Types the settings show together, by how accurately they're found. */
+export interface TypeGroup {
+  name: string;
+  /** More about how they're found, shown on hover. */
+  about: string;
+  types: string[];
+}
+
+/** The types the settings offer, from the most accurate to the least. */
+export const TYPE_GROUPS: TypeGroup[] = [
+  {
+    name: "Pattern matched",
+    about:
+      "Found by their exact format, with check digits where the format has " +
+      "them. Rarely wrong.",
+    types: [
+      "EMAIL",
+      "CREDIT_CARD",
+      "SSN",
+      "US_ROUTING_NUMBER",
+      "NPI",
+      "API_KEY",
+      "BEARER_TOKEN",
+      "JWT",
+      "PRIVATE_KEY",
+      "CREDENTIAL_URI",
+    ],
+  },
+  {
+    name: "Best with a label",
+    about:
+      'Found after a label, such as "Account number:" or "Shipping ' +
+      'address:". Ones without a label are missed.',
+    types: ["ACCOUNT_NUMBER", "STREET_ADDRESS"],
+  },
+  {
+    name: "Best guess",
+    about:
+      "Found by a small model on your device. It may miss some, or flag " +
+      "well-known names.",
+    types: ["PERSON", "ADDRESS"],
+  },
+  {
+    name: "May over-flag",
+    about:
+      "These can look like order numbers, timestamps or IDs, so they may be " +
+      "flagged when they aren't sensitive. Off by default.",
+    types: ["PHONE", "DATE", "ZIP_CODE", "IP_ADDRESS", "UUID"],
+  },
+];
+
 /** Plain-language names for non-technical users. */
 export const LABELS: Record<string, string> = {
   // A phrase from the user's own list, not one of Core's types

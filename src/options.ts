@@ -1,14 +1,14 @@
 /**
- * Options page: what to detect, an allowlist, a deny list, and an on/off
- * switch per site.
+ * Options page: the chat sites to check, the types to look for, grouped by
+ * how accurately they're found, whether to hold sends, and the user's lists.
  */
 
 import {
-  DEFAULT_ENTITIES,
   LABELS,
-  OPT_IN_ENTITIES,
   loadSettings,
   saveSettings,
+  TYPE_GROUPS,
+  type TypeGroup,
 } from "./settings";
 import { SITE_NAMES } from "./site";
 
@@ -18,46 +18,50 @@ const allowlist = document.querySelector<HTMLTextAreaElement>("#allowlist")!;
 const denylist = document.querySelector<HTMLTextAreaElement>("#denylist")!;
 const status = document.querySelector<HTMLSpanElement>("#status")!;
 
-/** What a type may get wrong: why it's off by default, or its limits. */
-const HINTS: Record<string, string> = {
-  ACCOUNT_NUMBER: "only after a label such as Account number:",
-  STREET_ADDRESS: "only after a label such as Shipping address:",
-  PERSON: "may miss some, or flag well-known names",
-  ADDRESS: "may miss some, mostly tuned for statements",
-  PHONE: "may flag order or account numbers",
-  DATE: "may flag timestamps",
-  ZIP_CODE: "may flag any 5-digit number",
-  IP_ADDRESS: "common in logs and config files",
-  UUID: "common as record and request IDs",
-};
+/**
+ * A group's heading, with more about it in a tooltip on hover or focus.
+ *
+ * @param group The group.
+ * @param id The tooltip's id.
+ * @returns The heading.
+ */
+function groupLegend(group: TypeGroup, id: string): HTMLLegendElement {
+  const legend = document.createElement("legend");
+  const info = document.createElement("span");
+  info.className = "info";
+  info.tabIndex = 0;
+  info.textContent = "?";
+  info.setAttribute("aria-describedby", id);
+  info.setAttribute("aria-label", `About ${group.name}`);
+  const tip = document.createElement("span");
+  tip.id = id;
+  tip.setAttribute("role", "tooltip");
+  tip.textContent = group.about;
+  legend.append(group.name, " ", info, tip);
+  return legend;
+}
 
 /**
- * Add one checkbox per entity type, with a hint on the noisy ones.
+ * Add one checkbox per entity type, grouped by how accurately each is found.
  *
- * @param list Where the checkboxes go.
- * @param types The entity types, in display order.
+ * @param list Where the groups go.
  * @param selected The types currently on.
  */
-function renderTypes(
-  list: HTMLElement,
-  types: string[],
-  selected: string[],
-): void {
-  for (const type of types) {
-    const label = document.createElement("label");
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.value = type;
-    box.checked = selected.includes(type);
-    label.append(box, ` ${LABELS[type] ?? type}`);
-
-    if (HINTS[type]) {
-      const hint = document.createElement("span");
-      hint.className = "hint";
-      hint.textContent = `(${HINTS[type]})`;
-      label.append(hint);
+function renderTypes(list: HTMLElement, selected: string[]): void {
+  for (const [index, group] of TYPE_GROUPS.entries()) {
+    const fieldset = document.createElement("fieldset");
+    fieldset.className = "group";
+    fieldset.append(groupLegend(group, `group-${index}`));
+    for (const type of group.types) {
+      const label = document.createElement("label");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.value = type;
+      box.checked = selected.includes(type);
+      label.append(box, ` ${LABELS[type] ?? type}`);
+      fieldset.append(label);
     }
-    list.append(label);
+    list.append(fieldset);
   }
 }
 
@@ -86,11 +90,7 @@ async function render(): Promise<void> {
   blockSends.checked = settings.blockSends;
   allowlist.value = settings.allowlist.join("\n");
   denylist.value = settings.denylist.join("\n");
-  renderTypes(
-    document.getElementById("types")!,
-    [...DEFAULT_ENTITIES, ...OPT_IN_ENTITIES],
-    settings.entities,
-  );
+  renderTypes(document.getElementById("types")!, settings.entities);
 }
 
 /**

@@ -16,6 +16,7 @@ import {
   removeFromList,
   sameChecks,
   type Settings,
+  TYPE_GROUPS,
 } from "./settings";
 import { HOSTS } from "./site";
 
@@ -27,6 +28,20 @@ test("names every offered type", () => {
 
 test("offers each type once", () => {
   expect(new Set(OFFERED).size).toBe(OFFERED.length);
+});
+
+test("groups every type the settings offer, once each", () => {
+  const grouped = TYPE_GROUPS.flatMap(({ types }) => types);
+  expect(grouped.toSorted()).toEqual(
+    [...DEFAULT_ENTITIES, ...OPT_IN_ENTITIES].toSorted(),
+  );
+});
+
+test("keeps the types that may over-flag off by default", () => {
+  const overFlag = TYPE_GROUPS.at(-1)!.types;
+  expect(overFlag.filter((type) => DEFAULT_ENTITIES.includes(type))).toEqual(
+    [],
+  );
 });
 
 /**
