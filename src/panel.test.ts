@@ -318,6 +318,52 @@ test("marks a review value not sensitive", async () => {
   expect($("#not-sensitive li").classList.contains("added")).toBe(true);
 });
 
+test("doesn't restart a Not sensitive highlight when marking another value", async () => {
+  const review = [
+    { entityType: "PERSON", original: "Ann", marker: "[[PERSON_7KQ4ZM]]" },
+    { entityType: "PERSON", original: "Bo", marker: "[[PERSON_2YQKS3]]" },
+  ];
+  let status: VaultStatus = { ...LOCKED, state: "unlocked", review };
+  await start((request) => {
+    if (request.type === "review-not-sensitive")
+      status = {
+        ...status,
+        review: [review[1]],
+        notSensitive: [{ entityType: "PERSON", value: "Ann" }],
+      };
+    if (request.type === "review-mark-sensitive")
+      status = { ...status, review: null };
+    return status;
+  });
+  vi.useFakeTimers({
+    shouldAdvanceTime: true,
+    toFake: ["setTimeout", "clearTimeout", "performance"],
+  });
+  try {
+    reviewButton("Not sensitive").click();
+    await vi.waitFor(() =>
+      expect($("#not-sensitive li").classList.contains("added")).toBe(true),
+    );
+    await vi.advanceTimersByTimeAsync(1500);
+
+    reviewButton("Mark sensitive").click();
+    await vi.waitFor(() =>
+      expect($("#review-status").textContent).toBe("Replaced in the chat box"),
+    );
+    // Drawn again partway through its fade, not from the start
+    const row = $("#not-sensitive li");
+    expect(row.classList.contains("added")).toBe(true);
+    expect(parseFloat(row.style.animationDelay)).toBeLessThanOrEqual(-1500);
+
+    // Ends on its own schedule, while the newer status stays a while longer
+    await vi.advanceTimersByTimeAsync(600);
+    expect(document.querySelector("#not-sensitive li.added")).toBeNull();
+    expect($("#review-status").textContent).toBe("Replaced in the chat box");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test("marks one review value sensitive, and says so", async () => {
   const review = [
     { entityType: "PERSON", original: "Ann", marker: "[[PERSON_7KQ4ZM]]" },

@@ -343,13 +343,10 @@ function renderNotSensitive({ state, notSensitive }: VaultStatus): void {
       remove.addEventListener("click", () => void clearChoice(choice));
       item.append(value, type, remove);
       if (
-        kept?.entityType === choice.entityType &&
-        kept.value === choice.value
-      ) {
-        item.classList.add("added");
-        // Shown once it's drawn, below the review
-        requestAnimationFrame(() => item.scrollIntoView({ block: "nearest" }));
-      }
+        kept?.choice.entityType === choice.entityType &&
+        kept.choice.value === choice.value
+      )
+        highlightKept(item, kept);
       return item;
     }),
   );
@@ -357,11 +354,55 @@ function renderNotSensitive({ state, notSensitive }: VaultStatus): void {
   if (state !== "unlocked") showError(view.notSensitiveError, null);
 }
 
-/** The value just marked not sensitive, highlighted in its list for a moment. */
-let kept: ValueChoice | null = null;
+/** A value just marked not sensitive, highlighted in its list for a moment. */
+interface Kept {
+  choice: ValueChoice;
+  /** When its highlight started, from `performance.now()`. */
+  since: number;
+  /** Whether its row has been scrolled into view. */
+  shown: boolean;
+}
+
+/** The value just marked not sensitive, while it's highlighted. */
+let kept: Kept | null = null;
+
+/** The timer that ends the highlight. */
+let keptTimer = 0;
 
 /** The review confirmation's timer. */
 let reviewStatusTimer = 0;
+
+/**
+ * Highlight the row of the value just marked not sensitive. A row drawn again
+ * while it's highlighted, such as after another review choice, carries on its
+ * fade rather than starting it over, and isn't scrolled to again.
+ *
+ * @param item The value's row.
+ * @param highlight The value and when its highlight started.
+ */
+function highlightKept(item: HTMLElement, highlight: Kept): void {
+  item.classList.add("added");
+  item.style.animationDelay = `${-(performance.now() - highlight.since)}ms`;
+  if (highlight.shown) return;
+  highlight.shown = true;
+  // Shown once it's drawn, below the review
+  requestAnimationFrame(() => item.scrollIntoView({ block: "nearest" }));
+}
+
+/**
+ * Stop highlighting the value just marked not sensitive, after a moment.
+ *
+ * @param highlight The value and when its highlight started.
+ */
+function endKept(highlight: Kept): void {
+  window.clearTimeout(keptTimer);
+  keptTimer = window.setTimeout(() => {
+    if (kept !== highlight) return;
+    kept = null;
+    for (const row of view.notSensitive.querySelectorAll(".added"))
+      row.classList.remove("added");
+  }, ADDED_MS);
+}
 
 /**
  * Say what a review button did, for a moment.
@@ -373,9 +414,6 @@ function confirmReview(text: string): void {
   window.clearTimeout(reviewStatusTimer);
   reviewStatusTimer = window.setTimeout(() => {
     view.reviewStatus.textContent = "";
-    kept = null;
-    for (const row of view.notSensitive.querySelectorAll(".added"))
-      row.classList.remove("added");
   }, ADDED_MS);
 }
 
@@ -401,10 +439,16 @@ async function markNotSensitive(
   entityType: string,
   value: string,
 ): Promise<void> {
-  kept = { entityType, value };
-  if (await act({ type: "review-not-sensitive", index }, view.reviewError))
+  const highlight: Kept = {
+    choice: { entityType, value },
+    since: performance.now(),
+    shown: false,
+  };
+  kept = highlight;
+  if (await act({ type: "review-not-sensitive", index }, view.reviewError)) {
     confirmReview("Marked not sensitive");
-  else kept = null;
+    endKept(highlight);
+  } else kept = null;
 }
 
 /**
