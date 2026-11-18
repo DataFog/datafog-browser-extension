@@ -48,6 +48,8 @@ export type PanelRequest =
   | { type: "vault-delete" }
   | { type: "review-approve" }
   | { type: "review-cancel" }
+  /** Pseudonymize only the review's value at this index. */
+  | { type: "review-mark-sensitive"; index: number }
   /** Remember the review's value at this index as not sensitive. */
   | { type: "review-not-sensitive"; index: number }
   /** Replace a value remembered as not sensitive again. */
@@ -59,12 +61,19 @@ export type PanelRequest =
 export type VaultRequest =
   | Exclude<
       PanelRequest,
-      { type: "review-approve" | "restore-latest" | "hide-originals" }
+      {
+        type:
+          | "review-approve"
+          | "review-mark-sensitive"
+          | "restore-latest"
+          | "hide-originals";
+      }
     >
   | { type: "restore"; text: string }
   | { type: "pseudonymize"; text: string; tabId: number }
   | { type: "review-source" }
-  | { type: "review-approve" };
+  | { type: "review-approve" }
+  | { type: "review-mark-sensitive"; index: number };
 
 /**
  * A request the service worker forwards to the offscreen document. Offscreen
@@ -171,6 +180,11 @@ export interface ReviewSource {
 /** A saved Pseudonymize, ready to apply to its tab's chat box. */
 export interface Pseudonymized extends ReviewSource {
   response: RedactResponse;
+}
+
+/** One value pseudonymized from a review, and how many the review had left. */
+export interface MarkedSensitive extends Pseudonymized {
+  remaining: number;
 }
 
 export interface ScanResponse {

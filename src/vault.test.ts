@@ -131,6 +131,8 @@ function makeOwner(): FakeOwner {
     closed: false,
     discards: 0,
     failNextSave: null,
+    prepare: (text, findings, operationId) =>
+      wrap(workspace.prepare(text, findings, operationId)),
     prepareReview: (inputs, operationId) =>
       wrap(workspace.prepareReview(inputs, operationId)),
     preparePolicyChanges: (edits, operationId) =>
@@ -340,6 +342,52 @@ test("gives a value the same marker the next time", async () => {
   expect(host.status(routing).review).toEqual([
     { entityType: "EMAIL", original: "jane@example.com", marker: first },
   ]);
+});
+
+test("pseudonymizes one reviewed value on its own", async () => {
+  const routing = await create();
+  await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
+  const [first] = host.status(routing).review!;
+
+  const saved = await host.markSensitive(1, DEFAULT_SETTINGS);
+
+  const [edit] = saved.response.edits;
+  expect(saved).toMatchObject({ tabId: 7, text: TEXT, remaining: 1 });
+  expect(saved.response.edits).toEqual([
+    {
+      start: 24,
+      end: 38,
+      replacement: expect.stringMatching(/^\[\[EMAIL_[0-9A-Z]{6}\]\]$/),
+    },
+  ]);
+  expect(saved.response.text).toBe(
+    `Ask jane@example.com or ${edit.replacement} today`,
+  );
+  expect(host.status(routing).review).toBeNull();
+
+  // The value left is reviewed again in the changed chat box, and the one
+  // saved keeps its marker
+  await host.pseudonymize(saved.response.text, 7, DEFAULT_SETTINGS);
+  expect(host.status(routing).review?.map((item) => item.original)).toEqual([
+    first.original,
+  ]);
+  host.cancel();
+  await host.pseudonymize("Write to al@example.org", 7, DEFAULT_SETTINGS);
+  expect(host.status(routing).review?.[0].marker).toBe(edit.replacement);
+});
+
+test("drops the review when what's checked for changes before marking", async () => {
+  const routing = await create();
+  await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
+
+  const changed = { ...DEFAULT_SETTINGS, denylist: ["today"] };
+  await expect(host.markSensitive(0, changed)).rejects.toMatchObject({
+    code: "settings_changed",
+  });
+  expect(host.status(routing)).toMatchObject({
+    review: null,
+    reviewError: "settings_changed",
+  });
 });
 
 test("remembers a value as not sensitive, and leaves it out of reviews", async () => {
