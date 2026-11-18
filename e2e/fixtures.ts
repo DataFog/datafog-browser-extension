@@ -275,6 +275,19 @@ function chatHTML(options: ChatOptions): string {
     </script></body></html>`;
 }
 
+/**
+ * The browser the tests run in: Google Chrome, or Microsoft Edge with
+ * `E2E_BROWSER=msedge`.
+ *
+ * @returns Playwright's channel for it.
+ */
+function browserChannel(): "chrome" | "msedge" {
+  const browser = process.env.E2E_BROWSER ?? "chrome";
+  if (browser !== "chrome" && browser !== "msedge")
+    throw new Error(`E2E_BROWSER must be chrome or msedge, not ${browser}`);
+  return browser;
+}
+
 export class Extension {
   context!: BrowserContext;
   worker!: Worker;
@@ -324,7 +337,7 @@ export class Extension {
       this.debugPort = endpoint.port;
     } else {
       this.context = await chromium.launchPersistentContext(this.profile, {
-        channel: "chrome",
+        channel: browserChannel(),
         headless: this.headless,
         ignoreDefaultArgs: ["--disable-extensions"],
         viewport: { width: 1280, height: 900 },
