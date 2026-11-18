@@ -50,6 +50,29 @@ test("the extension scans the editor and shows type counts", async ({
   expect((await badge.state(".panel")).text).not.toContain("jane@example.com");
 });
 
+test("checking and Redact still work after Chrome stops the idle service worker", async ({
+  extension,
+  chat,
+  badge,
+}) => {
+  const composer = chat.locator("#prompt-textarea");
+  await composer.fill(SAMPLE);
+  await found(badge, 2);
+
+  await extension.stopWorker();
+  await composer.fill(`${SAMPLE} typed later`);
+  await found(badge, 2);
+  // Checked by a fresh worker, started by the chat
+  expect(
+    await extension.worker.evaluate(() => "stoppedByTest" in globalThis),
+  ).toBe(false);
+  await openBadge(badge);
+  await badge.click(".redact");
+  await expect(composer).toHaveText(
+    "my email is [EMAIL] and card [CREDIT_CARD] typed later",
+  );
+});
+
 test("the badge keeps one round size in every state, as the box grows and as the window resizes", async ({
   chat,
   badge,

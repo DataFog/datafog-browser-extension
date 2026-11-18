@@ -70,8 +70,9 @@ npx playwright install chrome
 npm run test:integration
 ```
 
-CI runs them on Linux, macOS and Windows. Failed runs upload a Playwright
-report; `npm run test:e2e:report` opens a local one.
+CI runs them in Chrome on Linux, macOS and Windows, and in Microsoft Edge on
+Windows. `E2E_BROWSER=msedge` runs them in Edge locally. Failed runs upload a
+Playwright report; `npm run test:e2e:report` opens a local one.
 
 Maintainers can also run a live suite against chatgpt.com with a ChatGPT test
 account. It's optional and doesn't run in CI:

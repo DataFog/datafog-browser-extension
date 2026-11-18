@@ -275,6 +275,19 @@ function chatHTML(options: ChatOptions): string {
     </script></body></html>`;
 }
 
+/**
+ * The browser the tests run in: Google Chrome, or Microsoft Edge with
+ * `E2E_BROWSER=msedge`.
+ *
+ * @returns Playwright's channel for it.
+ */
+function browserChannel(): "chrome" | "msedge" {
+  const browser = process.env.E2E_BROWSER ?? "chrome";
+  if (browser !== "chrome" && browser !== "msedge")
+    throw new Error(`E2E_BROWSER must be chrome or msedge, not ${browser}`);
+  return browser;
+}
+
 export class Extension {
   context!: BrowserContext;
   worker!: Worker;
@@ -324,7 +337,7 @@ export class Extension {
       this.debugPort = endpoint.port;
     } else {
       this.context = await chromium.launchPersistentContext(this.profile, {
-        channel: "chrome",
+        channel: browserChannel(),
         headless: this.headless,
         ignoreDefaultArgs: ["--disable-extensions"],
         viewport: { width: 1280, height: 900 },
@@ -557,6 +570,56 @@ export class Extension {
       )
       .toBe(after);
     return { before, after };
+  }
+
+  /**
+   * Stop the extension's service worker, as Chrome does after it's been idle
+   * for a while. The next event starts a fresh one.
+   */
+  async stopWorker(): Promise<void> {
+    // Mark the running worker, so a fresh one is told apart from it
+    await this.worker.evaluate(() =>
+      Object.assign(globalThis, { stoppedByTest: true }),
+    );
+    const page = await this.context.newPage();
+    await page.goto(`chrome-extension://${this.id}/options.html`);
+    const session = await this.context.newCDPSession(page);
+    await session.send("ServiceWorker.enable");
+    await session.send("ServiceWorker.stopAllWorkers");
+    // Playwright may still list a stopped worker, so check none still running
+    // holds the mark. The page stays open until then, or the stop may not
+    // happen.
+    await expect.poll(() => this.markedWorker()).toBe(false);
+    await session.detach();
+    await page.close();
+    // Follow the next worker, started by whatever event comes next
+    this.context.once("serviceworker", (worker) => {
+      if (worker.url().startsWith(`chrome-extension://${this.id}/`))
+        this.worker = worker;
+    });
+  }
+
+  /** Whether a running extension worker holds the mark `stopWorker` set. */
+  private async markedWorker(): Promise<boolean> {
+    const marked = await Promise.all(
+      this.context
+        .serviceWorkers()
+        .filter((worker) =>
+          worker.url().startsWith(`chrome-extension://${this.id}/`),
+        )
+        .map((worker) =>
+          // A stopped worker may never answer, so give up after a moment
+          Promise.race([
+            worker
+              .evaluate(() => "stoppedByTest" in globalThis)
+              .catch(() => false),
+            new Promise<boolean>((resolve) =>
+              setTimeout(() => resolve(false), 500),
+            ),
+          ]),
+        ),
+    );
+    return marked.includes(true);
   }
 
   async stop(traces?: (name: string) => string): Promise<string[]> {

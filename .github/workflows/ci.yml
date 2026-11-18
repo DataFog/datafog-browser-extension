@@ -52,12 +52,21 @@ jobs:
         run: npm test
 
   extension-integration:
-    name: Extension integration tests (${{ matrix.os }})
+    name: Extension integration tests (${{ matrix.os }}, ${{ matrix.browser }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        browser: [chrome]
+        include:
+          # Edge comes installed on Windows runners. It doesn't block merges
+          # until it has passed reliably.
+          - os: windows-latest
+            browser: msedge
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.browser == 'msedge' }}
+    env:
+      E2E_BROWSER: ${{ matrix.browser }}
 
     steps:
       - name: Checkout
@@ -73,6 +82,7 @@ jobs:
         run: npm ci
 
       - name: Install Google Chrome and system dependencies
+        if: ${{ matrix.browser == 'chrome' }}
         run: npx playwright install --with-deps chrome
 
       - name: Run extension integration tests
@@ -82,7 +92,7 @@ jobs:
         if: ${{ failure() && !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: extension-integration-${{ matrix.os }}
+          name: extension-integration-${{ matrix.os }}-${{ matrix.browser }}
           retention-days: 7
           path: |
             playwright-report/
