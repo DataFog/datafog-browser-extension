@@ -45,7 +45,7 @@ async function ensureOffscreen(): Promise<void> {
     .createDocument({
       url: "offscreen.html",
       reasons: [chrome.offscreen.Reason.WORKERS],
-      justification: "Runs DataFog Core and the FogVault Worker.",
+      justification: "Runs datafog Core and the FogVault Worker.",
     })
     .finally(() => {
       opening = undefined;
@@ -467,7 +467,7 @@ async function handle(
     await chrome.action.setTitle({
       tabId,
       title: request.protected
-        ? "Open DataFog"
+        ? "Open datafog"
         : updateReady
           ? NO_CHAT_BOX_UPDATE
           : NO_CHAT_BOX,
@@ -506,7 +506,7 @@ chrome.runtime.onMessage.addListener(
     pending.then(respond, (error) => {
       const response = toError(error);
       // The code only: an error's message can quote prompt text
-      console.warn(`DataFog ${request.type} failed: ${response.error}`);
+      console.warn(`datafog ${request.type} failed: ${response.error}`);
       respond(response);
     });
     return true;

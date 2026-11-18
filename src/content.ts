@@ -45,7 +45,7 @@ const HOLD_TIMEOUT_MS = 3000;
 
 /** Why a send was held. */
 const HELD_WARNING = "Sending is paused. Press send again to send anyway.";
-const HELD_FAILURE = "DataFog couldn't check this text, so sending is paused.";
+const HELD_FAILURE = "datafog couldn't check this text, so sending is paused.";
 
 /** How long to look for the chat box before warning it can't be found. */
 const FIND_TIMEOUT_MS = 10_000;

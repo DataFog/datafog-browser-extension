@@ -175,7 +175,7 @@ test("logs codes without prompt content", async () => {
   expect(await forward({ type: "redact", text: "a@b.co" })).toEqual({
     error: "invalid_input",
   });
-  expect(warn).toHaveBeenCalledWith("DataFog redact failed: invalid_input");
+  expect(warn).toHaveBeenCalledWith("datafog redact failed: invalid_input");
   expect(JSON.stringify(warn.mock.calls)).not.toContain("a@b.co");
   warn.mockRestore();
 });

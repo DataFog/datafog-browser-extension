@@ -1,6 +1,6 @@
-# DataFog browser extension
+# datafog browser extension
 
-DataFog checks what you type into ChatGPT, Claude, Gemini, Grok and DeepSeek for sensitive data, such as email addresses, card numbers, API keys, names and mailing addresses, before you send it. Checks run on your device with [DataFog Core](https://github.com/DataFog/datafog-core); nothing you type is sent anywhere. A badge beside the chat box shows what was found, and lets you replace or redact it.
+datafog checks what you type into ChatGPT, Claude, Gemini, Grok and DeepSeek for sensitive data, such as email addresses, card numbers, API keys, names and mailing addresses, before you send it. Checks run on your device with [DataFog Core](https://github.com/DataFog/datafog-core); nothing you type is sent anywhere. A badge beside the chat box shows what was found, and lets you replace or redact it.
 
 ## Features
 
@@ -18,7 +18,7 @@ DataFog checks what you type into ChatGPT, Claude, Gemini, Grok and DeepSeek for
 
 ### From the Chrome Web Store
 
-Install DataFog from its [Chrome Web Store listing](https://chromewebstore.google.com/) (link coming soon), then open a supported chat site.
+Install datafog from its [Chrome Web Store listing](https://chromewebstore.google.com/) (link coming soon), then open a supported chat site.
 
 ### From source
 
@@ -39,9 +39,9 @@ Choose **More → Open sidebar** in the draft popup, or click the extension tool
 
 ## Uninstall
 
-Open `chrome://extensions` and click **Remove** on DataFog, or right-click the toolbar icon and choose **Remove from Chrome**. This works the same for a build loaded from source; afterward you can delete the cloned folder.
+Open `chrome://extensions` and click **Remove** on datafog, or right-click the toolbar icon and choose **Remove from Chrome**. This works the same for a build loaded from source; afterward you can delete the cloned folder.
 
-Removing DataFog deletes its vault, settings and lists from Chrome. Values behind markers in past chats can't be restored after that.
+Removing datafog deletes its vault, settings and lists from Chrome. Values behind markers in past chats can't be restored after that.
 
 ## Limitations
 
@@ -51,11 +51,11 @@ Removing DataFog deletes its vault, settings and lists from Chrome. Values behin
 - Redaction is one way: `[EMAIL]` can't be turned back into the original.
 - Unknown or deleted markers cannot be restored.
 - Access to the Chrome profile is the trust boundary: automatic local key access is not an additional password barrier. Missing keys or damaged storage produce an error; the extension does not silently reset existing data.
-- Chat sites change their pages without notice, which can stop DataFog from finding the chat box until it's updated.
+- Chat sites change their pages without notice, which can stop datafog from finding the chat box until it's updated.
 
 ## Privacy
 
-DataFog checks text on your device and sends nothing anywhere. See the [privacy policy](https://datafog.ai/privacy-policy).
+datafog checks text on your device and sends nothing anywhere. See the [privacy policy](https://datafog.ai/privacy-policy).
 
 ## Security
 
@@ -63,4 +63,4 @@ Report vulnerabilities to help@datafog.ai. See [SECURITY.md](SECURITY.md) for de
 
 ## License
 
-[MIT](LICENSE). Built by [DataFog](https://datafog.ai).
+[MIT](LICENSE). Built by [datafog](https://datafog.ai).

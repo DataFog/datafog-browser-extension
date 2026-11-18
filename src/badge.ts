@@ -316,13 +316,13 @@ export class Badge {
             <h2></h2>
             <div class="history">
               <button class="act icon undo" type="button"
-                title="Undo: put back the values DataFog replaced">${iconLabel("undo", "Undo")}</button>
+                title="Undo: put back the values datafog replaced">${iconLabel("undo", "Undo")}</button>
               <button class="act icon redo" type="button"
                 title="Redo: replace the same values again">${iconLabel("redo", "Redo")}</button>
             </div>
             <span class="local" title="Checked on this device. Nothing was sent.">${icon("lock", 14)}<span class="sr">Checked on this device</span></span>
           </div>
-          <p class="files" hidden title="DataFog only checks text in the chat box.">${icon("attachment", 14)}<span>Attached files aren't protected.</span></p>
+          <p class="files" hidden title="datafog only checks text in the chat box.">${icon("attachment", 14)}<span>Attached files aren't protected.</span></p>
           <p class="paused" hidden></p>
           <ul class="counts"></ul>
           <ul class="preview"></ul><p class="progress" role="status"></p><p class="note"></p>

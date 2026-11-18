@@ -173,7 +173,7 @@ for (const method of ["button", "Enter"] as const) {
     await chat.reload();
     await requireSignedIn(chat);
     await requireTemporaryChat(chat);
-    const prompt = `Automated DataFog regression test. Reply only OK. Test email: ${EMAIL}`;
+    const prompt = `Automated datafog regression test. Reply only OK. Test email: ${EMAIL}`;
     const userMessages = userMessagesIn(chat);
     const before = await userMessages.count();
     await composer.fill(prompt);
@@ -204,7 +204,7 @@ test("live: placeholders survive a real response and answer-scoped Show/Hide", a
   const composer = composerIn(chat);
   const badge = extension.badge(chat);
   await composer.fill(
-    `Automated DataFog regression test. Repeat this test email exactly, including any bracketed marker replacing it: ${EMAIL}. After that write a short sentence confirming this is synthetic test data.`,
+    `Automated datafog regression test. Repeat this test email exactly, including any bracketed marker replacing it: ${EMAIL}. After that write a short sentence confirming this is synthetic test data.`,
   );
   await found(badge, 1);
   await openBadge(badge);

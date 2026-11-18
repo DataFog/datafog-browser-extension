@@ -101,7 +101,7 @@ test("reports an unprotected page when no supported composer exists", async ({
     .toContainEqual({
       text: "!",
       title:
-        "DataFog can't find the chat box, so this page isn't being checked. Try reloading it.",
+        "datafog can't find the chat box, so this page isn't being checked. Try reloading it.",
     });
 });
 

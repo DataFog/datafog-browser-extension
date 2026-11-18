@@ -1,6 +1,6 @@
 # Security policy
 
-The DataFog browser extension checks prompts for personal data and credentials before they are sent to an AI chat site, so a flaw in what it reveals, stores, or can access is a security issue.
+The datafog browser extension checks prompts for personal data and credentials before they are sent to an AI chat site, so a flaw in what it reveals, stores, or can access is a security issue.
 
 ## Reporting a vulnerability
 
@@ -22,7 +22,7 @@ Email help@datafog.ai with the details.
 
 ## Known limitations
 
-An AI agent that controls the browser, such as ChatGPT's agent or another browser-use tool, acts with the user's own access. It can open the side panel, unlock the vault if it's given the password or the device is remembered, and see restored values on screen. DataFog can't tell an agent from the user, so this isn't treated as a vulnerability. Lock the vault before letting an agent use the browser.
+An AI agent that controls the browser, such as ChatGPT's agent or another browser-use tool, acts with the user's own access. It can open the side panel, unlock the vault if it's given the password or the device is remembered, and see restored values on screen. datafog can't tell an agent from the user, so this isn't treated as a vulnerability. Lock the vault before letting an agent use the browser.
 
 ## Supported versions
 

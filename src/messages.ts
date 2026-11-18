@@ -10,11 +10,11 @@ import type { Settings } from "./settings";
 
 /** Why a page isn't being checked, shown on the toolbar icon and page tab. */
 export const NO_CHAT_BOX =
-  "DataFog can't find the chat box, so this page isn't being checked. Try reloading it.";
+  "datafog can't find the chat box, so this page isn't being checked. Try reloading it.";
 
 /** The same, when a DataFog update is waiting that may fix it. */
 export const NO_CHAT_BOX_UPDATE =
-  "DataFog can't find the chat box, so this page isn't being checked. A DataFog update is ready and may fix this: open DataFog and choose Update now.";
+  "datafog can't find the chat box, so this page isn't being checked. A datafog update is ready and may fix this: open datafog and choose Update now.";
 
 export type Request =
   | { type: "scan"; seq: number; text: string; tabId?: number }

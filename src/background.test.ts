@@ -263,7 +263,7 @@ test("answers and logs a code when the offscreen document fails", async () => {
   expect(await send({ type: "redact", text: "a@b.co" })).toEqual({
     error: "datafog_failed",
   });
-  expect(warn).toHaveBeenCalledWith("DataFog redact failed: datafog_failed");
+  expect(warn).toHaveBeenCalledWith("datafog redact failed: datafog_failed");
   expect(JSON.stringify(warn.mock.calls)).not.toContain("a@b.co");
   warn.mockRestore();
 });

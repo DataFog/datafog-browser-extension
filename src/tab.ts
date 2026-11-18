@@ -23,7 +23,7 @@ const STYLE = `
   svg { display: block; }
 `;
 
-const TITLE = "Open or close DataFog";
+const TITLE = "Open or close datafog";
 
 /**
  * Add the tab to the page.

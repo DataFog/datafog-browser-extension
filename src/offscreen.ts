@@ -469,7 +469,7 @@ chrome.runtime.onMessage.addListener(
     pending.then(respond, (error) => {
       const response = toError(error);
       // The code only: an error's message can quote prompt text
-      console.warn(`DataFog ${message.request.type} failed: ${response.error}`);
+      console.warn(`datafog ${message.request.type} failed: ${response.error}`);
       respond(response);
     });
     return true;
