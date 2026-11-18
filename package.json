@@ -7,6 +7,7 @@
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
+    "package": "npm run build && node scripts/package.mjs",
     "watch": "node build.mjs --watch",
     "lint": "oxlint",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.e2e.json",
