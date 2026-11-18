@@ -1,6 +1,7 @@
 /**
  * Options page: the chat sites to check, the types to look for, grouped by
- * how accurately they're found, whether to hold sends, and the user's lists.
+ * how accurately they're found, whether to hold sends, the user's lists, and
+ * the version and where to get help.
  */
 
 import {
@@ -86,6 +87,8 @@ function renderSites(off: string[]): void {
 
 /** Fill the form from saved settings. */
 async function render(): Promise<void> {
+  document.querySelector("#version")!.textContent =
+    `version ${chrome.runtime.getManifest().version}`;
   const settings = await loadSettings();
   renderSites(settings.off);
   blockSends.checked = settings.blockSends;

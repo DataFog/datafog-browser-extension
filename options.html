@@ -105,6 +105,9 @@
         color: var(--ok);
         font-weight: 600;
       }
+      a {
+        color: inherit;
+      }
       #status.failed {
         color: var(--error);
       }
@@ -113,8 +116,7 @@
   <body>
     <h1>DataFog settings</h1>
     <p class="muted">
-      Checks run on this device; nothing is sent anywhere. Changes save as you
-      make them. <span id="status" role="status"></span>
+      Changes save as you make them. <span id="status" role="status"></span>
     </p>
 
     <h2>Sites</h2>
@@ -140,6 +142,15 @@
       sensitive.
     </p>
     <textarea id="denylist" spellcheck="false"></textarea>
+    <h2>About</h2>
+    <p>
+      DataFog <span id="version"></span>. Checks run on this device; nothing you
+      type is sent anywhere.
+    </p>
+    <p>
+      Questions or problems? Email
+      <a href="mailto:help@datafog.ai">help@datafog.ai</a>.
+    </p>
 
     <script src="options.js"></script>
   </body>

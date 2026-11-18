@@ -81,6 +81,7 @@ beforeEach(() => {
   stored = {};
   storageChanges = [];
   vi.stubGlobal("chrome", {
+    runtime: { getManifest: () => ({ version: "1.2.3" }) },
     storage: {
       local: {
         get: async () => structuredClone(stored),
@@ -120,6 +121,14 @@ test("groups the types by how accurately they're found, each with a tooltip", as
   expect(tip.textContent).toContain("Off by default");
   expect(document.querySelector(".hint")).toBeNull();
   expect(document.querySelector("#save")).toBeNull();
+});
+
+test("shows the version and where to get help", async () => {
+  await start();
+  expect($("#version").textContent).toBe("version 1.2.3");
+  expect(document.querySelector('a[href="mailto:help@datafog.ai"]')).not.toBe(
+    null,
+  );
 });
 
 test("saves a checkbox right away, and only what it changed", async () => {
