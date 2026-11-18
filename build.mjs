@@ -33,6 +33,8 @@ function prepare(out, files) {
 // The extension's license ships with it; it also covers Core's own code
 prepare("dist", [
   "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
+  "licenses",
   "fonts",
   "icons",
   "manifest.json",

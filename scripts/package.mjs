@@ -11,8 +11,16 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 
 const { version } = JSON.parse(readFileSync("dist/manifest.json", "utf8"));
-// The license must ship with every copy of the extension
-if (!existsSync("dist/LICENSE")) throw new Error("dist/LICENSE is missing.");
+// Required notices must ship with every copy of the extension.
+for (const notice of [
+  "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
+  "licenses/lucide-LICENSE.txt",
+  "fonts/OFL.txt",
+]) {
+  if (!existsSync(`dist/${notice}`))
+    throw new Error(`dist/${notice} is missing.`);
+}
 const out = path.resolve("release", `datafog-${version}.zip`);
 
 mkdirSync("release", { recursive: true });
