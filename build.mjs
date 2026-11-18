@@ -36,6 +36,7 @@ prepare("dist", [
   "offscreen.html",
   "options.html",
   "panel.html",
+  "theme.css",
 ]);
 // Its licenses, under third-party/, ship with it
 cpSync(fogvault, "dist/fogvault", { recursive: true });

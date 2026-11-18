@@ -1,0 +1,25 @@
+/*
+ * Colors shared by the side panel and the settings page, following the
+ * browser's light or dark theme.
+ */
+:root {
+  color-scheme: light dark;
+  --background: #fff;
+  --text: #1f1f1f;
+  --muted: #666;
+  --line: #d0d0d0;
+  --field: #f5f5f5;
+  --error: #c5221f;
+  --ok: #1e7b34;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #1a2226;
+    --text: #eef0ef;
+    --muted: #a7b2b1;
+    --line: #3a4549;
+    --field: #232d31;
+    --error: #f28b82;
+    --ok: #81c995;
+  }
+}
