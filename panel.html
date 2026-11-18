@@ -210,6 +210,10 @@
       #remembered {
         margin-top: 8px;
       }
+      li .choices {
+        display: flex;
+        gap: 12px;
+      }
       button.link.inline {
         display: block;
         margin: 2px 0 0;
@@ -310,12 +314,13 @@
       <ul id="review-items"></ul>
       <div class="buttons" id="review-buttons">
         <button id="approve" class="primary" type="button">
-          Replace in chat box
+          Replace all in chat box
         </button>
         <button id="cancel" type="button">Cancel</button>
       </div>
       <p class="error" id="review-error" hidden></p>
     </section>
+    <p class="status ok" id="review-status" role="status"></p>
 
     <section id="vault">
       <div class="heading">

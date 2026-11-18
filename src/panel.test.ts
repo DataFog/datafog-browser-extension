@@ -306,7 +306,7 @@ test("marks a review value not sensitive", async () => {
     return status;
   });
 
-  $("#review-items li button").click();
+  reviewButton("Not sensitive").click();
   await settle();
 
   expect(sendMessage).toHaveBeenCalledWith({
@@ -314,6 +314,75 @@ test("marks a review value not sensitive", async () => {
     index: 0,
   });
   expect($("#not-sensitive").textContent).toContain("Ann");
+  expect($("#review-status").textContent).toBe("Marked not sensitive");
+  expect($("#not-sensitive li").classList.contains("added")).toBe(true);
+});
+
+test("marks one review value sensitive, and says so", async () => {
+  const review = [
+    { entityType: "PERSON", original: "Ann", marker: "[[PERSON_7KQ4ZM]]" },
+    { entityType: "PERSON", original: "Bo", marker: "[[PERSON_2YQKS3]]" },
+  ];
+  let status: VaultStatus = { ...LOCKED, state: "unlocked", review };
+  await start((request) => {
+    if (request.type === "review-mark-sensitive")
+      status = { ...status, review: [review[0]] };
+    return status;
+  });
+
+  reviewButton("Mark sensitive", 1).click();
+  await settle();
+
+  expect(sendMessage).toHaveBeenCalledWith({
+    type: "review-mark-sensitive",
+    index: 1,
+  });
+  expect(document.querySelectorAll("#review-items li")).toHaveLength(1);
+  expect($("#review-status").textContent).toBe("Replaced in the chat box");
+});
+
+test("replaces every review value, says how many, and clears the note later", async () => {
+  const review = [
+    { entityType: "PERSON", original: "Ann", marker: "[[PERSON_7KQ4ZM]]" },
+    { entityType: "PERSON", original: "Bo", marker: "[[PERSON_2YQKS3]]" },
+  ];
+  let status: VaultStatus = { ...LOCKED, state: "unlocked", review };
+  await start((request) => {
+    if (request.type === "review-approve") status = { ...status, review: null };
+    return status;
+  });
+  expect($("#approve").textContent?.trim()).toBe("Replace all in chat box");
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    $("#approve").click();
+    await vi.waitFor(() =>
+      expect($("#review-status").textContent).toBe(
+        "Replaced 2 values in the chat box",
+      ),
+    );
+    expect($("#review").hidden).toBe(true);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect($("#review-status").textContent).toBe("");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("says nothing was replaced when Mark sensitive fails", async () => {
+  const review = [
+    { entityType: "PERSON", original: "Ann", marker: "[[PERSON_7KQ4ZM]]" },
+  ];
+  await start((request) =>
+    request.type === "review-mark-sensitive"
+      ? { error: "chat_box_changed" }
+      : { ...LOCKED, state: "unlocked", review },
+  );
+
+  reviewButton("Mark sensitive").click();
+  await settle();
+
+  expect($("#review-status").textContent).toBe("");
+  expect($("#review-error").hidden).toBe(false);
 });
 
 test("lists not sensitive values as text, and removes one", async () => {
@@ -649,6 +718,20 @@ test("forgets the device", async () => {
   expect(sendMessage).toHaveBeenCalledWith({ type: "device-forget" });
   expect($("#remembered").hidden).toBe(true);
 });
+
+/**
+ * A button on a review value.
+ *
+ * @param name The button's text.
+ * @param index The value's place in the review.
+ * @returns The button.
+ */
+function reviewButton(name: string, index = 0): HTMLButtonElement {
+  const row = document.querySelectorAll("#review-items li")[index];
+  return [...row.querySelectorAll("button")].find(
+    (button) => button.textContent === name,
+  )!;
+}
 
 /**
  * The values a list in the panel shows.
