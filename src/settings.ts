@@ -69,7 +69,7 @@ export const TYPE_GROUPS: TypeGroup[] = [
     name: "Pattern matched",
     about:
       "Found by their exact format, with check digits where the format has " +
-      "them. Rarely wrong.",
+      "them.",
     types: [
       "EMAIL",
       "CREDIT_CARD",
@@ -87,7 +87,7 @@ export const TYPE_GROUPS: TypeGroup[] = [
     name: "Best with a label",
     about:
       'Found after a label, such as "Account number:" or "Shipping ' +
-      'address:". Ones without a label are missed.',
+      'address:". Sometimes missed without a label.',
     types: ["ACCOUNT_NUMBER", "STREET_ADDRESS"],
   },
   {
