@@ -20,6 +20,10 @@ Email help@datafog.ai with the details.
 - Values the detectors miss, or match wrongly. Detection is pattern-based and not exhaustive; report these to help@datafog.ai as well.
 - Text the user sends after dismissing a warning, or that the chat site itself collects.
 
+## Known limitations
+
+An AI agent that controls the browser, such as ChatGPT's agent or another browser-use tool, acts with the user's own access. It can open the side panel, unlock the vault if it's given the password or the device is remembered, and see restored values on screen. DataFog can't tell an agent from the user, so this isn't treated as a vulnerability. Lock the vault before letting an agent use the browser.
+
 ## Supported versions
 
 Security fixes go into the latest release.
