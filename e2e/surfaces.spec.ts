@@ -179,6 +179,28 @@ for (const colorScheme of ["light", "dark"] as const) {
   });
 }
 
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`settings page follows the ${colorScheme} theme`, async ({
+    extension,
+  }) => {
+    const options = await extension.options();
+    await options.emulateMedia({ colorScheme });
+    const dark = colorScheme === "dark";
+    await expect(options.locator("body")).toHaveCSS(
+      "background-color",
+      dark ? "rgb(26, 34, 38)" : "rgb(255, 255, 255)",
+    );
+    await expect(options.locator("body")).toHaveCSS(
+      "color",
+      dark ? "rgb(238, 240, 239)" : "rgb(31, 31, 31)",
+    );
+    await expect(options.locator("#allowlist")).toHaveCSS(
+      "background-color",
+      dark ? "rgb(35, 45, 49)" : "rgb(245, 245, 245)",
+    );
+  });
+}
+
 test("pastes several thousand words and records typing and scan timings", async ({
   chat,
   badge,

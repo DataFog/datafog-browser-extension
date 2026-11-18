@@ -3,6 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <title>DataFog settings</title>
+    <link rel="stylesheet" href="theme.css" />
     <style>
       body {
         font:
@@ -10,7 +11,8 @@
           -apple-system,
           "Segoe UI",
           sans-serif;
-        color: #1f1f1f;
+        background: var(--background);
+        color: var(--text);
         max-width: 560px;
         margin: 32px auto;
         padding: 0 16px;
@@ -24,7 +26,7 @@
         margin: 24px 0 8px;
       }
       .muted {
-        color: #666;
+        color: var(--muted);
         font-size: 13px;
       }
       fieldset {
@@ -35,9 +37,12 @@
         gap: 4px;
       }
       .hint {
-        color: #666;
+        color: var(--muted);
         font-size: 12px;
         margin-left: 4px;
+      }
+      input[type="checkbox"] {
+        accent-color: var(--text);
       }
       textarea {
         width: 100%;
@@ -46,20 +51,25 @@
           13px ui-monospace,
           monospace;
         box-sizing: border-box;
+        background: var(--field);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px;
       }
       button {
         margin-top: 20px;
         padding: 8px 16px;
         border-radius: 8px;
-        border: 1px solid #1f1f1f;
-        background: #1f1f1f;
-        color: #fff;
+        border: 1px solid var(--text);
+        background: var(--text);
+        color: var(--background);
         font: inherit;
         cursor: pointer;
       }
       #status {
         margin-left: 12px;
-        color: #3d6b3d;
+        color: var(--ok);
       }
     </style>
   </head>
