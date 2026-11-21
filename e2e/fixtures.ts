@@ -356,10 +356,12 @@ export class Extension {
   async start(): Promise<void> {
     const extensionPath = path.join(this.profile, "unpacked-extension");
     if (!this.installed) {
-      await cp(path.resolve("dist"), extensionPath, {
-        recursive: true,
-        mode: constants.COPYFILE_FICLONE,
-      });
+      await base.step("Copy the unpacked extension", () =>
+        cp(path.resolve("dist"), extensionPath, {
+          recursive: true,
+          mode: constants.COPYFILE_FICLONE,
+        }),
+      );
       this.installed = true;
     }
     if (this.config.cdpEndpoint) {
@@ -390,35 +392,39 @@ export class Extension {
       });
     }
     if (!this.config.live) {
-      await this.context.tracing.start({
-        screenshots: true,
-        snapshots: true,
-        sources: true,
-      });
-      for (const origin of Object.values(ORIGINS))
-        await this.context.route(`${origin}/**`, (route) => {
-          const options = this.pages.get(route.request().url()) ?? {};
-          return route.fulfill({
-            contentType: "text/html",
-            body: chatHTML(options),
-          });
+      await base.step("Start tracing and route provider fixtures", async () => {
+        await this.context.tracing.start({
+          screenshots: true,
+          snapshots: true,
+          sources: true,
         });
+        for (const origin of Object.values(ORIGINS))
+          await this.context.route(`${origin}/**`, (route) => {
+            const options = this.pages.get(route.request().url()) ?? {};
+            return route.fulfill({
+              contentType: "text/html",
+              body: chatHTML(options),
+            });
+          });
+      });
     } else if (!this.authLoaded && !this.borrowedBrowser) {
       if (this.config.storageState)
         await this.context.setStorageState(this.config.storageState);
       this.authLoaded = true;
     }
-    const installer = await this.context.browser()!.newBrowserCDPSession();
-    try {
-      const api = extensionInstaller(installer);
-      this.id = await this.installation.load(
-        api,
-        Boolean(this.borrowedBrowser),
-        this.suspendedOriginal,
-      );
-    } finally {
-      await installer.detach();
-    }
+    await base.step("Install the unpacked extension", async () => {
+      const installer = await this.context.browser()!.newBrowserCDPSession();
+      try {
+        const api = extensionInstaller(installer);
+        this.id = await this.installation.load(
+          api,
+          Boolean(this.borrowedBrowser),
+          this.suspendedOriginal,
+        );
+      } finally {
+        await installer.detach();
+      }
+    });
     const isExtensionWorker = (worker: Worker) =>
       worker.url().startsWith(`chrome-extension://${this.id}/`);
     this.worker =
@@ -431,7 +437,9 @@ export class Extension {
         await readFile(path.join(this.profile, "DevToolsActivePort"), "utf8")
       ).split("\n")[0];
     }
-    await this.closeWelcome();
+    await base.step("Dismiss the install welcome page", () =>
+      this.closeWelcome(),
+    );
   }
 
   /**
