@@ -1,8 +1,21 @@
 # Changelog
 
-Notable changes to the DataFog browser extension. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
+Notable changes to the datafog browser extension. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+- Choose which findings Replace or Redact affects, with exact refreshed placeholder previews and Always allow limited to skipped values. Manage each saved original with Copy, a lasting allow exception, and confirmed Forget that retires its token and hides open restored displays.
+
+- Replace sensitive draft text directly from the circle popup after saving originals in the vault, with preview, Undo and Redo. Keep as is applies only to the current draft; More contains Redact, Always allow and sidebar access.
+- Show or hide originals independently in each assistant answer while preserving the chat provider's marker text.
+- Access FogVault automatically and save rules and preferences encrypted. No password or credential-migration flow is exposed; missing keys preserve existing data and report an error.
+- Restyle the circle, popup, answer control, sidebar and settings with the datafog "Redacted line" tokens (Night, Deck, Fog, Mist, International Orange; Geist in extension pages) and Lucide icons. Tokens show as orange pills. Undo, Redo, More, Show originals, Add, Remove and Look up are icon buttons with the same accessible names. The encrypted store is called the vault in the interface; explanations moved behind info buttons.
+- Each setting has one home. The sidebar keeps Originals and Rules, and a gear opens the settings page, which holds sites, types, holding sends, appearance, defaults, vault deletion, About and Support. The settings page no longer repeats the allow and flag lists.
+- Choose System, Light or Dark under Appearance; the choice applies to the circle, popup, answer control, sidebar and settings page.
+- The circle keeps the last result in view while it re-checks, with a quiet ring instead of dots, shows a small check after a clean check, pops when the count rises, and uses shorter hover text. An open popup keeps its findings, with actions paused, until the new result lands.
+- A welcome page opens once on a new install: pin datafog, reload any chat tab it could not reach, then a short "You're set". Chat tabs open at install or during an update are checked right away, without a reload, using the `scripting` permission and host access to the five chat sites.
+
+- Ship complete Lucide ISC/Feather MIT and Geist OFL notices in the extension archive; document the nonsensitive appearance bootstrap exception.
 
 ## [1.0.0] - 2026-11-18
 

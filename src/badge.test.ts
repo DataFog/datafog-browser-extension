@@ -157,19 +157,19 @@ test("hides when the chat box is off screen", async () => {
   expect(wrap.style.visibility).toBe("hidden");
 });
 
-test("shows Dismiss, Pseudonymize and Redact only when values are found", () => {
+test("keeps sidebar access available and shows Replace for findings", () => {
   const { badge, wrap } = mount();
   const actions = wrap.querySelector<HTMLElement>(".actions")!;
 
   badge.show({ kind: "clean" });
-  expect(actions.hidden).toBe(true);
+  expect(actions.hidden).toBe(false);
 
   badge.show({ kind: "found", counts: { EMAIL: 1 } });
   expect(actions.hidden).toBe(false);
   const resolve = actions.querySelector(".resolve")!;
   expect(Array.from(resolve.children, (button) => button.textContent)).toEqual([
-    "Pseudonymize",
-    "Redact",
+    "Replace",
+    "More",
   ]);
 });
 
@@ -211,7 +211,7 @@ test.each([
   expect(wrap.style.right).toBe(badgeRight);
 });
 
-test("greys out while checking is off, explaining why, with its panel kept shut", () => {
+test("greys out while checking is off and allows sidebar access", () => {
   const { badge, wrap } = mount();
   const dot = wrap.querySelector<HTMLButtonElement>(".dot")!;
   const panel = wrap.querySelector<HTMLElement>(".panel")!;
@@ -222,8 +222,69 @@ test("greys out while checking is off, explaining why, with its panel kept shut"
   expect(dot.title).toBe(OFF_TITLE);
 
   dot.click();
-  badge.warnFiles(true);
-  badge.show({ kind: "checking" });
-  expect(panel.hidden).toBe(true);
+  expect(panel.hidden).toBe(false);
+  expect(wrap.querySelector<HTMLButtonElement>(".more-toggle")!.hidden).toBe(
+    false,
+  );
   expect(dot.className).toBe("dot off");
+});
+
+test("hover and keyboard focus explain status without opening actions; Escape returns focus", () => {
+  const { badge, wrap } = mount();
+  badge.show({ kind: "found", counts: { EMAIL: 1 } });
+  const dot = wrap.querySelector<HTMLButtonElement>(".dot")!;
+  const tooltip = wrap.querySelector<HTMLElement>(".tooltip")!;
+  const panel = wrap.querySelector<HTMLElement>(".panel")!;
+  dot.dispatchEvent(new Event("mouseenter"));
+  expect(tooltip.hidden).toBe(false);
+  expect(panel.hidden).toBe(true);
+  dot.dispatchEvent(new Event("mouseleave"));
+  dot.focus();
+  expect(tooltip.hidden).toBe(false);
+  dot.click();
+  expect(panel.hidden).toBe(false);
+  expect(tooltip.hidden).toBe(true);
+  const more = wrap.querySelector<HTMLButtonElement>(".more-toggle")!;
+  more.click();
+  more.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+  );
+  expect(wrap.querySelector<HTMLElement>(".more")!.hidden).toBe(true);
+  expect(panel.hidden).toBe(false);
+  more.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+  );
+  expect(panel.hidden).toBe(true);
+  expect(dot.getRootNode()).toHaveProperty("activeElement", dot);
+});
+
+test("a re-check keeps the last result in view, and clean differs from idle", () => {
+  const { badge, wrap } = mount();
+  const dot = wrap.querySelector<HTMLButtonElement>(".dot")!;
+
+  badge.show({ kind: "idle" });
+  expect(dot.querySelector(".ok")).toBeNull();
+  badge.show({ kind: "checking" });
+  // A first check starts from the mark; the dots fade in later
+  expect(dot.dataset.previous).toBeUndefined();
+  expect(dot.querySelector(".mark")).not.toBeNull();
+
+  badge.show({ kind: "clean" });
+  expect(dot.querySelector(".ok")).not.toBeNull();
+  expect(dot.title).toBe("Checked · nothing found");
+
+  badge.show({ kind: "found", counts: { EMAIL: 2 } });
+  expect(dot.title).toBe("2 found · click to review");
+  badge.show({ kind: "checking" });
+  badge.show({ kind: "checking" });
+  expect(dot.dataset.previous).toBe("found");
+  expect(dot.querySelector(".count")!.textContent).toBe("2");
+  // Its actions stay in place but wait for the result
+  const replace = wrap.querySelector<HTMLButtonElement>(".pseudonymize")!;
+  expect(replace.hidden).toBe(false);
+  expect(replace.disabled).toBe(true);
+
+  badge.show({ kind: "found", counts: { EMAIL: 3 } });
+  expect(dot.dataset.previous).toBeUndefined();
+  expect(replace.disabled).toBe(false);
 });

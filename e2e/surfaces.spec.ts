@@ -4,34 +4,6 @@ import { test, expect, SAMPLE } from "./fixtures";
 
 const EMAIL = "jane@example.com";
 
-async function createVault(panel: Page): Promise<void> {
-  await panel.locator("#create-password").fill("surface test password");
-  await panel.locator("#create-confirm").fill("surface test password");
-  await panel.locator("#create-submit").click();
-  await expect(panel.locator("#lock")).toBeVisible();
-}
-
-/** Keep the chat active: a real side panel doesn't replace its active tab. */
-async function panelAction(panel: Page, chat: Page, selector: string) {
-  await chat.bringToFront();
-  await panel
-    .locator(selector)
-    .evaluate((element: HTMLElement) => element.click());
-}
-
-async function addAnswer(chat: Page, text: string, id = "answer") {
-  await chat.evaluate(
-    (payload) => {
-      const answer = document.createElement("article");
-      answer.id = payload.id;
-      answer.dataset.messageAuthorRole = "assistant";
-      answer.textContent = payload.text;
-      document.querySelector("#answers")!.append(answer);
-    },
-    { text, id },
-  );
-}
-
 /** CDP virtual time includes the extension's isolated content-script world. */
 async function advanceRendererTime(page: Page, milliseconds: number) {
   const session = await page.context().newCDPSession(page);
@@ -82,6 +54,7 @@ test("reattaches to a replacement contenteditable editor", async ({
     .poll(async () => (await badge.state(".dot")).title)
     .toContain("found");
   await badge.click(".dot");
+  await badge.click(".more-toggle");
   await badge.click(".redact");
   await expect(chat.locator("#editing-earlier-message")).toContainText(
     "[EMAIL]",
@@ -103,6 +76,7 @@ test("checks the textarea composer fallback", async ({ extension }) => {
     .poll(async () => (await badge.state(".dot")).title)
     .toContain("found");
   await badge.click(".dot");
+  await badge.click(".more-toggle");
   await badge.click(".redact");
   await expect(page.locator("textarea")).toHaveValue("[EMAIL]");
 });
@@ -127,7 +101,7 @@ test("reports an unprotected page when no supported composer exists", async ({
     .toContainEqual({
       text: "!",
       title:
-        "DataFog can't find the chat box, so this page isn't being checked. Try reloading it.",
+        "datafog can't find the chat box, so this page isn't being checked. Try reloading it.",
     });
 });
 
@@ -167,11 +141,12 @@ for (const colorScheme of ["light", "dark"] as const) {
     expect(panel.rect.y + panel.rect.height).toBeLessThanOrEqual(
       viewport.height,
     );
+    await badge.click(".more-toggle");
     await badge.click(".redact");
     await expect(chat.locator("#prompt-textarea")).toHaveText("[EMAIL]");
     const sidePanel = await extension.panel();
     await sidePanel.emulateMedia({ colorScheme });
-    await expect(sidePanel.locator("#create-submit")).toBeVisible();
+    await expect(sidePanel.locator("#unlocked")).toBeVisible();
     await expect(sidePanel.locator("body")).toHaveCSS(
       "background-color",
       colorScheme === "dark" ? "rgb(26, 34, 38)" : "rgb(255, 255, 255)",
@@ -192,23 +167,52 @@ for (const colorScheme of ["light", "dark"] as const) {
     );
     await expect(options.locator("body")).toHaveCSS(
       "color",
-      dark ? "rgb(238, 240, 239)" : "rgb(31, 31, 31)",
-    );
-    await expect(options.locator("#allowlist")).toHaveCSS(
-      "background-color",
-      dark ? "rgb(35, 45, 49)" : "rgb(245, 245, 245)",
+      dark ? "rgb(238, 240, 239)" : "rgb(14, 19, 22)",
     );
   });
 }
 
-test("settings restore defaults after confirming, keeping the lists", async ({
+test("a theme chosen in settings overrides the browser on every surface", async ({
   extension,
+  chat,
+  badge,
 }) => {
+  const options = await extension.options();
+  await options.emulateMedia({ colorScheme: "light" });
+  await options.locator('label:has(input[value="dark"])').click();
+  await expect(options.locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(26, 34, 38)",
+  );
+  const panel = await extension.panel();
+  await panel.emulateMedia({ colorScheme: "light" });
+  await expect(panel.locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(26, 34, 38)",
+  );
+  await chat.emulateMedia({ colorScheme: "light" });
+  await chat.locator("#prompt-textarea").fill("jane@example.com");
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
+  await badge.click(".dot");
+  await expect
+    .poll(async () => (await badge.state(".panel")).visible)
+    .toBe(true);
+  expect(
+    await chat.evaluate(() =>
+      document.querySelector("datafog-badge")!.getAttribute("data-theme"),
+    ),
+  ).toBe("dark");
+  await options.locator('label:has(input[value="system"])').click();
+  await expect(panel.locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
+});
+
+test("settings restore defaults after confirming", async ({ extension }) => {
   const options = await extension.options();
   await options.locator("#site-claude").uncheck();
   await options.locator('input[value="PHONE"]').check();
-  await options.locator("#denylist").fill("Project Falcon");
-  await options.locator("#denylist").blur();
   await expect(options.locator("#status")).toHaveText("Saved");
 
   options.once("dialog", (dialog) => void dialog.accept());
@@ -217,7 +221,6 @@ test("settings restore defaults after confirming, keeping the lists", async ({
   await options.reload();
   await expect(options.locator("#site-claude")).toBeChecked();
   await expect(options.locator('input[value="PHONE"]')).not.toBeChecked();
-  await expect(options.locator("#denylist")).toHaveValue("Project Falcon");
 });
 
 test("pastes several thousand words and records typing and scan timings", async ({
@@ -272,7 +275,7 @@ test("pastes several thousand words and records typing and scan timings", async 
   });
 });
 
-test("asks to reload ChatGPT after the installed extension is reloaded", async ({
+test("keeps checking an open ChatGPT tab after an update, without a reload", async ({
   chat,
   badge,
   extension,
@@ -283,191 +286,91 @@ test("asks to reload ChatGPT after the installed extension is reloaded", async (
     .toContain("found");
   const versions = await extension.loadNewerBuild();
   expect(versions.after).not.toBe(versions.before);
+  // The update reaches the open tab: the old copy steps aside for a new one
+  await expect(chat.locator("datafog-badge")).toHaveCount(1);
   await chat.locator("#prompt-textarea").fill("after-update@example.com");
   await expect
     .poll(async () => (await badge.state(".dot")).title)
-    .toContain("DataFog was updated");
-  await badge.click(".dot");
-  expect((await badge.state(".note")).text).toBe(
-    "Reload this page to keep checking this chat box.",
-  );
+    .toBe("1 found · click to review");
 });
 
-test("restores only the latest answer, copies it, and hides originals", async ({
-  chat,
-  badge,
+test("a chat tab open before install is checked without a reload", async ({
   extension,
 }) => {
-  const panel = await extension.panel();
-  await createVault(panel);
-  await chat.locator("#prompt-textarea").fill(EMAIL);
-  await expect
-    .poll(async () => (await badge.state(".dot")).title)
-    .toContain("found");
-  await badge.click(".dot");
-  await badge.click(".pseudonymize");
-  await expect(panel.locator("#review-items")).toContainText(EMAIL);
-  await panel.locator("#approve").click();
-  await expect(chat.locator("#prompt-textarea")).toHaveText(
-    /\[\[EMAIL_[A-Z0-9]+\]\]/,
-  );
-  const marker = (await chat.locator("#prompt-textarea").innerText()).trim();
-  await addAnswer(chat, `Earlier ${marker}`, "earlier-answer");
-  await addAnswer(chat, `Latest ${marker}`);
-  await panelAction(panel, chat, "#restore-latest");
-  await expect(panel.locator("#restored-summary")).toContainText(
-    "Showing 1 original value",
-  );
-  await expect(chat.locator("#earlier-answer datafog-original")).toHaveCount(0);
-  await expect(chat.locator("#answer datafog-original")).toHaveCount(1);
-  expect(
-    (await extension.shadow(chat, "#answer datafog-original").state("span"))
-      .text,
-  ).toBe(EMAIL);
-  // Closed roots keep originals out of the page's own text and scripts.
-  await expect(chat.locator("#answer")).not.toContainText(EMAIL);
-  expect(
-    await chat.locator("datafog-original").evaluate((host) => host.shadowRoot),
-  ).toBeNull();
-  await extension.context.grantPermissions([
-    "clipboard-read",
-    "clipboard-write",
-  ]);
-  await panel.bringToFront();
-  await panel.locator("#copy-restored").click();
-  await expect
-    .poll(() => panel.evaluate(() => navigator.clipboard.readText()))
-    .toBe(`Latest ${EMAIL}`);
-  await panelAction(panel, chat, "#hide-originals");
-  await expect(chat.locator("datafog-original")).toHaveCount(0);
-  await expect(chat.locator("#answer")).toHaveText(`Latest ${marker}`);
-});
-
-test("restores a streaming answer and can restore again after ChatGPT redraws it", async ({
-  chat,
-  badge,
-  extension,
-}) => {
-  const panel = await extension.panel();
-  await createVault(panel);
-  await chat.locator("#prompt-textarea").fill(EMAIL);
-  await expect
-    .poll(async () => (await badge.state(".dot")).title)
-    .toContain("found");
-  await badge.click(".dot");
-  await badge.click(".pseudonymize");
-  await expect(panel.locator("#approve")).toBeEnabled();
-  await panel.locator("#approve").click();
-  await expect(chat.locator("#prompt-textarea")).toHaveText(
-    /\[\[EMAIL_[A-Z0-9]+\]\]/,
-  );
-  const marker = (await chat.locator("#prompt-textarea").innerText()).trim();
-  await addAnswer(chat, `Streaming ${marker}`);
-  await chat
-    .locator("#answer")
-    .evaluate((answer) => answer.setAttribute("aria-busy", "true"));
-  await panelAction(panel, chat, "#restore-latest");
-  await expect(chat.locator("datafog-original")).toHaveCount(1);
-  await extension.context.grantPermissions([
-    "clipboard-read",
-    "clipboard-write",
-  ]);
-  await panel.bringToFront();
-  await panel.locator("#copy-restored").click();
-  await expect
-    .poll(() => panel.evaluate(() => navigator.clipboard.readText()))
-    .toBe(`Streaming ${EMAIL}`);
-  await panelAction(panel, chat, "#hide-originals");
-  await expect(chat.locator("#answer")).toHaveText(`Streaming ${marker}`);
-  await expect(chat.locator("#answer")).toHaveAttribute("aria-busy", "true");
-  await panelAction(panel, chat, "#restore-latest");
-  await expect(chat.locator("datafog-original")).toHaveCount(1);
-  await chat.locator("#answer").evaluate((answer, answerMarker) => {
-    answer.textContent = `Streaming ${answerMarker} completed`;
-    answer.setAttribute("aria-busy", "false");
-  }, marker);
-  await expect(chat.locator("datafog-original")).toHaveCount(0);
-  await panelAction(panel, chat, "#restore-latest");
-  await expect(chat.locator("datafog-original")).toHaveCount(1);
-  await extension.context.grantPermissions([
-    "clipboard-read",
-    "clipboard-write",
-  ]);
-  await panel.bringToFront();
-  await panel.locator("#copy-restored").click();
-  await expect
-    .poll(() => panel.evaluate(() => navigator.clipboard.readText()))
-    .toBe(`Streaming ${EMAIL} completed`);
-  await panelAction(panel, chat, "#hide-originals");
-  await expect(chat.locator("#answer")).toHaveText(
-    `Streaming ${marker} completed`,
-  );
-});
-
-test("side panels restore the active chat in their own window", async ({
-  chat,
-  badge,
-  extension,
-}) => {
-  const secondChat = await extension.newChat({ path: "/c/second-window" });
-  await secondChat.bringToFront();
-  const secondWindow = await extension.worker.evaluate(async () => {
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      lastFocusedWindow: true,
+  // Simulate an install over an already-open tab: remove the copy the page
+  // got on load by injecting again from the service worker
+  const chat = await extension.newChat();
+  await extension.worker.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: "https://chatgpt.com/*" });
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id! },
+      files: ["content.js"],
     });
-    if (tab?.id === undefined) throw new Error("No second ChatGPT tab");
-    return chrome.windows.create({ tabId: tab.id, type: "normal" });
   });
-  expect(secondWindow?.id).toBeDefined();
-  const secondBadge = extension.badge(secondChat);
-  const firstPanel = await extension.panel(undefined, chat);
-  await createVault(firstPanel);
+  // A second live copy stands down: still one circle
+  await expect(chat.locator("datafog-badge")).toHaveCount(1);
   await chat.locator("#prompt-textarea").fill(EMAIL);
   await expect
-    .poll(async () => (await badge.state(".dot")).title)
-    .toContain("found");
-  await badge.click(".dot");
-  await badge.click(".pseudonymize");
-  await expect(firstPanel.locator("#review-items")).toContainText(EMAIL);
-  await firstPanel.locator("#approve").click();
-  await expect(chat.locator("#prompt-textarea")).toHaveText(
-    /\[\[EMAIL_[A-Z0-9]+\]\]/,
-  );
-  const firstMarker = (
-    await chat.locator("#prompt-textarea").innerText()
-  ).trim();
-  await addAnswer(chat, `First window ${firstMarker}`);
+    .poll(async () => (await extension.badge(chat).state(".dot")).title)
+    .toBe("1 found · click to review");
+});
 
-  const secondPanel = await extension.panel(secondWindow!.id, secondChat);
-  const secondEmail = "second-window@example.com";
-  await secondChat.locator("#prompt-textarea").fill(secondEmail);
-  await expect
-    .poll(async () => (await secondBadge.state(".dot")).title)
-    .toContain("found");
-  await secondBadge.click(".dot");
-  await secondBadge.click(".pseudonymize");
-  await expect(secondPanel.locator("#review-items")).toContainText(secondEmail);
-  await secondPanel.locator("#approve").click();
-  await expect(secondChat.locator("#prompt-textarea")).toHaveText(
-    /\[\[EMAIL_[A-Z0-9]+\]\]/,
+test("the welcome page walks a new install through pinning to done", async ({
+  extension,
+}) => {
+  const welcome = await extension.welcome();
+  await expect(welcome.locator("#step-label")).toHaveText("Welcome");
+  await expect(welcome.locator('[data-step="pin"]')).toBeVisible();
+  await welcome.locator("#pin-next").click();
+  await expect(welcome.locator('[data-step="done"]')).toBeVisible();
+  // The vault may still be opening when a fresh profile starts
+  await expect(welcome.locator("#vault-line")).toContainText(
+    "Your vault is ready",
+    { timeout: 15_000 },
   );
-  const secondMarker = (
-    await secondChat.locator("#prompt-textarea").innerText()
-  ).trim();
-  await addAnswer(secondChat, `Second window ${secondMarker}`);
-  await panelAction(firstPanel, chat, "#restore-latest");
-  await expect(chat.locator("datafog-original")).toHaveCount(1);
-  await expect(secondChat.locator("datafog-original")).toHaveCount(0);
-  await panelAction(secondPanel, secondChat, "#restore-latest");
-  await expect(secondChat.locator("datafog-original")).toHaveCount(1);
+  await expect(welcome.locator("#done-try")).toHaveAttribute(
+    "href",
+    "https://chatgpt.com/",
+  );
   expect(
-    (await extension.shadow(chat, "datafog-original").state("span")).text,
-  ).toBe(EMAIL);
-  expect(
-    (await extension.shadow(secondChat, "datafog-original").state("span")).text,
-  ).toBe(secondEmail);
-  await panelAction(firstPanel, chat, "#hide-originals");
-  await expect(chat.locator("datafog-original")).toHaveCount(0);
-  await expect(secondChat.locator("datafog-original")).toHaveCount(1);
+    await extension.worker.evaluate(
+      async () => (await chrome.storage.local.get("onboarded")).onboarded,
+    ),
+  ).toBeUndefined();
+  await welcome.locator("#done-close").click();
+  await expect
+    .poll(() =>
+      extension.worker.evaluate(
+        async () => (await chrome.storage.local.get("onboarded")).onboarded,
+      ),
+    )
+    .toBe(true);
+});
+
+test("circle hover explains status, click opens actions, Escape and outside click dismiss", async ({
+  chat,
+  badge,
+}) => {
+  await chat.locator("#prompt-textarea").fill(EMAIL);
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
+  await expect(chat.locator("datafog-tab")).toHaveCount(0);
+  const { rect } = await badge.state(".dot");
+  await chat.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  expect((await badge.state(".panel")).visible).toBe(false);
+  expect((await badge.state(".tooltip")).visible).toBe(true);
+  expect((await badge.state(".tooltip")).text).toContain("found");
+  await badge.click(".dot");
+  expect((await badge.state(".panel")).visible).toBe(true);
+  expect((await badge.state(".more")).visible).toBe(false);
+  await badge.click(".more-toggle");
+  expect((await badge.state(".redact")).visible).toBe(true);
+  await chat.keyboard.press("Escape");
+  expect((await badge.state(".more")).visible).toBe(false);
+  expect((await badge.state(".panel")).visible).toBe(true);
+  await chat.keyboard.press("Escape");
+  expect((await badge.state(".panel")).visible).toBe(false);
+  await chat.keyboard.press("Enter");
+  expect((await badge.state(".panel")).visible).toBe(true);
+  await chat.locator("#prompt-textarea").click();
+  expect((await badge.state(".panel")).visible).toBe(false);
 });

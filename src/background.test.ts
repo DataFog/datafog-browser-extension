@@ -49,9 +49,18 @@ const tabMessage = vi.fn(
 );
 const setStorage = vi.fn(async (_items: object) => {});
 const removeStorage = vi.fn(async (_keys: string) => {});
-const queryTabs = vi.fn(async (_query: object) => [{ id: 7 }]);
+const queryTabs = vi.fn(
+  async (_query: object): Promise<{ id: number; discarded?: boolean }[]> => [
+    { id: 7 },
+  ],
+);
 const requestUpdateCheck = vi.fn(async () => ({ status: "no_update" }));
 let updateAvailable: (details: { version: string }) => void = () => {};
+let installed: (details: { reason: string }) => void = () => {};
+const executeScript = vi.fn(
+  async (_injection: { target: { tabId: number } }): Promise<unknown[]> => [],
+);
+const createTab = vi.fn(async (_properties: object) => ({}));
 let stored: object;
 
 const PANEL: Sender = {
@@ -134,8 +143,16 @@ beforeEach(async () => {
             updateAvailable = added;
           },
         },
+        onInstalled: {
+          addListener: (added: typeof installed) => {
+            installed = added;
+          },
+        },
         requestUpdateCheck,
-        getManifest: () => ({ version: "0.1.0" }),
+        getManifest: () => ({
+          version: "0.1.0",
+          content_scripts: [{ matches: ["https://chatgpt.com/*"] }],
+        }),
         sendMessage,
         id: "datafog",
         getURL: (path: string) => `chrome-extension://datafog/${path}`,
@@ -148,7 +165,8 @@ beforeEach(async () => {
           remove: removeStorage,
         },
       },
-      tabs: { sendMessage: tabMessage, query: queryTabs },
+      scripting: { executeScript },
+      tabs: { sendMessage: tabMessage, query: queryTabs, create: createTab },
     },
   });
   await import("./background");
@@ -161,10 +179,8 @@ test("turns checking off only for the sites it's off for", async () => {
   await send(request, fromPage("https://claude.ai/new"));
   await send(request, fromPage("https://chatgpt.com/"));
 
-  const enabled = sendMessage.mock.calls.map(
-    ([message]) => message.settings.enabled,
-  );
-  expect(enabled).toEqual([false, true]);
+  const enabled = sendMessage.mock.calls.map(([message]) => message.host);
+  expect(enabled).toEqual(["claude.ai", "chatgpt.com"]);
 });
 
 test("forwards scans with the settings, opening one offscreen document", async () => {
@@ -175,8 +191,11 @@ test("forwards scans with the settings, opening one offscreen document", async (
   expect(createDocument).toHaveBeenCalledOnce();
   expect(sendMessage).toHaveBeenCalledWith({
     target: "offscreen",
-    request,
+    request: { ...request, tabId: 7 },
     settings: DEFAULT_SETTINGS,
+    routing: null,
+    host: undefined,
+    legacySettings: undefined,
   });
   expect(responses[0]).toEqual({ seq: 1, enabled: true, counts: { EMAIL: 1 } });
 });
@@ -244,7 +263,7 @@ test("answers and logs a code when the offscreen document fails", async () => {
   expect(await send({ type: "redact", text: "a@b.co" })).toEqual({
     error: "datafog_failed",
   });
-  expect(warn).toHaveBeenCalledWith("DataFog redact failed: datafog_failed");
+  expect(warn).toHaveBeenCalledWith("datafog redact failed: datafog_failed");
   expect(JSON.stringify(warn.mock.calls)).not.toContain("a@b.co");
   warn.mockRestore();
 });
@@ -287,9 +306,7 @@ test("opens the side panel again after it closes", async () => {
 test("refuses vault requests from a web page", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-  expect(
-    await send({ type: "vault-unlock", password: "pw", remember: false }),
-  ).toEqual({
+  expect(await send({ type: "vault-delete" })).toEqual({
     error: "not_allowed",
   });
   expect(
@@ -373,12 +390,47 @@ test("stores a new vault's routing, and passes on its status", async () => {
 });
 
 test("forgets the vault's routing once it's deleted", async () => {
-  sendMessage.mockResolvedValueOnce({ state: "none" });
+  sendMessage.mockResolvedValueOnce({
+    result: { state: "none" },
+    storage: { deleted: true },
+  });
 
   expect(await send({ type: "vault-delete" }, PANEL)).toEqual({
     state: "none",
   });
-  expect(removeStorage).toHaveBeenCalledWith("vault");
+  expect(removeStorage).toHaveBeenCalledWith([
+    "vault",
+    "settings",
+    "vaultDeleting",
+  ]);
+});
+
+test("lets the settings page, open in a tab, delete vault data", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  sendMessage.mockResolvedValueOnce({
+    result: { state: "none" },
+    storage: { deleted: true },
+  });
+  const settingsTab: Sender = {
+    id: "datafog",
+    tab: { id: 9, windowId: 3 },
+    url: "chrome-extension://datafog/options.html",
+  };
+
+  expect(await send({ type: "vault-delete" }, settingsTab)).toEqual({
+    state: "none",
+  });
+  // Another extension page in a tab, or a web page, still can't
+  expect(
+    await send(
+      { type: "vault-delete" },
+      { ...settingsTab, url: "chrome-extension://datafog/harness.html" },
+    ),
+  ).toEqual({ error: "not_allowed" });
+  expect(
+    await send({ type: "vault-delete" }, fromPage("https://chatgpt.com/")),
+  ).toEqual({ error: "not_allowed" });
+  warn.mockRestore();
 });
 
 test("keeps the routing when deleting fails", async () => {
@@ -390,12 +442,12 @@ test("keeps the routing when deleting fails", async () => {
   expect(removeStorage).not.toHaveBeenCalled();
 });
 
-test("opens the side panel for Pseudonymize, within the click", async () => {
+test("replaces directly without opening the side panel", async () => {
   sendMessage.mockResolvedValueOnce({ state: "locked", waiting: true });
 
   const pending = send({ type: "pseudonymize", text: "a@b.co" });
 
-  expect(openPanel).toHaveBeenCalledWith({ tabId: 7 });
+  expect(openPanel).not.toHaveBeenCalled();
   await pending;
   expect(sendMessage).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -561,17 +613,10 @@ test("hides the values in the page when asked", async () => {
   expect(tabMessage).toHaveBeenCalledWith(7, { type: "hide-originals" });
 });
 
-test("hides the values in every tab once the vault locks", async () => {
-  queryTabs.mockResolvedValueOnce([{ id: 7 }, { id: 8 }]);
-  sendMessage.mockResolvedValueOnce({ state: "locked" });
-  tabMessage.mockRejectedValueOnce(new Error("no content script"));
-
-  // The vault's notice gets no reply; the worker acts on it in the background
+test("status notices do not trigger recursive access or page reveals", () => {
   listener({ target: "panel", type: "vault-changed" }, PANEL, () => {});
-  await vi.waitFor(() =>
-    expect(tabMessage).toHaveBeenCalledWith(8, { type: "hide-originals" }),
-  );
-  expect(tabMessage).toHaveBeenCalledWith(7, { type: "hide-originals" });
+  expect(sendMessage).not.toHaveBeenCalled();
+  expect(tabMessage).not.toHaveBeenCalled();
 });
 
 test("says when the latest answer has no markers", async () => {
@@ -589,5 +634,173 @@ test("says when the latest answer has no markers", async () => {
   expect(tabMessage).not.toHaveBeenCalledWith(
     7,
     expect.objectContaining({ type: "show-originals" }),
+  );
+});
+
+test("removes legacy plaintext only after verified encrypted migration", async () => {
+  stored = { settings: { allowlist: ["private@example.com"] } };
+  sendMessage.mockResolvedValueOnce({
+    result: DEFAULT_SETTINGS,
+    storage: { routing: ROUTING, migrated: true },
+  });
+  await send({ type: "settings-get" });
+  expect(setStorage).toHaveBeenCalledWith({ vault: ROUTING });
+  expect(removeStorage).toHaveBeenCalledWith("settings");
+});
+
+test("failed migration keeps plaintext for retry and does not claim a clean scan", async () => {
+  stored = { settings: { allowlist: ["private@example.com"] } };
+  sendMessage.mockResolvedValueOnce({
+    error: "preferences_verification_failed",
+  });
+  expect(
+    await send({ type: "scan", text: "private@example.com", seq: 5 }),
+  ).toEqual({ error: "preferences_verification_failed" });
+  expect(removeStorage).not.toHaveBeenCalled();
+});
+
+test("partial deletion blocks access and permits explicit cleanup retry", async () => {
+  stored = { vault: ROUTING, vaultDeleting: true };
+  expect(await send({ type: "settings-get" })).toEqual({
+    error: "vault_deletion_incomplete",
+  });
+  expect(sendMessage).not.toHaveBeenCalled();
+  sendMessage.mockResolvedValueOnce({
+    result: { state: "none" },
+    storage: { deleted: true },
+  });
+  expect(await send({ type: "vault-delete" }, PANEL)).toEqual({
+    state: "none",
+  });
+  expect(removeStorage).toHaveBeenCalledWith([
+    "vault",
+    "settings",
+    "vaultDeleting",
+  ]);
+});
+
+test("plaintext cleanup failure is reported and can safely be retried", async () => {
+  stored = { settings: { allowlist: ["private@example.com"] } };
+  sendMessage.mockResolvedValue({
+    result: DEFAULT_SETTINGS,
+    storage: { routing: ROUTING, migrated: true },
+  });
+  removeStorage.mockRejectedValueOnce(new Error("disk"));
+  expect(await send({ type: "settings-get" })).toEqual({
+    error: "datafog_failed",
+  });
+  expect(await send({ type: "settings-get" })).toEqual(DEFAULT_SETTINGS);
+});
+
+test("does not misreport a confirmed mapping save when bootstrap metadata fails", async () => {
+  sendMessage.mockResolvedValueOnce({
+    result: { text: "[[EMAIL_A]]", edits: [], saved: true },
+    storage: { routing: ROUTING, migrated: true },
+  });
+  setStorage.mockRejectedValueOnce(new Error("disk"));
+  expect(await send({ type: "pseudonymize", text: "a@b.co" })).toEqual({
+    text: "[[EMAIL_A]]",
+    edits: [],
+    saved: true,
+    warning: "metadata_cleanup_incomplete",
+  });
+  expect(openPanel).not.toHaveBeenCalled();
+});
+
+test("a new install reaches open chat tabs, then opens the welcome page", async () => {
+  queryTabs.mockResolvedValueOnce([
+    { id: 7 },
+    { id: 8, discarded: true },
+    { id: 9 },
+  ]);
+  executeScript.mockImplementation(async (injection) => {
+    if (injection.target.tabId === 9)
+      throw new Error("Cannot access contents of the page");
+    return [];
+  });
+
+  installed({ reason: "install" });
+  await vi.waitFor(() => expect(createTab).toHaveBeenCalled());
+
+  expect(queryTabs).toHaveBeenCalledWith({ url: ["https://chatgpt.com/*"] });
+  // A discarded tab gets the script when it next loads
+  expect(executeScript).toHaveBeenCalledTimes(2);
+  expect(executeScript).toHaveBeenCalledWith({
+    target: { tabId: 7 },
+    files: ["content.js"],
+  });
+  expect(setStorage).toHaveBeenCalledWith({ unreachedTabs: [9] });
+  expect(createTab).toHaveBeenCalledWith({
+    url: "chrome-extension://datafog/welcome.html",
+  });
+  executeScript.mockReset();
+});
+
+test("an update reaches open chat tabs but never reopens the welcome page", async () => {
+  queryTabs.mockResolvedValueOnce([{ id: 7 }]);
+
+  installed({ reason: "update" });
+  await vi.waitFor(() =>
+    expect(setStorage).toHaveBeenCalledWith({ unreachedTabs: [] }),
+  );
+
+  expect(executeScript).toHaveBeenCalledOnce();
+  expect(createTab).not.toHaveBeenCalled();
+});
+
+test("the welcome page, open in a tab, may use the vault", async () => {
+  sendMessage.mockResolvedValueOnce({ state: "unlocked" });
+  const welcome: Sender = {
+    id: "datafog",
+    tab: { id: 9, windowId: 3 },
+    url: "chrome-extension://datafog/welcome.html",
+  };
+
+  expect(await send({ type: "vault-status" }, welcome)).toEqual({
+    state: "unlocked",
+  });
+});
+
+test("forget is panel-only and refreshes revealed originals after success or uncertain failure", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const request = {
+    type: "forget-original",
+    marker: "[[EMAIL_123456]]",
+  } as const;
+  expect(await send(request)).toEqual({ error: "not_allowed" });
+  expect(sendMessage).not.toHaveBeenCalled();
+  queryTabs.mockResolvedValue([{ id: 7 }, { id: 8 }]);
+  sendMessage.mockResolvedValueOnce({ result: { saved: true } });
+  expect(await send(request, PANEL)).toEqual({ saved: true });
+  expect(tabMessage).toHaveBeenCalledWith(7, { type: "recheck" });
+  expect(tabMessage).toHaveBeenCalledWith(8, { type: "recheck" });
+  tabMessage.mockClear();
+  sendMessage.mockResolvedValueOnce({ error: "OutcomeUnknown" });
+  expect(await send(request, PANEL)).toEqual({ error: "OutcomeUnknown" });
+  expect(tabMessage).toHaveBeenCalledWith(7, { type: "recheck" });
+  warn.mockRestore();
+});
+
+test("selection uses sender tab rather than a caller supplied reservation tab", async () => {
+  sendMessage.mockResolvedValueOnce({ seq: 2 });
+  await send({
+    type: "select",
+    text: "a@b.co",
+    seq: 2,
+    tabId: 99,
+    previewId: "reserved",
+    keep: [],
+  });
+  expect(sendMessage).toHaveBeenCalledWith(
+    expect.objectContaining({
+      request: {
+        type: "select",
+        text: "a@b.co",
+        seq: 2,
+        tabId: 7,
+        previewId: "reserved",
+        keep: [],
+      },
+    }),
   );
 });

@@ -13,12 +13,13 @@ test("DeepSeek: checks the chat box, matches its size and redacts", async ({
   await composer.fill(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog: 2 items found. Click to review.");
+    .toBe("2 found · click to review");
   // Level with the card's bottom edge, so the card was found as the box
   await expectBadgeFitsBox(badge, box, 60, "24px");
   expect((await badge.state(".dismiss")).title).toContain("DeepSeek's own");
 
   await badge.click(".dot");
+  await badge.click(".more-toggle");
   await badge.click(".redact");
 
   await expect(composer).toHaveValue(

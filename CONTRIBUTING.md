@@ -32,16 +32,15 @@ To try the badge without a chat site, serve `harness/` (for example
   answers and badge size. Adding a site means adding a profile there and its
   host to `manifest.json`.
 - `src/content.ts`: watches the chat box and scans 400 ms after typing stops,
-  or right away on paste. `src/badge.ts` and `src/tab.ts` draw the badge and
-  page tab in shadow roots. `src/page.ts` watches for sends and attached files.
+  or right away on paste. `src/badge.ts` draws the circle and draft popup in a shadow root. `src/page.ts` watches for sends and attached files.
 - `src/background.ts`: the service worker. It opens the offscreen document and
   passes requests to it with the current settings.
 - `src/offscreen.ts`: runs DataFog Core. `src/detect.ts` builds Core's scan
   settings, and `src/model.ts` runs the name and address model in a Worker.
 - `src/vault.ts` and `src/device.ts`: the encrypted vault, through FogVault and
-  Core's adapter, and the key for **Remember this device**.
-- `src/panel.ts`: the side panel. `src/originals.ts` shows restored values in
-  the chat's answer.
+  Core's adapter, and the automatic local device key.
+- `src/panel.ts`: saved originals, rules and preferences in the sidebar.
+  `src/originals.ts` owns independent answer controls and local original display.
 - `src/options.ts` and `src/settings.ts`: the settings page and stored
   settings.
 
@@ -82,9 +81,11 @@ npm run test:live:auth -- --keep-open
 npm run test:e2e:live
 ```
 
-The first command opens a separate Chrome profile to sign in to; leave it open
-for the second. `npm run hooks:install` adds a pre-commit hook that runs the
-live suite before each commit.
+The first command is optional when you already have a signed-in Chrome exposing a localhost debugging endpoint. To use that existing browser, run `CHATGPT_CDP_ENDPOINT=http://127.0.0.1:9333 npm run test:e2e:live` (use its actual port). The runner temporarily disables only this checkout's existing unpacked `dist/` build, preserves its vault, and restores its enabled state in `finally`. Tests install a separate disposable copy and remove only that copy afterward, including failed startup. Other datafog installations are rejected. Existing tabs are not reloaded; an older extension may need a manual tab reload after being reenabled.
+
+For a separate sign-in profile, the first command launches installed Chrome directly. It attaches automation only after you confirm that sign-in and the editor are ready, and does not install the extension during authentication. Leave that window open for the second command. Complete any human verification yourself. If verification loops, stop rather than repeatedly relaunching; this workflow does not bypass challenges. Set `CHROME_EXECUTABLE_PATH` if Chrome is installed outside a standard location.
+
+`npm run hooks:install` adds a pre-commit hook that runs the live suite before each commit.
 
 ## Changelog
 

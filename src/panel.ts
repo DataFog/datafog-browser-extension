@@ -1,942 +1,463 @@
-/**
- * Side panel: the vault, the Pseudonymize review, the values marked not
- * sensitive, restoring answers, and the lists of values to always allow or
- * flag.
- */
-
+/** Independent saved-data, policy, and preferences sidebar. */
 import type {
   ErrorResponse,
   PanelNotice,
   PanelRequest,
-  RestoredInPage,
-  ValueChoice,
+  RestoredWithValues,
+  ReviewItem,
   VaultStatus,
 } from "./messages";
 import {
   addToList,
-  type ListAdd,
   LABELS,
   loadSettings,
   removeFromList,
   type ListName,
-  type Settings,
 } from "./settings";
-import { siteNames } from "./site";
+import { icon, isIconName, setIconButton } from "./icons";
+import { LOGO } from "./logo";
+import { followTheme } from "./theme";
 
-/** Values a list shows before it scrolls within the panel. */
-const LIST_VISIBLE = 5;
+const element = (id: string) => document.getElementById(id)!;
+const status = element("vault-state");
+const error = element("vault-error");
+const saved = element("save-status");
+let activeView: "data" | "rules" = "data";
+let access: "initializing" | "ready" | "unavailable" = "initializing";
+let renderVersion = 0;
+/** How long "Saved" shows, in ms. */
+const SAVED_MS = 2000;
+let savedTimer = 0;
+let busy = false;
 
-/** Shortest password the vault accepts. */
-const MIN_PASSWORD = 8;
+followTheme(document.documentElement);
 
-/** What each error code means, for codes a user can act on. */
-const EXPLAINED: Record<string, string> = {
-  // FogVault's code for a password that doesn't open the vault
-  Authentication: "That password isn't right.",
-  chat_box_changed:
-    "The chat box changed after this review was prepared. Choose Pseudonymize again.",
-  nothing_found: "There's nothing to pseudonymize in the chat box.",
-  no_review: "This review is gone. Choose Pseudonymize again.",
-  settings_changed:
-    "What DataFog checks for changed after this review was prepared. Choose Pseudonymize again.",
-  no_chat: `Open a ${siteNames()} chat in this tab to restore its latest answer.`,
-  no_answer: "There's no answer in this chat yet.",
-  vault_locked: "Unlock your vault to restore.",
-  no_markers: "There are no markers in the chat's latest answer.",
-};
-
-/** The lock's body, shared by both icons. */
-const LOCK_BODY =
-  '<rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" />';
-
-/** An icon for each state of a vault that exists, with its name. */
-const STATE_ICONS: Record<"locked" | "unlocked", [string, string]> = {
-  locked: [
-    "Locked",
-    `${LOCK_BODY}<path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="1.5" />`,
-  ],
-  unlocked: [
-    "Unlocked",
-    `${LOCK_BODY}<path d="M5 7V5a3 3 0 0 1 5.8-1.1" fill="none" stroke="currentColor" stroke-width="1.5" />`,
-  ],
-};
-
-const view = {
-  update: document.querySelector<HTMLDivElement>("#update")!,
-  review: document.querySelector<HTMLElement>("#review")!,
-  reviewNote: document.querySelector<HTMLParagraphElement>("#review-note")!,
-  reviewCount: document.querySelector<HTMLParagraphElement>("#review-count")!,
-  reviewItems: document.querySelector<HTMLUListElement>("#review-items")!,
-  reviewButtons: document.querySelector<HTMLDivElement>("#review-buttons")!,
-  reviewError: document.querySelector<HTMLParagraphElement>("#review-error")!,
-  reviewStatus: document.querySelector<HTMLParagraphElement>("#review-status")!,
-  approve: document.querySelector<HTMLButtonElement>("#approve")!,
-  vaultState: document.querySelector<HTMLSpanElement>("#vault-state")!,
-  create: document.querySelector<HTMLFormElement>("#create")!,
-  createPassword: document.querySelector<HTMLInputElement>("#create-password")!,
-  createConfirm: document.querySelector<HTMLInputElement>("#create-confirm")!,
-  createSubmit: document.querySelector<HTMLButtonElement>("#create-submit")!,
-  createRemember: document.querySelector<HTMLInputElement>("#create-remember")!,
-  unlockRemember: document.querySelector<HTMLInputElement>("#unlock-remember")!,
-  remembered: document.querySelector<HTMLParagraphElement>("#remembered")!,
-  rememberedUntil:
-    document.querySelector<HTMLSpanElement>("#remembered-until")!,
-  deleteOpen: document.querySelector<HTMLButtonElement>("#delete-open")!,
-  deleteForm: document.querySelector<HTMLFormElement>("#delete")!,
-  deleteConfirm: document.querySelector<HTMLInputElement>("#delete-confirm")!,
-  deleteSubmit: document.querySelector<HTMLButtonElement>("#delete-submit")!,
-  ruleLength: document.querySelector<HTMLLIElement>("#rule-length")!,
-  ruleMatch: document.querySelector<HTMLLIElement>("#rule-match")!,
-  unlock: document.querySelector<HTMLFormElement>("#unlock")!,
-  unlockPassword: document.querySelector<HTMLInputElement>("#unlock-password")!,
-  unlocked: document.querySelector<HTMLDivElement>("#unlocked")!,
-  vaultError: document.querySelector<HTMLParagraphElement>("#vault-error")!,
-  restoreNote: document.querySelector<HTMLParagraphElement>("#restore-note")!,
-  restoreLatest: document.querySelector<HTMLButtonElement>("#restore-latest")!,
-  restored: document.querySelector<HTMLDivElement>("#restored")!,
-  restoredSummary:
-    document.querySelector<HTMLParagraphElement>("#restored-summary")!,
-  restoreError: document.querySelector<HTMLParagraphElement>("#restore-error")!,
-  notSensitiveNote: document.querySelector<HTMLParagraphElement>(
-    "#not-sensitive-note",
-  )!,
-  notSensitive: document.querySelector<HTMLUListElement>("#not-sensitive")!,
-  notSensitiveCount: document.querySelector<HTMLParagraphElement>(
-    "#not-sensitive-count",
-  )!,
-  notSensitiveError: document.querySelector<HTMLParagraphElement>(
-    "#not-sensitive-error",
-  )!,
-};
-
-/** The latest restored answer, kept only for Copy until it's hidden. */
-let restoredText = "";
-
-/** Whether the delete form is open. */
-let deleting = false;
-
-/** The last status shown, to redraw after opening or closing the delete form. */
-let shown: VaultStatus | null = null;
-
-/**
- * Say what an error code means.
- *
- * @param code The code.
- * @returns A message for the user.
- */
-function explain(code: string): string {
-  return EXPLAINED[code] ?? `Something went wrong. Error code: ${code}`;
+// Icons are declared in the markup with data-icon and drawn once here
+for (const target of document.querySelectorAll<HTMLElement>("[data-icon]")) {
+  const name = target.dataset.icon;
+  if (isIconName(name))
+    target.insertAdjacentHTML(
+      "afterbegin",
+      icon(name, target.tagName === "H2" ? 14 : 16),
+    );
 }
+document.getElementById("brand")?.insertAdjacentHTML("afterbegin", LOGO);
 
-/**
- * Show an error, or clear it.
- *
- * @param target Where to show it.
- * @param code The error code, or null to clear it.
- */
-function showError(target: HTMLElement, code: string | null): void {
-  target.textContent = code === null ? "" : explain(code);
-  target.hidden = code === null;
+/** Explanations live behind info buttons instead of under every heading. */
+function toggleInfo(button: HTMLElement, id: string): void {
+  const info = document.getElementById(id);
+  if (!info) return;
+  info.hidden = !info.hidden;
+  button.setAttribute("aria-expanded", String(!info.hidden));
 }
+for (const button of document.querySelectorAll<HTMLElement>("[data-info]")) {
+  button.setAttribute("aria-expanded", "false");
+  button.setAttribute("aria-controls", button.dataset.info!);
+  button.addEventListener("click", () =>
+    toggleInfo(button, button.dataset.info!),
+  );
+}
+const chip = element("vault-chip");
+chip.addEventListener("click", () => toggleInfo(chip, "vault-info"));
 
-/**
- * Ask the service worker something.
- *
- * @param request The request.
- * @returns Its response, or an error code if it failed.
- */
-async function ask<T>(request: PanelRequest): Promise<T | ErrorResponse> {
+function failure(code: string): void {
+  error.hidden = false;
+  error.textContent = `Your vault couldn't open. Nothing was lost. (${code})`;
+}
+async function ask<T>(
+  request:
+    | PanelRequest
+    | { type: "restore"; text: string }
+    | { type: "always-allow"; entityType: string; value: string },
+): Promise<T | ErrorResponse> {
   try {
-    const response = await chrome.runtime.sendMessage<
-      PanelRequest,
-      T | ErrorResponse | undefined
-    >(request);
-    return response ?? { error: "no_response" };
+    return (
+      (await chrome.runtime.sendMessage(request)) ?? { error: "no_response" }
+    );
   } catch {
     return { error: "extension_reloaded" };
   }
 }
-
-/**
- * Show the vault: create, unlock or lock.
- *
- * @param state The vault's state.
- */
-function renderVault(status: VaultStatus): void {
-  const { state, rememberedUntil } = status;
-  view.remembered.hidden = state === "none" || rememberedUntil === null;
-  view.rememberedUntil.textContent = rememberedUntil
-    ? `This device is remembered until ${new Date(rememberedUntil).toLocaleDateString(undefined, { month: "short", day: "numeric" })}.`
-    : "";
-  view.create.hidden = state !== "none";
-  view.unlock.hidden = state !== "locked" || deleting;
-  view.unlocked.hidden = state !== "unlocked" || deleting;
-  view.deleteOpen.hidden = state === "none" || deleting;
-  view.deleteForm.hidden = state === "none" || !deleting;
-  view.vaultState.hidden = state === "none";
-  if (state !== "none") {
-    const [label, paths] = STATE_ICONS[state];
-    view.vaultState.title = label;
-    view.vaultState.setAttribute("aria-label", label);
-    // A fixed icon of the extension's own, never page or user text
-    view.vaultState.innerHTML = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">${paths}</svg>`;
-  }
-  shown = status;
+function selectView(view: typeof activeView): void {
+  activeView = view;
+  for (const section of document.querySelectorAll<HTMLElement>(
+    "[data-section]",
+  ))
+    section.hidden = section.dataset.section !== view;
+  for (const button of document.querySelectorAll<HTMLElement>("[data-view]"))
+    button.setAttribute("aria-pressed", String(button.dataset.view === view));
 }
-
-/**
- * Open or close the delete form.
- *
- * @param open Whether to open it.
- */
-function showDelete(open: boolean): void {
-  deleting = open;
-  view.deleteForm.reset();
-  view.deleteSubmit.disabled = true;
-  showError(view.vaultError, null);
-  if (shown) renderVault(shown);
-  if (open) view.deleteConfirm.focus();
-}
-
-/**
- * Whether the user typed the delete confirmation.
- *
- * @returns True once DELETE is typed, in any case.
- */
-function deleteConfirmed(): boolean {
-  return view.deleteConfirm.value.trim().toUpperCase() === "DELETE";
-}
-
-/**
- * Mark a password rule as met or not, once the user has typed something.
- *
- * @param rule The rule's list item.
- * @param met Whether it's met.
- * @param typed Whether the user has typed a password yet.
- */
-function markRule(rule: HTMLLIElement, met: boolean, typed: boolean): void {
-  rule.classList.toggle("met", typed && met);
-  rule.classList.toggle("unmet", typed && !met);
-}
-
-/**
- * Check the new password against the rules, showing each as it's met.
- *
- * @returns Whether the password meets every rule.
- */
-function checkPassword(): boolean {
-  const ready = checkRules(
-    view.createPassword.value,
-    view.createConfirm.value,
-    view.ruleLength,
-    view.ruleMatch,
+for (const button of document.querySelectorAll<HTMLElement>("[data-view]"))
+  button.addEventListener(
+    "click",
+    () =>
+      (button.dataset.view === "data" || button.dataset.view === "rules") &&
+      selectView(button.dataset.view),
   );
-  view.createSubmit.disabled = !ready;
-  return ready;
+
+interface RowDetail {
+  /** A small uppercase label above the value, such as its type. */
+  kicker?: string;
+  /** The token that stands in for the value in chats. */
+  token?: string;
+  /** Where a rule applies: "Any type" or one detected type. */
+  scope?: string;
 }
-
-/**
- * Check a new password and its confirmation, showing each rule as it's met.
- *
- * @param password The new password.
- * @param confirm Its confirmation.
- * @param lengthRule The length rule's list item.
- * @param matchRule The match rule's list item.
- * @returns Whether the password meets every rule.
- */
-function checkRules(
-  password: string,
-  confirm: string,
-  lengthRule: HTMLLIElement,
-  matchRule: HTMLLIElement,
-): boolean {
-  const long = password.length >= MIN_PASSWORD;
-  const match = password === confirm;
-  markRule(lengthRule, long, password !== "");
-  markRule(matchRule, match, confirm !== "");
-  return long && match;
-}
-
-/**
- * Show the Pseudonymize review: each original value and its marker.
- *
- * @param status The vault's status.
- */
-function renderReview({
-  state,
-  review,
-  waiting,
-  reviewError,
-}: VaultStatus): void {
-  view.review.hidden = review === null && !waiting && reviewError === null;
-  view.reviewButtons.hidden = review === null && !waiting;
-  view.approve.hidden = review === null;
-  if (review)
-    view.reviewNote.textContent =
-      "Replace values with their markers one at a time with Mark sensitive, or all at once. They're saved in your vault so they can be restored later.";
-  else if (waiting)
-    view.reviewNote.textContent = `${state === "none" ? "Create" : "Unlock"} your vault below to review the values to pseudonymize.`;
-  else view.reviewNote.textContent = "";
-  // Values only ever go in as text, never as markup
-  view.reviewItems.replaceChildren(
-    ...(review ?? []).map(({ entityType, original, marker }, index) => {
-      const item = document.createElement("li");
-      const value = document.createElement("div");
-      value.textContent = original;
-      const replacement = document.createElement("div");
-      replacement.className = "marker";
-      replacement.textContent = `→ ${marker}`;
-      const choices = document.createElement("div");
-      choices.className = "choices";
-      const replace = linkButton("Mark sensitive");
-      replace.addEventListener("click", () => void markSensitive(index));
-      const keep = linkButton("Not sensitive");
-      keep.addEventListener(
-        "click",
-        () => void markNotSensitive(index, entityType, original),
-      );
-      choices.append(replace, keep);
-      item.append(value, replacement, choices);
-      return item;
-    }),
-  );
-  fitList(view.reviewItems, view.reviewCount);
-  showError(view.reviewError, reviewError);
-}
-
-/**
- * Make a small text button for a list row.
- *
- * @param text The button's text.
- * @returns The button.
- */
-function linkButton(text: string): HTMLButtonElement {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "link inline";
-  button.textContent = text;
-  return button;
-}
-
-/**
- * Show the values remembered as not sensitive, each with Remove.
- *
- * @param status The vault's status.
- */
-function renderNotSensitive({ state, notSensitive }: VaultStatus): void {
-  if (state !== "unlocked")
-    view.notSensitiveNote.textContent =
-      "Unlock your vault to see the values you've marked not sensitive.";
-  else
-    view.notSensitiveNote.textContent =
-      notSensitive.length === 0 ? "No values marked not sensitive yet." : "";
-  // Values only ever go in as text, never as markup
-  view.notSensitive.replaceChildren(
-    ...notSensitive.map((choice) => {
-      const item = document.createElement("li");
-      const value = document.createElement("div");
-      value.textContent = choice.value;
-      const type = document.createElement("div");
-      type.className = "muted";
-      type.textContent = LABELS[choice.entityType] ?? choice.entityType;
-      const remove = linkButton("Remove");
-      remove.addEventListener("click", () => void clearChoice(choice));
-      item.append(value, type, remove);
-      if (
-        kept?.choice.entityType === choice.entityType &&
-        kept.choice.value === choice.value
-      )
-        highlightKept(item, kept);
-      return item;
-    }),
-  );
-  fitList(view.notSensitive, view.notSensitiveCount);
-  if (state !== "unlocked") showError(view.notSensitiveError, null);
-}
-
-/** A value just marked not sensitive, highlighted in its list for a moment. */
-interface Kept {
-  choice: ValueChoice;
-  /** When its highlight started, from `performance.now()`. */
-  since: number;
-  /** Whether its row has been scrolled into view. */
-  shown: boolean;
-}
-
-/** The value just marked not sensitive, while it's highlighted. */
-let kept: Kept | null = null;
-
-/** The timer that ends the highlight. */
-let keptTimer = 0;
-
-/** The review confirmation's timer. */
-let reviewStatusTimer = 0;
-
-/**
- * Highlight the row of the value just marked not sensitive. A row drawn again
- * while it's highlighted, such as after another review choice, carries on its
- * fade rather than starting it over, and isn't scrolled to again.
- *
- * @param item The value's row.
- * @param highlight The value and when its highlight started.
- */
-function highlightKept(item: HTMLElement, highlight: Kept): void {
-  item.classList.add("added");
-  item.style.animationDelay = `${-(performance.now() - highlight.since)}ms`;
-  if (highlight.shown) return;
-  highlight.shown = true;
-  // Shown once it's drawn, below the review
-  requestAnimationFrame(() => item.scrollIntoView({ block: "nearest" }));
-}
-
-/**
- * Stop highlighting the value just marked not sensitive, after a moment.
- *
- * @param highlight The value and when its highlight started.
- */
-function endKept(highlight: Kept): void {
-  window.clearTimeout(keptTimer);
-  keptTimer = window.setTimeout(() => {
-    if (kept !== highlight) return;
-    kept = null;
-    for (const row of view.notSensitive.querySelectorAll(".added"))
-      row.classList.remove("added");
-  }, ADDED_MS);
-}
-
-/**
- * Say what a review button did, for a moment.
- *
- * @param text What happened.
- */
-function confirmReview(text: string): void {
-  view.reviewStatus.textContent = text;
-  window.clearTimeout(reviewStatusTimer);
-  reviewStatusTimer = window.setTimeout(() => {
-    view.reviewStatus.textContent = "";
-  }, ADDED_MS);
-}
-
-/**
- * Pseudonymize one reviewed value in the chat box.
- *
- * @param index The value's place in the review.
- */
-async function markSensitive(index: number): Promise<void> {
-  if (await act({ type: "review-mark-sensitive", index }, view.reviewError))
-    confirmReview("Replaced in the chat box");
-}
-
-/**
- * Remember a reviewed value as not sensitive, and highlight it in its list.
- *
- * @param index The value's place in the review.
- * @param entityType Its type.
- * @param value The value.
- */
-async function markNotSensitive(
-  index: number,
-  entityType: string,
+function row(
   value: string,
-): Promise<void> {
-  const highlight: Kept = {
-    choice: { entityType, value },
-    since: performance.now(),
-    shown: false,
+  detail: RowDetail = {},
+  remove?: () => Promise<void>,
+): HTMLLIElement {
+  const item = document.createElement("li");
+  const text = document.createElement("div");
+  text.className = "value";
+  if (detail.kicker) {
+    const kicker = document.createElement("span");
+    kicker.className = "kicker";
+    kicker.textContent = detail.kicker;
+    text.append(kicker);
+  }
+  text.append(value);
+  item.append(text);
+  if (detail.token) {
+    const token = document.createElement("span");
+    token.className = "token";
+    token.title = detail.token;
+    token.textContent = detail.token;
+    item.append(token);
+  }
+  if (detail.scope) {
+    const scope = document.createElement("span");
+    scope.className = "scope";
+    scope.textContent = detail.scope;
+    item.append(scope);
+  }
+  if (remove) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "icon";
+    setIconButton(button, "remove", "Remove");
+    button.title = `Remove ${value}`;
+    button.addEventListener("click", () => void mutate(remove));
+    item.append(button);
+  }
+  return item;
+}
+/** Saved pairs are immutable; the row owns its menu and confirmation. */
+function originalRow(item: ReviewItem, allowed: boolean): HTMLLIElement {
+  const entry = row(item.original, {
+    kicker: LABELS[item.entityType] ?? item.entityType,
+    token: item.marker,
+  });
+  entry.classList.add("original-row");
+  if (allowed) {
+    const allowedChip = document.createElement("span");
+    allowedChip.className = "scope allowed";
+    allowedChip.textContent = "Allowed";
+    entry.append(allowedChip);
+  }
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "icon original-menu-toggle";
+  setIconButton(toggle, "more", `Actions for ${item.marker}`);
+  toggle.setAttribute("aria-expanded", "false");
+  const menu = document.createElement("div");
+  menu.className = "original-menu";
+  menu.hidden = true;
+  const confirmation = document.createElement("div");
+  confirmation.className = "forget-confirm";
+  confirmation.hidden = true;
+  const prompt = document.createElement("p");
+  prompt.append("Forget this original? Chats that already contain ");
+  const forgottenToken = document.createElement("span");
+  forgottenToken.className = "token";
+  forgottenToken.textContent = item.marker;
+  prompt.append(forgottenToken, " keep the token. It will no longer restore.");
+  confirmation.append(prompt);
+  const note = document.createElement("span");
+  note.className = "original-status";
+  note.setAttribute("role", "status");
+  let working = false;
+  const close = () => {
+    if (working) return;
+    menu.hidden = true;
+    confirmation.hidden = true;
+    toggle.setAttribute("aria-expanded", "false");
   };
-  kept = highlight;
-  if (await act({ type: "review-not-sensitive", index }, view.reviewError)) {
-    confirmReview("Marked not sensitive");
-    endKept(highlight);
-  } else kept = null;
-}
-
-/**
- * Pseudonymize every reviewed value in the chat box.
- *
- * @param count How many values the review had.
- */
-async function replaceAll(count: number): Promise<void> {
-  if (await act({ type: "review-approve" }, view.reviewError))
-    confirmReview(
-      `Replaced ${count} value${count === 1 ? "" : "s"} in the chat box`,
-    );
-}
-
-/**
- * Replace a value remembered as not sensitive again.
- *
- * @param choice The value and its type.
- */
-async function clearChoice(choice: ValueChoice): Promise<void> {
-  await act({ type: "choice-clear", ...choice }, view.notSensitiveError);
-}
-
-/**
- * Keep a long list to a few values, scrolling within the panel for the rest.
- *
- * @param list The list.
- * @param note Where to say the list scrolls.
- */
-function fitList(list: HTMLUListElement, note: HTMLParagraphElement): void {
-  const count = list.childElementCount;
-  const scroll = count > LIST_VISIBLE;
-  list.classList.toggle("scroll", scroll);
-  note.hidden = !scroll;
-  note.textContent = scroll
-    ? `${count} values. Scroll the list to see them all.`
-    : "";
-  if (!scroll) {
-    list.style.maxHeight = "";
-    return;
-  }
-  // Show the first few in full, and half the next, so the list looks scrollable
-  const rows = Array.from(
-    list.children,
-    (row) => row.getBoundingClientRect().height,
-  );
-  const height =
-    rows.slice(0, LIST_VISIBLE).reduce((sum, row) => sum + row, 0) +
-    rows[LIST_VISIBLE] / 2;
-  list.style.maxHeight = height > 0 ? `${height}px` : "";
-}
-
-/**
- * Pluralize a count of markers.
- *
- * @param count How many.
- * @returns "1 marker" or "N markers".
- */
-function markers(count: number): string {
-  return `${count} marker${count === 1 ? "" : "s"}`;
-}
-
-/**
- * Say what was restored in the page, or clear it.
- *
- * @param restored The restored answer, or null to clear it.
- */
-function showRestored(restored: RestoredInPage | null): void {
-  view.restored.hidden = restored === null;
-  restoredText = restored?.text ?? "";
-  if (!restored) return;
-  const left = restored.unrestored
-    ? ` ${markers(restored.unrestored)} couldn't be restored and stayed as is.`
-    : "";
-  let summary = `Showing ${restored.shown} original value${restored.shown === 1 ? "" : "s"} in the chat's answer.${left}`;
-  if (restored.restored === 0)
-    summary = `None of the ${markers(restored.unrestored)} in this answer could be restored.`;
-  else if (restored.shown === 0)
-    summary = `Restored ${markers(restored.restored)}, but couldn't show them in the page. Copy the restored answer instead.${left}`;
-  view.restoredSummary.textContent = summary;
-}
-
-/** Put the markers back in this window's chat. */
-async function hideInPage(): Promise<void> {
-  const { id } = await chrome.windows.getCurrent();
-  showRestored(null);
-  await ask({
-    type: "hide-originals",
-    windowId: id ?? chrome.windows.WINDOW_ID_CURRENT,
+  entry.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      close();
+      toggle.focus();
+    }
   });
-}
-
-/**
- * Offer Restore while the vault is unlocked, clearing restored values when
- * it locks.
- *
- * @param state The vault's state.
- */
-function renderRestore(state: VaultStatus["state"]): void {
-  const unlocked = state === "unlocked";
-  view.restoreLatest.disabled = !unlocked;
-  view.restoreNote.textContent = unlocked
-    ? ""
-    : "Unlock your vault to restore markers in the chat's answers.";
-  if (!unlocked) {
-    showRestored(null);
-    showError(view.restoreError, null);
-  }
-}
-
-/** Restore the latest answer in this window's chat. */
-async function restoreLatest(): Promise<void> {
-  const { id } = await chrome.windows.getCurrent();
-  const response = await ask<RestoredInPage>({
-    type: "restore-latest",
-    windowId: id ?? chrome.windows.WINDOW_ID_CURRENT,
-  });
-  if ("error" in response) {
-    showRestored(null);
-    showError(view.restoreError, response.error);
-    return;
-  }
-  showError(view.restoreError, null);
-  showRestored(response);
-}
-
-/** How long an added value stays highlighted, and its status shown, in ms. */
-const ADDED_MS = 2000;
-
-/** The value just added, or added again, to highlight while it's shown. */
-let added: { name: ListName; value: string } | null = null;
-
-/** What each list says when it's empty. */
-const EMPTY_LIST: Record<ListName, string> = {
-  allowlist: "No values yet.",
-  denylist: "No phrases yet.",
-};
-
-/**
- * Find a list's elements: the list, its notes and its add form.
- *
- * @param name The list.
- * @returns The elements.
- */
-function listParts(name: ListName) {
-  return {
-    list: document.querySelector<HTMLUListElement>(`#${name}`)!,
-    note: document.querySelector<HTMLParagraphElement>(`#${name}-note`)!,
-    count: document.querySelector<HTMLParagraphElement>(`#${name}-count`)!,
-    form: document.querySelector<HTMLFormElement>(`#${name}-add`)!,
-    field: document.querySelector<HTMLInputElement>(`#${name}-value`)!,
-    status: document.querySelector<HTMLParagraphElement>(`#${name}-status`)!,
-  };
-}
-
-/**
- * Show one of the user's lists, each value with Remove.
- *
- * @param name The list.
- * @param values Its values.
- */
-function renderList(name: ListName, values: string[]): void {
-  const { list, note, count } = listParts(name);
-  note.textContent = values.length === 0 ? EMPTY_LIST[name] : "";
-  // Values only ever go in as text, never as markup
-  list.replaceChildren(
-    ...values.map((value) => {
-      const item = document.createElement("li");
-      const text = document.createElement("div");
-      text.textContent = value;
-      const remove = linkButton("Remove");
-      remove.addEventListener("click", () => void removeFromList(name, value));
-      item.append(text, remove);
-      return item;
-    }),
-  );
-  fitList(list, count);
-  const index = added?.name === name ? values.indexOf(added.value) : -1;
-  const row = list.children[index];
-  if (!row) return;
-  row.classList.add("added");
-  row.scrollIntoView({ block: "nearest" });
-}
-
-/**
- * Say what adding to a list did, and highlight the value in the list, for a
- * moment.
- *
- * @param name The list.
- * @param value The value, as typed.
- * @param result What adding it did.
- */
-async function confirmAdd(
-  name: ListName,
-  value: string,
-  result: ListAdd,
-): Promise<void> {
-  if (result === "blank") return;
-  const { status } = listParts(name);
-  const highlight = { name, value: value.trim() };
-  added = highlight;
-  status.textContent = result === "added" ? "Added" : "Already in the list";
-  status.classList.toggle("ok", result === "added");
-  // A new value redraws the list when the settings change; one already
-  // listed is highlighted where it is
-  await refreshLists();
-  window.setTimeout(() => {
-    if (added !== highlight) return;
-    added = null;
-    status.textContent = "";
-    for (const row of listParts(name).list.querySelectorAll(".added"))
-      row.classList.remove("added");
-  }, ADDED_MS);
-}
-
-/**
- * Show both lists from the settings.
- *
- * @param settings The current settings.
- */
-function renderLists(settings: Settings): void {
-  renderList("allowlist", settings.allowlist);
-  renderList("denylist", settings.denylist);
-}
-
-/** Read the settings and show their lists. */
-async function refreshLists(): Promise<void> {
-  renderLists(await loadSettings());
-}
-
-/**
- * Show the vault and any review.
- *
- * @param status The vault's status.
- */
-function render(status: VaultStatus): void {
-  renderVault(status);
-  renderReview(status);
-  renderNotSensitive(status);
-  renderRestore(status.state);
-}
-
-/** Offer Update now while a downloaded update waits to install. */
-async function checkUpdate(): Promise<void> {
-  const response = await ask<{ ready?: boolean }>({ type: "update-status" });
-  view.update.hidden = "error" in response || response.ready !== true;
-}
-
-/**
- * Fetch the status and show it.
- *
- * @param autoUnlock Whether a remembered device may unlock the vault.
- */
-async function refresh(autoUnlock = false): Promise<void> {
-  const status = await ask<VaultStatus>({ type: "vault-status", autoUnlock });
-  if ("error" in status) showError(view.vaultError, status.error);
-  else render(status);
-}
-
-/**
- * Run a request from a form or button, showing its result.
- *
- * @param request The request.
- * @param errorTarget Where to show a failure.
- * @returns Whether it succeeded.
- */
-async function act(
-  request: PanelRequest,
-  errorTarget: HTMLElement,
-): Promise<boolean> {
-  const response = await ask<VaultStatus>(request);
-  if ("error" in response) {
-    // The review may have changed even though the request failed
-    await refresh();
-    showError(errorTarget, response.error);
-    return false;
-  }
-  showError(errorTarget, null);
-  render(response);
-  return true;
-}
-
-/**
- * Create the vault, leaving it unlocked.
- *
- * @param password The new password.
- */
-async function create(password: string, remember: boolean): Promise<void> {
-  const response = await ask<VaultStatus>({
-    type: "vault-create",
-    password,
-    remember,
-  });
-  if ("error" in response) {
-    showError(view.vaultError, response.error);
-    return;
-  }
-  showError(view.vaultError, null);
-  render(response);
-}
-
-/**
- * Unlock the vault.
- *
- * @param password The password.
- * @param remember Whether to remember this device for 30 days.
- */
-async function unlock(password: string, remember: boolean): Promise<void> {
-  const response = await ask<VaultStatus>({
-    type: "vault-unlock",
-    password,
-    remember,
-  });
-  if ("error" in response) {
-    await refresh();
-    showError(view.vaultError, response.error);
-    return;
-  }
-  showError(view.vaultError, null);
-  render(response);
-}
-
-view.create.addEventListener("submit", (event) => {
-  event.preventDefault();
-  if (!checkPassword()) return;
-  const password = view.createPassword.value;
-  const remember = view.createRemember.checked;
-  view.create.reset();
-  checkPassword();
-  void create(password, remember);
-});
-view.create.addEventListener("input", () => void checkPassword());
-
-view.unlock.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const password = view.unlockPassword.value;
-  if (password === "") return;
-  const remember = view.unlockRemember.checked;
-  view.unlock.reset();
-  void unlock(password, remember);
-});
-
-view.remembered
-  .querySelector("#forget-device")!
-  .addEventListener(
-    "click",
-    () => void act({ type: "device-forget" }, view.vaultError),
-  );
-
-document
-  .querySelector("#lock")!
-  .addEventListener(
-    "click",
-    () => void act({ type: "vault-lock" }, view.vaultError),
-  );
-document
-  .querySelector("#approve")!
-  .addEventListener(
-    "click",
-    () => void replaceAll(view.reviewItems.childElementCount),
-  );
-document
-  .querySelector("#cancel")!
-  .addEventListener(
-    "click",
-    () => void act({ type: "review-cancel" }, view.reviewError),
-  );
-view.deleteOpen.addEventListener("click", () => showDelete(true));
-document
-  .querySelector("#delete-cancel")!
-  .addEventListener("click", () => showDelete(false));
-view.deleteForm.addEventListener("input", () => {
-  view.deleteSubmit.disabled = !deleteConfirmed();
-});
-view.deleteForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  if (!deleteConfirmed()) return;
-  view.deleteForm.reset();
-  view.deleteSubmit.disabled = true;
-  void ask<VaultStatus>({ type: "vault-delete" }).then(async (response) => {
-    if ("error" in response) {
-      // Deleting locks the vault first
-      await refresh();
-      showError(view.vaultError, response.error);
+  toggle.addEventListener("click", () => {
+    if (working) return;
+    if (!menu.hidden || !confirmation.hidden) {
+      close();
       return;
     }
-    deleting = false;
-    showError(view.vaultError, null);
-    render(response);
+    menu.hidden = false;
+    toggle.setAttribute("aria-expanded", "true");
+    menu.querySelector<HTMLButtonElement>("button")?.focus();
   });
-});
-/**
- * Make an info button show its box while hovered or focused, and keep it open
- * once clicked, until clicked again or Escape is pressed.
- *
- * @param toggle The info button.
- */
-function setUpInfo(toggle: HTMLButtonElement): void {
-  const info = document.getElementById(toggle.getAttribute("aria-controls")!)!;
-  let pinned = false;
-  let hovered = false;
-  const update = () => {
-    // Keyboard focus opens it; a mouse click's focus leaves it to the pin
-    const open = pinned || hovered || toggle.matches(":focus-visible");
-    info.hidden = !open;
-    toggle.setAttribute("aria-expanded", String(open));
-  };
-  // The box counts as hovered too, so its link can be reached
-  for (const target of [toggle, info]) {
-    target.addEventListener("mouseenter", () => {
-      hovered = true;
-      update();
-    });
-    target.addEventListener("mouseleave", () => {
-      hovered = false;
-      update();
-    });
+  function button(
+    label: string,
+    action: string,
+    run: () => void,
+    parent = menu,
+  ): HTMLButtonElement {
+    const control = document.createElement("button");
+    control.type = "button";
+    control.textContent = label;
+    if (parent === menu) {
+      const name =
+        action === "copy" ? "copy" : action === "allow" ? "allow" : "delete";
+      control.insertAdjacentHTML("afterbegin", icon(name, 14));
+    }
+    if (action === "confirm-forget") {
+      control.textContent = "Forget";
+      control.setAttribute("aria-label", label);
+    }
+    control.dataset.action = action;
+    control.addEventListener("click", run);
+    parent.append(control);
+    return control;
   }
-  toggle.addEventListener("focus", update);
-  toggle.addEventListener("blur", update);
-  toggle.addEventListener("click", () => {
-    pinned = !pinned;
-    update();
+  async function perform(kind: "copy" | "allow" | "forget"): Promise<void> {
+    if (working || busy) return;
+    working = true;
+    for (const control of entry.querySelectorAll("button"))
+      control.disabled = true;
+    note.textContent =
+      kind === "copy"
+        ? "Copying…"
+        : kind === "forget"
+          ? "Forgetting…"
+          : "Saving…";
+    try {
+      if (kind === "copy") await navigator.clipboard.writeText(item.original);
+      else {
+        const response = await ask<VaultStatus>(
+          kind === "forget"
+            ? { type: "forget-original", marker: item.marker }
+            : {
+                type: "always-allow",
+                entityType: item.entityType,
+                value: item.original,
+              },
+        );
+        if ("error" in response) throw new Error(response.error);
+      }
+      note.textContent =
+        kind === "copy"
+          ? "Copied"
+          : kind === "forget"
+            ? "Forgotten"
+            : "Allowed. Always flag still wins.";
+      saved.textContent = note.textContent;
+      working = false;
+      close();
+      if (kind !== "copy") await refresh();
+      else toggle.focus();
+    } catch {
+      note.textContent =
+        kind === "copy"
+          ? "Couldn't copy. Try again."
+          : kind === "forget"
+            ? "Forget could not be confirmed. Retry to reconcile your vault."
+            : "Save could not be confirmed. Retry to check the committed policy.";
+      saved.textContent = note.textContent;
+    } finally {
+      working = false;
+      for (const control of entry.querySelectorAll("button"))
+        control.disabled = false;
+    }
+  }
+  button("Copy original", "copy", () => void perform("copy"));
+  if (!allowed)
+    button("Always allow this value", "allow", () => void perform("allow"));
+  button("Forget", "forget", () => {
+    menu.hidden = true;
+    confirmation.hidden = false;
+    cancel.focus();
   });
-  toggle.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    pinned = false;
-    toggle.blur();
-    update();
-  });
+  const cancel = button(
+    "Cancel",
+    "cancel-forget",
+    () => {
+      close();
+      toggle.focus();
+    },
+    confirmation,
+  );
+  button(
+    "Forget original",
+    "confirm-forget",
+    () => void perform("forget"),
+    confirmation,
+  );
+  entry.append(toggle, menu, confirmation, note);
+  return entry;
 }
 
-for (const toggle of document.querySelectorAll<HTMLButtonElement>(
-  "button.icon[aria-controls]",
-)) {
-  setUpInfo(toggle);
+async function mutate(action: () => Promise<void>): Promise<void> {
+  if (busy) return;
+  busy = true;
+  saved.textContent = "Saving…";
+  error.hidden = true;
+  try {
+    await action();
+    saved.textContent = "Saved";
+    // A confirmation, not a section: it fades once read
+    window.clearTimeout(savedTimer);
+    savedTimer = window.setTimeout(() => {
+      if (saved.textContent === "Saved") saved.textContent = "";
+    }, SAVED_MS);
+    await refresh();
+  } catch {
+    saved.textContent =
+      "Save could not be confirmed. Retry to check the committed policy.";
+  } finally {
+    busy = false;
+  }
 }
-view.restoreLatest.addEventListener("click", () => void restoreLatest());
-document.querySelector("#copy-restored")!.addEventListener("click", () => {
-  void navigator.clipboard.writeText(restoredText);
-});
-document
-  .querySelector("#hide-originals")!
-  .addEventListener("click", () => void hideInPage());
-document
-  .querySelector("#settings")!
-  .addEventListener("click", () => chrome.runtime.openOptionsPage());
-// Reloading installs the waiting update, and closes this panel
-document
-  .querySelector("#update-now")!
-  .addEventListener("click", () => chrome.runtime.reload());
-
-// Adding to a list saves the settings, then says so and highlights the value
-for (const name of ["allowlist", "denylist"] as const) {
-  const { form, field } = listParts(name);
-  form.addEventListener("submit", (event) => {
+async function refresh(): Promise<void> {
+  const version = ++renderVersion;
+  element("lookup-result").textContent = "";
+  const response = await ask<VaultStatus>({
+    type: "vault-status",
+    autoUnlock: true,
+  });
+  if (version !== renderVersion) return;
+  if ("error" in response) {
+    access = "unavailable";
+    failure(response.error);
+    for (const id of [
+      "originals",
+      "not-sensitive",
+      "allowlist",
+      "denylist",
+      "lookup-result",
+    ])
+      element(id).replaceChildren();
+  } else {
+    access = response.state === "unlocked" ? "ready" : "unavailable";
+    error.hidden = true;
+    element("originals").replaceChildren(
+      ...(response.originals ?? []).map((item) =>
+        originalRow(
+          item,
+          response.notSensitive.some(
+            (choice) =>
+              choice.entityType === item.entityType &&
+              choice.value === item.original,
+          ),
+        ),
+      ),
+    );
+    // Older tokens still restore through search, so only an empty list
+    // needs words
+    element("originals-note").textContent = response.originals?.length
+      ? ""
+      : "Nothing saved yet. Originals appear here after Replace.";
+    element("not-sensitive").replaceChildren(
+      ...response.notSensitive.map((choice) =>
+        row(
+          choice.value,
+          { scope: LABELS[choice.entityType] ?? choice.entityType },
+          async () => {
+            const result = await ask<VaultStatus>({
+              type: "choice-clear",
+              ...choice,
+            });
+            if ("error" in result) throw new Error(result.error);
+          },
+        ),
+      ),
+    );
+  }
+  status.textContent = access === "ready" ? "ready" : "unavailable";
+  element("vault-chip").dataset.access = access;
+  element("unlocked").hidden = access !== "ready";
+  element("retry-access").hidden = access !== "unavailable";
+  if (access !== "ready") return;
+  try {
+    const settings = await loadSettings();
+    if (version !== renderVersion) return;
+    for (const name of ["allowlist", "denylist"] as const)
+      element(name).replaceChildren(
+        ...settings[name].map((value) =>
+          row(value, name === "allowlist" ? { scope: "Any type" } : {}, () =>
+            removeFromList(name, value),
+          ),
+        ),
+      );
+  } catch {
+    failure("settings_unavailable");
+  }
+}
+for (const name of ["allowlist", "denylist"] as ListName[])
+  element(`${name}-add`).addEventListener("submit", (event) => {
     event.preventDefault();
-    const { value } = field;
-    void addToList(name, value).then(async (result) => {
+    const field = document.querySelector<HTMLInputElement>(`#${name}-value`)!;
+    const value = field.value;
+    void mutate(async () => {
+      await addToList(name, value);
       field.value = "";
-      await confirmAdd(name, value, result);
     });
   });
-}
-
-// The lists also change from the settings page
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "local" && "settings" in changes) void refreshLists();
+element("retry-access").addEventListener("click", () => void refresh());
+element("lookup").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const text =
+    document.querySelector<HTMLInputElement>("#lookup-marker")!.value;
+  const version = renderVersion;
+  element("lookup-result").textContent = "Looking up…";
+  void ask<RestoredWithValues>({ type: "restore", text }).then((response) => {
+    if (version !== renderVersion) return;
+    element("lookup-result").textContent =
+      "error" in response
+        ? "Couldn't read your vault. Try again."
+        : response.restored
+          ? response.text
+          : "No original saved for this token.";
+  });
 });
-
-// The vault tells the panel when it locks or a review arrives
+// Typing filters the saved list; Enter looks up tokens that aren't listed
+element("lookup-marker").addEventListener("input", () => {
+  const query = document
+    .querySelector<HTMLInputElement>("#lookup-marker")!
+    .value.trim()
+    .toLowerCase();
+  element("lookup-result").textContent = "";
+  for (const item of element("originals").querySelectorAll("li"))
+    item.hidden =
+      query !== "" && !(item.textContent ?? "").toLowerCase().includes(query);
+});
+for (const id of ["settings", "vault-settings"])
+  element(id).addEventListener("click", () => chrome.runtime.openOptionsPage());
+element("update-now").addEventListener("click", () => chrome.runtime.reload());
+async function checkUpdate(): Promise<void> {
+  const response = await ask<{ ready?: boolean }>({ type: "update-status" });
+  element("update").hidden = "error" in response || !response.ready;
+}
 chrome.runtime.onMessage.addListener((message: PanelNotice | object) => {
   if (!("target" in message) || message.target !== "panel") return false;
   if (message.type === "update-ready") void checkUpdate();
   else void refresh();
   return false;
 });
-
-/** Connect to the service worker, which closes this panel on request. */
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && ("policyVersion" in changes || "settings" in changes))
+    void refresh();
+});
 export async function connect(): Promise<void> {
   const { id } = await chrome.windows.getCurrent();
   const port = chrome.runtime.connect({ name: String(id) });
   port.onMessage.addListener(() => window.close());
-  // Chrome stops an idle service worker; reconnecting restarts it
   port.onDisconnect.addListener(() => void connect());
 }
-
 void connect();
-void refresh(true);
+void refresh();
 void checkUpdate();
-void refreshLists();

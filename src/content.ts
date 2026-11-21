@@ -8,20 +8,25 @@
 
 import { Badge } from "./badge";
 import {
-  NO_CHAT_BOX,
-  NO_CHAT_BOX_UPDATE,
   type BlockSendsResponse,
   type ErrorResponse,
+  type KeepPlace,
+  type ReviewItem,
   type RedactResponse,
   type Request,
   type ScanResponse,
   type TabRequest,
 } from "./messages";
-import { hideOriginals, MARKER, showOriginals } from "./originals";
+import {
+  hideOriginals,
+  MARKER,
+  showOriginals,
+  watchAnswers,
+} from "./originals";
 import { clickSend, watchPage } from "./page";
 import { loadSettings } from "./settings";
+import { claimPage, isRetired, onRetire } from "./single";
 import { siteFor } from "./site";
-import { mountTab } from "./tab";
 import { PENDING_UPDATE } from "./update";
 
 /** The last redaction or pseudonymization, kept so it can be undone and redone. */
@@ -42,10 +47,13 @@ const HOLD_TIMEOUT_MS = 3000;
 
 /** Why a send was held. */
 const HELD_WARNING = "Sending is paused. Press send again to send anyway.";
-const HELD_FAILURE = "DataFog couldn't check this text, so sending is paused.";
+const HELD_FAILURE = "datafog couldn't check this text, so sending is paused.";
 
 /** How long to look for the chat box before warning it can't be found. */
 const FIND_TIMEOUT_MS = 10_000;
+
+// A live copy is already on this page (see single.ts): leave it be
+if (!claimPage()) throw new Error("datafog is already running on this page");
 
 const site = siteFor(location.hostname);
 
@@ -54,25 +62,69 @@ let timer: number | undefined;
 let seq = 0;
 let lastScanned = "";
 let lastContent = "";
-let unchecked = false;
+type ScanState =
+  | { kind: "idle" | "dirty" | "disabled" }
+  | { kind: "checking"; text: string; seq: number }
+  | { kind: "checked"; text: string; found: boolean }
+  | { kind: "unavailable"; text: string; code: string };
+let scanState: ScanState = { kind: "idle" };
 let dismissedText: string | null = null;
-let lastCounts: Record<string, number> = {};
 let redaction: Redaction | null = null;
 let blockSends = false;
-let scanning = false;
-let foundText: string | null = null;
-let failedText: string | null = null;
-let warnedText: string | null = null;
-let heldPresses = 0;
+type SendState =
+  | { kind: "ready" }
+  | { kind: "held"; presses: number }
+  | { kind: "warned" | "overridden"; text: string };
+let sendState: SendState = { kind: "ready" };
 let holdTimer: number | undefined;
 let sending = false;
+let revision = 0;
+let operationId = 0;
+type ActionState =
+  | { kind: "idle" }
+  | { kind: "working"; message: string; operationId: number; revision: number }
+  | { kind: "complete" | "failed"; message: string }
+  | { kind: "superseded"; operationId: number };
+let actionState: ActionState = { kind: "idle" };
+let applying = false;
+let findings: ReviewItem[] = [];
+let kept: KeepPlace[] = [];
+let choicesText = "";
+let previewId: string | undefined;
 /** Whether checking is on. Assumed on if the setting can't be read, so a scan reports why. */
 let enabled = true;
-const settingsLoaded = loadSettings(location.hostname).then(
-  (settings) => {
-    enabled = settings.enabled;
-  },
-  () => {},
+let settingsError = false;
+let expectedPolicyVersion: string | undefined;
+let policyRefresh = 0;
+/**
+ * Load this site's settings again after a first failure, a few times. A copy
+ * injected right after an install or update can start while the vault is
+ * still opening.
+ *
+ * @returns The settings.
+ */
+async function retrySettings(): ReturnType<typeof loadSettings> {
+  for (let attempt = 0; ; attempt++) {
+    await new Promise((resolve) =>
+      window.setTimeout(resolve, 250 * 2 ** attempt),
+    );
+    try {
+      return await loadSettings(location.hostname);
+    } catch (error) {
+      if (attempt >= 3) throw error;
+    }
+  }
+}
+function applySettings(settings: Awaited<ReturnType<typeof loadSettings>>) {
+  if (policyRefresh !== 0) return;
+  enabled = settings.enabled;
+  expectedPolicyVersion = settings.policyVersion ?? expectedPolicyVersion;
+  blockSends = settings.enabled && settings.blockSends;
+}
+const settingsLoaded = loadSettings(location.hostname).then(applySettings, () =>
+  retrySettings().then(applySettings, () => {
+    if (policyRefresh === 0) settingsError = true;
+  }),
 );
 
 const badge = new Badge({
@@ -82,6 +134,10 @@ const badge = new Badge({
   undo: undoRedaction,
   redo: redoRedaction,
   send: sendAnyway,
+  sidebar: () => void togglePanel(),
+  allow: () => void alwaysAllow(),
+  choose: (index) => void chooseFinding(index),
+  retry: () => void refreshPolicy(),
 });
 
 // ChatGPT's editor applies some edits itself, such as Backspace over a
@@ -178,16 +234,29 @@ async function ask<T extends object>(
 async function scanNow(force = false): Promise<void> {
   await settingsLoaded;
   if (!composer) return;
+  if (settingsError) {
+    scanState = {
+      kind: "unavailable",
+      text: readText(composer),
+      code: "settings_unavailable",
+    };
+    badge.show({ kind: "failed", code: "settings_unavailable" });
+    return;
+  }
   // With checking off the badge is greyed out, and nothing is sent to be checked
   if (!enabled) {
     window.clearTimeout(timer);
+    scanState = { kind: "disabled" };
     badge.show({ kind: "off" });
     return;
   }
   const text = readText(composer);
-  if (!force && !unchecked && text === lastScanned) return;
+  if (!force && scanState.kind !== "dirty" && text === lastScanned) return;
   lastScanned = text;
-  unchecked = false;
+  if (choicesText !== text) {
+    kept = [];
+    choicesText = text;
+  }
   // Anything typed since means the redaction no longer lines up with the text
   badge.offer({
     undo: sameText(text, redaction?.after),
@@ -195,29 +264,43 @@ async function scanNow(force = false): Promise<void> {
   });
 
   if (!text.trim()) {
+    scanState = { kind: "idle" };
     badge.show({ kind: "idle" });
     return;
   }
 
   // Drop answers to older requests: only the latest text counts
   const mine = ++seq;
-  scanning = true;
+  scanState = { kind: "checking", text, seq: mine };
   badge.show({ kind: "checking" });
-  const response = await ask<ScanResponse>({ type: "scan", seq: mine, text });
-  if (mine !== seq) return;
-  scanning = false;
+  const response = await ask<ScanResponse>({
+    type: "scan",
+    seq: mine,
+    text,
+    ...(kept.length ? { keep: kept } : {}),
+  });
+  if (mine !== seq || composer === null || readText(composer) !== text) return;
   if ("error" in response) {
     badge.show({ kind: "failed", code: response.error });
-    failedText = text;
+    scanState = { kind: "unavailable", text, code: response.error };
     settleHeldSend(text);
     return;
   }
 
-  failedText = null;
+  if (
+    expectedPolicyVersion &&
+    response.policyVersion !== expectedPolicyVersion
+  ) {
+    scanState = { kind: "dirty" };
+    badge.show({ kind: "checking" });
+    return;
+  }
   blockSends = response.blockSends;
-  lastCounts = response.counts;
+  findings = response.findings ?? [];
+  previewId = response.previewId;
+  badge.preview(findings);
   const found = Object.keys(response.counts).length > 0;
-  foundText = found ? text : null;
+  scanState = { kind: "checked", text, found };
   if (!response.enabled) badge.show({ kind: "off" });
   // A dismissed warning falls back to the plain logo until the text changes
   else if (text === dismissedText) badge.show({ kind: "idle" });
@@ -235,7 +318,12 @@ async function scanNow(force = false): Promise<void> {
  * @returns True if it does.
  */
 function unresolved(text: string): boolean {
-  return text === foundText && text !== dismissedText;
+  return (
+    scanState.kind === "checked" &&
+    scanState.found &&
+    text === scanState.text &&
+    text !== dismissedText
+  );
 }
 
 /**
@@ -245,23 +333,35 @@ function unresolved(text: string): boolean {
  * @returns Whether to let the send through.
  */
 function allowSend(repeat: boolean): boolean {
+  // A retired copy never holds a send; the newer copy decides
+  if (isRetired()) return true;
   const text = composer ? readText(composer) : "";
   if (sending || !blockSends || !text.trim()) return sendGoesAhead();
-  if (heldPresses > 0) {
-    if (!repeat) heldPresses++;
+  if (sendState.kind === "overridden" && sendState.text === text)
+    return sendGoesAhead();
+  if (sendState.kind === "held") {
+    if (!repeat) sendState.presses++;
     return false;
   }
-  if (scanning || unchecked || text !== lastScanned) {
+  if (
+    scanState.kind === "checking" ||
+    scanState.kind === "dirty" ||
+    text !== lastScanned
+  ) {
     holdForScan(text);
     return false;
   }
-  if (text === failedText) {
+  if (scanState.kind === "unavailable" && text === scanState.text) {
     badge.holdSend(HELD_FAILURE);
     return false;
   }
   if (!unresolved(text)) return sendGoesAhead();
   // The second press after a warning counts as Send anyway
-  if (text === warnedText) return repeat ? false : sendGoesAhead();
+  if (sendState.kind === "warned" && text === sendState.text) {
+    if (repeat) return false;
+    sendState = { kind: "overridden", text };
+    return sendGoesAhead();
+  }
   warnSend(text);
   return false;
 }
@@ -283,7 +383,7 @@ function sendGoesAhead(): boolean {
  * @param text The text being sent.
  */
 function warnSend(text: string): void {
-  warnedText = text;
+  sendState = { kind: "warned", text };
   badge.holdSend(HELD_WARNING);
 }
 
@@ -293,17 +393,16 @@ function warnSend(text: string): void {
  * @param text The text being sent.
  */
 function holdForScan(text: string): void {
-  heldPresses = 1;
+  sendState = { kind: "held", presses: 1 };
   window.clearTimeout(timer);
   // Never trap a message behind a scan that doesn't answer
   holdTimer = window.setTimeout(() => {
     seq++;
-    scanning = false;
-    failedText = text;
+    scanState = { kind: "unavailable", text, code: "scan_timeout" };
     badge.show({ kind: "failed", code: "scan_timeout" });
     settleHeldSend(text);
   }, HOLD_TIMEOUT_MS);
-  if (!scanning) void scanNow(true);
+  if (scanState.kind !== "checking") void scanNow(true);
 }
 
 /**
@@ -312,17 +411,18 @@ function holdForScan(text: string): void {
  * @param text The text that was scanned.
  */
 function settleHeldSend(text: string): void {
-  if (heldPresses === 0) return;
-  const presses = heldPresses;
+  if (sendState.kind !== "held") return;
+  const presses = sendState.presses;
   dropHeldSend();
-  if (text === failedText) badge.holdSend(HELD_FAILURE);
+  if (scanState.kind === "unavailable" && text === scanState.text)
+    badge.holdSend(HELD_FAILURE);
   else if (!unresolved(text) || presses > 1) sendAnyway();
   else warnSend(text);
 }
 
 /** Forget a send held for a scan. */
 function dropHeldSend(): void {
-  heldPresses = 0;
+  if (sendState.kind === "held") sendState = { kind: "ready" };
   window.clearTimeout(holdTimer);
 }
 
@@ -330,8 +430,7 @@ function dropHeldSend(): void {
 function sendAnyway(): void {
   if (!composer) return;
   // Sending can report again, later, so this text has to stay let through
-  warnedText = readText(composer);
-  failedText = null;
+  sendState = { kind: "overridden", text: readText(composer) };
   sending = true;
   clickSend(composer, site);
   sending = false;
@@ -343,6 +442,8 @@ function sendAnyway(): void {
  * @param delay Milliseconds to wait; 0 scans on the next tick.
  */
 function schedule(delay: number): void {
+  if (isRetired()) return;
+  if (applying) return;
   window.clearTimeout(timer);
   timer = window.setTimeout(() => void scanNow(), delay);
   const content = composer && newContent(composer);
@@ -351,9 +452,25 @@ function schedule(delay: number): void {
   // Text isn't checked until the scan answers, so show that from the keystroke.
   // Moving seq on drops any answer about the text from before this change
   seq++;
-  scanning = false;
-  unchecked = true;
-  warnedText = null;
+  revision++;
+  const superseded =
+    actionState.kind === "working" || actionState.kind === "superseded"
+      ? actionState.operationId
+      : undefined;
+  operationId++;
+  redaction = null;
+  dismissedText = null;
+  findings = [];
+  previewId = undefined;
+  badge.preview([]);
+  updateAction(
+    superseded === undefined
+      ? { kind: "idle" }
+      : { kind: "superseded", operationId: superseded },
+  );
+  badge.offer({ undo: false, redo: false });
+  scanState = { kind: "dirty" };
+  sendState = { kind: "ready" };
   dropHeldSend();
   badge.holdSend(null);
   if (enabled && content.trim()) badge.show({ kind: "checking" });
@@ -547,58 +664,281 @@ function replaceValues(
   return sameText(readText(element), response.text);
 }
 
-/** Redact the chat box's sensitive values in place. */
-async function redactComposer(): Promise<void> {
-  if (!composer) return;
-  const text = readText(composer);
-  const response = await ask<RedactResponse>({ type: "redact", text });
-  if ("error" in response) {
-    // The values are still there, so keep showing what they are
-    badge.show({ kind: "failed", code: response.error, counts: lastCounts });
-    return;
-  }
-
-  await replaceFound(composer, text, response);
+function updateAction(state: ActionState): void {
+  actionState = state;
+  badge.operation(
+    "message" in state ? state.message : "",
+    state.kind === "working",
+  );
 }
 
-/**
- * Replace found values in the chat box, keeping the change for Undo.
- *
- * @param element The chat box.
- * @param text Its current text.
- * @param response The new text and the edits that make it.
- */
+/** Transform a captured draft, applying only after a confirmed response. */
+async function chooseFinding(index: number): Promise<void> {
+  if (
+    !composer ||
+    actionState.kind === "working" ||
+    scanState.kind !== "checked" ||
+    !previewId
+  )
+    return;
+  const finding = findings[index];
+  if (finding?.start === undefined || finding.end === undefined) return;
+  const text = readText(composer);
+  const capturedRevision = revision;
+  const mine = ++operationId;
+  const scan = ++seq;
+  const next = kept.some(
+    (place) => place.start === finding.start && place.end === finding.end,
+  )
+    ? kept.filter(
+        (place) => place.start !== finding.start || place.end !== finding.end,
+      )
+    : [...kept, { start: finding.start, end: finding.end }];
+  const reservation = previewId;
+  previewId = undefined;
+  updateAction({
+    kind: "working",
+    message: "Updating selected previews…",
+    operationId: mine,
+    revision: capturedRevision,
+  });
+  const response = await ask<ScanResponse>({
+    type: "select",
+    text,
+    seq: scan,
+    previewId: reservation,
+    keep: next,
+  });
+  if (
+    mine !== operationId ||
+    scan !== seq ||
+    capturedRevision !== revision ||
+    !composer ||
+    readText(composer) !== text
+  )
+    return;
+  if (
+    "error" in response ||
+    (expectedPolicyVersion && response.policyVersion !== expectedPolicyVersion)
+  ) {
+    // Keep the user's intent, but never permit Replace with an unseen token.
+    kept = next;
+    await scanNow(true);
+    if (mine === operationId && revision === capturedRevision)
+      updateAction({
+        kind: "failed",
+        message:
+          "Selection preview was refreshed. Check the selected values before replacing.",
+      });
+    return;
+  }
+  kept = next;
+  findings = response.findings ?? [];
+  previewId = response.previewId;
+  badge.preview(findings);
+  updateAction({ kind: "idle" });
+}
+
+async function transform(kind: "redact" | "pseudonymize"): Promise<void> {
+  if (!composer || actionState.kind === "working") return;
+  if (findings.length > 0 && findings.every((item) => item.kept)) return;
+  const element = composer;
+  const text = readText(element);
+  const capturedRevision = revision;
+  const mine = ++operationId;
+  updateAction({
+    kind: "working",
+    message: kind === "pseudonymize" ? "Saving originals…" : "Redacting…",
+    operationId: mine,
+    revision: capturedRevision,
+  });
+  const response = await ask<
+    RedactResponse & { saved?: boolean; warning?: string }
+  >(
+    kind === "pseudonymize" && previewId
+      ? { type: kind, text, previewId }
+      : {
+          type: kind,
+          text,
+          ...(kind === "redact" && kept.length ? { keep: kept } : {}),
+        },
+  );
+  if (
+    mine !== operationId ||
+    capturedRevision !== revision ||
+    composer !== element ||
+    readText(element) !== text
+  ) {
+    if (
+      actionState.kind === "superseded" &&
+      actionState.operationId === mine &&
+      !("error" in response) &&
+      response.saved === true
+    )
+      updateAction({
+        kind: "complete",
+        message:
+          "Originals from the earlier draft were saved. Your newer draft is unchanged.",
+      });
+    return;
+  }
+  if ("error" in response && response.error === "preview_expired") {
+    previewId = undefined;
+    findings = [];
+    badge.preview([]);
+    updateAction({
+      kind: "working",
+      message: "Refreshing preview…",
+      operationId: mine,
+      revision: capturedRevision,
+    });
+    await scanNow(true);
+    if (
+      mine === operationId &&
+      revision === capturedRevision &&
+      composer === element &&
+      readText(element) === text
+    ) {
+      updateAction({
+        kind: "failed",
+        message:
+          "The preview expired and was refreshed. Your draft is unchanged. Check it, then Replace again.",
+      });
+    }
+    return;
+  }
+  if ("error" in response) {
+    updateAction({
+      kind: "failed",
+      message: `Couldn’t ${kind === "redact" ? "redact" : "confirm the encrypted save"}. Your draft is unchanged. Retry the action to reconcile storage. (${response.error})`,
+    });
+    return;
+  }
+  if (kind === "pseudonymize" && response.saved !== true) {
+    updateAction({
+      kind: "failed",
+      message:
+        "The save could not be confirmed. Your draft is unchanged. Replace again to retry.",
+    });
+    return;
+  }
+  const applied = await replaceFound(element, text, response);
+  if (
+    composer !== element ||
+    (applied && !sameText(readText(element), response.text))
+  )
+    return;
+  updateAction({
+    kind: applied ? "complete" : "failed",
+    message: applied
+      ? kind === "pseudonymize"
+        ? response.warning
+          ? "Replaced. Originals saved; storage will retry a detail. Tokens still restore."
+          : "Replaced. Originals saved in your vault."
+        : "Redacted. Nothing was saved."
+      : kind === "pseudonymize"
+        ? "Originals saved, but the editor did not accept the change. Nothing was sent."
+        : "The editor didn't take the full change. Check your draft before sending.",
+  });
+}
+
+async function redactComposer(): Promise<void> {
+  await transform("redact");
+}
+async function pseudonymizeComposer(): Promise<void> {
+  await transform("pseudonymize");
+}
+
+async function alwaysAllow(): Promise<void> {
+  if (actionState.kind === "working" || !findings.length) return;
+  const captured = findings.filter((item) => item.kept);
+  if (!captured.length) return;
+  const mine = ++operationId;
+  updateAction({
+    kind: "working",
+    message: "Saving Always allow…",
+    operationId: mine,
+    revision,
+  });
+  for (const item of captured) {
+    const response = await ask<object>({
+      type: "always-allow",
+      entityType: item.entityType,
+      value: item.original,
+    });
+    if ("error" in response) {
+      updateAction({
+        kind: "failed",
+        message: `Couldn’t confirm every rule. Retry to check the committed policy. (${response.error})`,
+      });
+      await refreshPolicy();
+      return;
+    }
+  }
+  if (mine === operationId)
+    updateAction({
+      kind: "complete",
+      message: "Always allowed. Always flag still wins.",
+    });
+  await refreshPolicy();
+}
+
 async function replaceFound(
   element: HTMLElement,
   text: string,
   response: RedactResponse,
-): Promise<void> {
+): Promise<boolean> {
+  if (element !== composer || readText(element) !== text) return false;
   applyEdits(element, text, response);
-  redaction = {
-    before: text,
-    after: readText(element),
-    redact: response,
-    restore: restoring(text, response),
-  };
+  const applied = sameText(readText(element), response.text);
+  redaction = applied
+    ? {
+        before: text,
+        after: readText(element),
+        redact: response,
+        restore: restoring(text, response),
+      }
+    : null;
   dismissedText = null;
   await scanNow(true);
+  return applied;
 }
 
-/** Ask for the chat box's values to be reviewed in the side panel. */
-async function pseudonymizeComposer(): Promise<void> {
-  if (!composer) return;
-  const response = await ask<object>({
-    type: "pseudonymize",
-    text: readText(composer),
-  });
-  if ("error" in response) {
-    badge.show({
-      kind: "failed",
-      code: response.error,
-      counts: lastCounts,
-      action: "pseudonymize",
-    });
+/** A committed policy invalidates every pending scan and per-draft choice. */
+async function refreshPolicy(): Promise<void> {
+  const refresh = ++policyRefresh;
+  answerVisibility.refresh();
+  seq++;
+  operationId++;
+  if (actionState.kind === "working")
+    updateAction({ kind: "superseded", operationId: actionState.operationId });
+  findings = [];
+  previewId = undefined;
+  badge.preview([]);
+  badge.show({ kind: "checking" });
+  dismissedText = null;
+  sendState = { kind: "ready" };
+  dropHeldSend();
+  scanState = { kind: "dirty" };
+  try {
+    const settings = await loadSettings(location.hostname);
+    if (refresh !== policyRefresh) return;
+    enabled = settings.enabled;
+    expectedPolicyVersion = settings.policyVersion ?? expectedPolicyVersion;
+    settingsError = false;
+    blockSends = settings.enabled && settings.blockSends;
+  } catch {
+    if (refresh !== policyRefresh) return;
+    settingsError = true;
+    badge.show({ kind: "failed", code: "settings_unavailable" });
+    scanState = {
+      kind: "unavailable",
+      text: composer ? readText(composer) : "",
+      code: "settings_unavailable",
+    };
+    return;
   }
+  await scanNow(true);
 }
 
 /**
@@ -672,7 +1012,8 @@ async function answer(request: TabRequest): Promise<object> {
     return {};
   }
   if (request.type === "recheck") {
-    void scanNow(true);
+    expectedPolicyVersion = request.policyVersion ?? expectedPolicyVersion;
+    void refreshPolicy();
     return {};
   }
   // Approved in the side panel for this text; anything since wins
@@ -696,15 +1037,19 @@ function applyEdits(
   text: string,
   response: RedactResponse,
 ): void {
-  if (
-    element instanceof HTMLTextAreaElement ||
-    !replaceValues(element, text, response)
-  ) {
-    replaceText(element, response.text);
+  applying = true;
+  try {
+    if (
+      element instanceof HTMLTextAreaElement ||
+      !replaceValues(element, text, response)
+    )
+      replaceText(element, response.text);
+  } finally {
+    applying = false;
   }
   // The caller rescans now, so the DOM change needs no scan of its own
   newContent(element);
-  warnedText = null;
+  sendState = { kind: "ready" };
   badge.holdSend(null);
 }
 
@@ -772,7 +1117,6 @@ function bind(element: HTMLElement): void {
   newContent(element);
   // The outer chat box outlasts changes to the editor inside
   badge.attach(element.closest(site.box) ?? element);
-  warnTab();
   element.addEventListener("input", () => {
     schedule(DEBOUNCE_MS);
   });
@@ -793,11 +1137,12 @@ function bind(element: HTMLElement): void {
 
 // ChatGPT re-renders the chat box when switching conversations, and moves it
 // between layouts, such as to the middle of a new chat, without resizing it
-new MutationObserver(() => {
+const composers = new MutationObserver(() => {
   const element = findComposer();
   if (element && element !== composer) bind(element);
   else badge.reposition();
-}).observe(document.documentElement, { childList: true, subtree: true });
+});
+composers.observe(document.documentElement, { childList: true, subtree: true });
 
 chrome.runtime.onMessage.addListener(
   (request: TabRequest, _sender, respond) => {
@@ -806,46 +1151,30 @@ chrome.runtime.onMessage.addListener(
   },
 );
 
-/** The stored settings that change what a check finds. */
-const CHECK_SETTINGS = ["entities", "allowlist", "denylist"];
-
-/**
- * The stored settings that change what a check finds, as one string.
- *
- * @param stored The stored settings, if any.
- * @returns The types and both lists, serialized.
- */
-function checkSettings(stored: unknown): string {
-  return JSON.stringify(
-    CHECK_SETTINGS.map((key) =>
-      stored && typeof stored === "object"
-        ? Reflect.get(stored, key)
-        : undefined,
-    ),
-  );
-}
-
-// Turning checking off greys out the badge and closes its panel at once; turning it on,
-// or changing the types or lists, checks the chat box as it stands
+// Only bootstrap notices are read here; policy itself comes from encrypted storage.
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
-  // An update downloaded while the chat box is missing may fix it
   if (PENDING_UPDATE in changes && missing && !composer) void warnMissing();
-  if (!changes.settings) return;
-  const { oldValue, newValue } = changes.settings;
-  const next = (newValue ?? {}) as { off?: unknown };
-  const on = Array.isArray(next.off)
-    ? !next.off.includes(location.hostname)
-    : enabled;
-  if (on !== enabled) {
-    enabled = on;
-    void scanNow(true);
-  } else if (enabled && checkSettings(oldValue) !== checkSettings(newValue))
-    void scanNow(true);
+  if (
+    "policyVersion" in changes &&
+    typeof changes.policyVersion.newValue === "string"
+  )
+    expectedPolicyVersion = changes.policyVersion.newValue;
+  if ("settings" in changes || "policyVersion" in changes) void refreshPolicy();
 });
 
-// The page tab opens or closes the side panel; send right away, within the click
-const warnTab = mountTab(() => void togglePanel());
+const answerVisibility = watchAnswers(site, async (text) =>
+  ask({ type: "restore", text }),
+);
+
+// Handed over to a newer copy: take down everything this copy shows
+onRetire(() => {
+  window.clearTimeout(timer);
+  composers.disconnect();
+  edits.disconnect();
+  answerVisibility.dispose();
+  badge.destroy();
+});
 
 /** Whether the chat box went unfound for the whole wait. */
 let missing = false;
@@ -862,7 +1191,10 @@ async function warnMissing(): Promise<void> {
   // Found while asking
   if (composer) return;
   const ready = !("error" in response) && response.updateReady === true;
-  warnTab(ready ? NO_CHAT_BOX_UPDATE : NO_CHAT_BOX);
+  badge.show({
+    kind: "failed",
+    code: ready ? "update_ready_no_composer" : "no_composer",
+  });
 }
 
 watchPage(() => composer, {
@@ -876,6 +1208,6 @@ if (initial) bind(initial);
 window.setTimeout(() => {
   if (composer) return;
   missing = true;
-  warnTab(NO_CHAT_BOX);
+
   void warnMissing();
 }, FIND_TIMEOUT_MS);
