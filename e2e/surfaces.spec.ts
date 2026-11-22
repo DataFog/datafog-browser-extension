@@ -1,36 +1,9 @@
+import { redactAll } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 import { test, expect, SAMPLE } from "./fixtures";
 
 const EMAIL = "jane@example.com";
-
-async function createVault(panel: Page): Promise<void> {
-  await panel.locator("#create-password").fill("surface test password");
-  await panel.locator("#create-confirm").fill("surface test password");
-  await panel.locator("#create-submit").click();
-  await expect(panel.locator("#lock")).toBeVisible();
-}
-
-/** Keep the chat active: a real side panel doesn't replace its active tab. */
-async function panelAction(panel: Page, chat: Page, selector: string) {
-  await chat.bringToFront();
-  await panel
-    .locator(selector)
-    .evaluate((element: HTMLElement) => element.click());
-}
-
-async function addAnswer(chat: Page, text: string, id = "answer") {
-  await chat.evaluate(
-    (payload) => {
-      const answer = document.createElement("article");
-      answer.id = payload.id;
-      answer.dataset.messageAuthorRole = "assistant";
-      answer.textContent = payload.text;
-      document.querySelector("#answers")!.append(answer);
-    },
-    { text, id },
-  );
-}
 
 /** CDP virtual time includes the extension's isolated content-script world. */
 async function advanceRendererTime(page: Page, milliseconds: number) {
@@ -82,7 +55,7 @@ test("reattaches to a replacement contenteditable editor", async ({
     .poll(async () => (await badge.state(".dot")).title)
     .toContain("found");
   await badge.click(".dot");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(chat.locator("#editing-earlier-message")).toContainText(
     "[EMAIL]",
   );
@@ -103,7 +76,7 @@ test("checks the textarea composer fallback", async ({ extension }) => {
     .poll(async () => (await badge.state(".dot")).title)
     .toContain("found");
   await badge.click(".dot");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(page.locator("textarea")).toHaveValue("[EMAIL]");
 });
 
@@ -127,7 +100,7 @@ test("reports an unprotected page when no supported composer exists", async ({
     .toContainEqual({
       text: "!",
       title:
-        "DataFog can't find the chat box, so this page isn't being checked. Try reloading it.",
+        "datafog can't find the chat box, so this page isn't being checked. Try reloading it.",
     });
 });
 
@@ -167,11 +140,16 @@ for (const colorScheme of ["light", "dark"] as const) {
     expect(panel.rect.y + panel.rect.height).toBeLessThanOrEqual(
       viewport.height,
     );
-    await badge.click(".redact");
+    await redactAll(badge);
     await expect(chat.locator("#prompt-textarea")).toHaveText("[EMAIL]");
     const sidePanel = await extension.panel();
     await sidePanel.emulateMedia({ colorScheme });
-    await expect(sidePanel.locator("#create-submit")).toBeVisible();
+    await expect(sidePanel.locator("#unlocked")).toBeVisible();
+    await expect(
+      sidePanel.locator("header.top .brand, header.top .logo"),
+    ).toHaveCount(0);
+    await expect(sidePanel.locator("header.top")).not.toContainText("datafog");
+    await expect(sidePanel.locator("#vault-chip")).toBeVisible();
     await expect(sidePanel.locator("body")).toHaveCSS(
       "background-color",
       colorScheme === "dark" ? "rgb(26, 34, 38)" : "rgb(255, 255, 255)",
@@ -192,23 +170,52 @@ for (const colorScheme of ["light", "dark"] as const) {
     );
     await expect(options.locator("body")).toHaveCSS(
       "color",
-      dark ? "rgb(238, 240, 239)" : "rgb(31, 31, 31)",
-    );
-    await expect(options.locator("#allowlist")).toHaveCSS(
-      "background-color",
-      dark ? "rgb(35, 45, 49)" : "rgb(245, 245, 245)",
+      dark ? "rgb(238, 240, 239)" : "rgb(14, 19, 22)",
     );
   });
 }
 
-test("settings restore defaults after confirming, keeping the lists", async ({
+test("a theme chosen in settings overrides the browser on every surface", async ({
   extension,
+  chat,
+  badge,
 }) => {
+  const options = await extension.options();
+  await options.emulateMedia({ colorScheme: "light" });
+  await options.locator('label:has(input[value="dark"])').click();
+  await expect(options.locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(26, 34, 38)",
+  );
+  const panel = await extension.panel();
+  await panel.emulateMedia({ colorScheme: "light" });
+  await expect(panel.locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(26, 34, 38)",
+  );
+  await chat.emulateMedia({ colorScheme: "light" });
+  await chat.locator("#prompt-textarea").fill("jane@example.com");
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
+  await badge.click(".dot");
+  await expect
+    .poll(async () => (await badge.state(".panel")).visible)
+    .toBe(true);
+  expect(
+    await chat.evaluate(() =>
+      document.querySelector("datafog-badge")!.getAttribute("data-theme"),
+    ),
+  ).toBe("dark");
+  await options.locator('label:has(input[value="system"])').click();
+  await expect(panel.locator("body")).toHaveCSS(
+    "background-color",
+    "rgb(255, 255, 255)",
+  );
+});
+
+test("settings restore defaults after confirming", async ({ extension }) => {
   const options = await extension.options();
   await options.locator("#site-claude").uncheck();
   await options.locator('input[value="PHONE"]').check();
-  await options.locator("#denylist").fill("Project Falcon");
-  await options.locator("#denylist").blur();
   await expect(options.locator("#status")).toHaveText("Saved");
 
   options.once("dialog", (dialog) => void dialog.accept());
@@ -217,7 +224,6 @@ test("settings restore defaults after confirming, keeping the lists", async ({
   await options.reload();
   await expect(options.locator("#site-claude")).toBeChecked();
   await expect(options.locator('input[value="PHONE"]')).not.toBeChecked();
-  await expect(options.locator("#denylist")).toHaveValue("Project Falcon");
 });
 
 test("pastes several thousand words and records typing and scan timings", async ({
@@ -272,7 +278,7 @@ test("pastes several thousand words and records typing and scan timings", async 
   });
 });
 
-test("asks to reload ChatGPT after the installed extension is reloaded", async ({
+test("keeps checking an open ChatGPT tab after an update, without a reload", async ({
   chat,
   badge,
   extension,
@@ -283,191 +289,405 @@ test("asks to reload ChatGPT after the installed extension is reloaded", async (
     .toContain("found");
   const versions = await extension.loadNewerBuild();
   expect(versions.after).not.toBe(versions.before);
+  // The update reaches the open tab: the old copy steps aside for a new one
+  await expect(chat.locator("datafog-badge")).toHaveCount(1);
   await chat.locator("#prompt-textarea").fill("after-update@example.com");
   await expect
     .poll(async () => (await badge.state(".dot")).title)
-    .toContain("DataFog was updated");
-  await badge.click(".dot");
-  expect((await badge.state(".note")).text).toBe(
-    "Reload this page to keep checking this chat box.",
-  );
+    .toBe("1 found · click to review");
 });
 
-test("restores only the latest answer, copies it, and hides originals", async ({
-  chat,
-  badge,
+test("a chat tab open before install is checked without a reload", async ({
   extension,
 }) => {
-  const panel = await extension.panel();
-  await createVault(panel);
-  await chat.locator("#prompt-textarea").fill(EMAIL);
-  await expect
-    .poll(async () => (await badge.state(".dot")).title)
-    .toContain("found");
-  await badge.click(".dot");
-  await badge.click(".pseudonymize");
-  await expect(panel.locator("#review-items")).toContainText(EMAIL);
-  await panel.locator("#approve").click();
-  await expect(chat.locator("#prompt-textarea")).toHaveText(
-    /\[\[EMAIL_[A-Z0-9]+\]\]/,
-  );
-  const marker = (await chat.locator("#prompt-textarea").innerText()).trim();
-  await addAnswer(chat, `Earlier ${marker}`, "earlier-answer");
-  await addAnswer(chat, `Latest ${marker}`);
-  await panelAction(panel, chat, "#restore-latest");
-  await expect(panel.locator("#restored-summary")).toContainText(
-    "Showing 1 original value",
-  );
-  await expect(chat.locator("#earlier-answer datafog-original")).toHaveCount(0);
-  await expect(chat.locator("#answer datafog-original")).toHaveCount(1);
-  expect(
-    (await extension.shadow(chat, "#answer datafog-original").state("span"))
-      .text,
-  ).toBe(EMAIL);
-  // Closed roots keep originals out of the page's own text and scripts.
-  await expect(chat.locator("#answer")).not.toContainText(EMAIL);
-  expect(
-    await chat.locator("datafog-original").evaluate((host) => host.shadowRoot),
-  ).toBeNull();
-  await extension.context.grantPermissions([
-    "clipboard-read",
-    "clipboard-write",
-  ]);
-  await panel.bringToFront();
-  await panel.locator("#copy-restored").click();
-  await expect
-    .poll(() => panel.evaluate(() => navigator.clipboard.readText()))
-    .toBe(`Latest ${EMAIL}`);
-  await panelAction(panel, chat, "#hide-originals");
-  await expect(chat.locator("datafog-original")).toHaveCount(0);
-  await expect(chat.locator("#answer")).toHaveText(`Latest ${marker}`);
-});
-
-test("restores a streaming answer and can restore again after ChatGPT redraws it", async ({
-  chat,
-  badge,
-  extension,
-}) => {
-  const panel = await extension.panel();
-  await createVault(panel);
-  await chat.locator("#prompt-textarea").fill(EMAIL);
-  await expect
-    .poll(async () => (await badge.state(".dot")).title)
-    .toContain("found");
-  await badge.click(".dot");
-  await badge.click(".pseudonymize");
-  await expect(panel.locator("#approve")).toBeEnabled();
-  await panel.locator("#approve").click();
-  await expect(chat.locator("#prompt-textarea")).toHaveText(
-    /\[\[EMAIL_[A-Z0-9]+\]\]/,
-  );
-  const marker = (await chat.locator("#prompt-textarea").innerText()).trim();
-  await addAnswer(chat, `Streaming ${marker}`);
-  await chat
-    .locator("#answer")
-    .evaluate((answer) => answer.setAttribute("aria-busy", "true"));
-  await panelAction(panel, chat, "#restore-latest");
-  await expect(chat.locator("datafog-original")).toHaveCount(1);
-  await extension.context.grantPermissions([
-    "clipboard-read",
-    "clipboard-write",
-  ]);
-  await panel.bringToFront();
-  await panel.locator("#copy-restored").click();
-  await expect
-    .poll(() => panel.evaluate(() => navigator.clipboard.readText()))
-    .toBe(`Streaming ${EMAIL}`);
-  await panelAction(panel, chat, "#hide-originals");
-  await expect(chat.locator("#answer")).toHaveText(`Streaming ${marker}`);
-  await expect(chat.locator("#answer")).toHaveAttribute("aria-busy", "true");
-  await panelAction(panel, chat, "#restore-latest");
-  await expect(chat.locator("datafog-original")).toHaveCount(1);
-  await chat.locator("#answer").evaluate((answer, answerMarker) => {
-    answer.textContent = `Streaming ${answerMarker} completed`;
-    answer.setAttribute("aria-busy", "false");
-  }, marker);
-  await expect(chat.locator("datafog-original")).toHaveCount(0);
-  await panelAction(panel, chat, "#restore-latest");
-  await expect(chat.locator("datafog-original")).toHaveCount(1);
-  await extension.context.grantPermissions([
-    "clipboard-read",
-    "clipboard-write",
-  ]);
-  await panel.bringToFront();
-  await panel.locator("#copy-restored").click();
-  await expect
-    .poll(() => panel.evaluate(() => navigator.clipboard.readText()))
-    .toBe(`Streaming ${EMAIL} completed`);
-  await panelAction(panel, chat, "#hide-originals");
-  await expect(chat.locator("#answer")).toHaveText(
-    `Streaming ${marker} completed`,
-  );
-});
-
-test("side panels restore the active chat in their own window", async ({
-  chat,
-  badge,
-  extension,
-}) => {
-  const secondChat = await extension.newChat({ path: "/c/second-window" });
-  await secondChat.bringToFront();
-  const secondWindow = await extension.worker.evaluate(async () => {
-    const [tab] = await chrome.tabs.query({
-      active: true,
-      lastFocusedWindow: true,
+  // Simulate an install over an already-open tab: remove the copy the page
+  // got on load by injecting again from the service worker
+  const chat = await extension.newChat();
+  await extension.worker.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ url: "https://chatgpt.com/*" });
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id! },
+      files: ["content.js"],
     });
-    if (tab?.id === undefined) throw new Error("No second ChatGPT tab");
-    return chrome.windows.create({ tabId: tab.id, type: "normal" });
   });
-  expect(secondWindow?.id).toBeDefined();
-  const secondBadge = extension.badge(secondChat);
-  const firstPanel = await extension.panel(undefined, chat);
-  await createVault(firstPanel);
+  // A second live copy stands down: still one circle
+  await expect(chat.locator("datafog-badge")).toHaveCount(1);
   await chat.locator("#prompt-textarea").fill(EMAIL);
   await expect
-    .poll(async () => (await badge.state(".dot")).title)
-    .toContain("found");
-  await badge.click(".dot");
-  await badge.click(".pseudonymize");
-  await expect(firstPanel.locator("#review-items")).toContainText(EMAIL);
-  await firstPanel.locator("#approve").click();
-  await expect(chat.locator("#prompt-textarea")).toHaveText(
-    /\[\[EMAIL_[A-Z0-9]+\]\]/,
-  );
-  const firstMarker = (
-    await chat.locator("#prompt-textarea").innerText()
-  ).trim();
-  await addAnswer(chat, `First window ${firstMarker}`);
-
-  const secondPanel = await extension.panel(secondWindow!.id, secondChat);
-  const secondEmail = "second-window@example.com";
-  await secondChat.locator("#prompt-textarea").fill(secondEmail);
-  await expect
-    .poll(async () => (await secondBadge.state(".dot")).title)
-    .toContain("found");
-  await secondBadge.click(".dot");
-  await secondBadge.click(".pseudonymize");
-  await expect(secondPanel.locator("#review-items")).toContainText(secondEmail);
-  await secondPanel.locator("#approve").click();
-  await expect(secondChat.locator("#prompt-textarea")).toHaveText(
-    /\[\[EMAIL_[A-Z0-9]+\]\]/,
-  );
-  const secondMarker = (
-    await secondChat.locator("#prompt-textarea").innerText()
-  ).trim();
-  await addAnswer(secondChat, `Second window ${secondMarker}`);
-  await panelAction(firstPanel, chat, "#restore-latest");
-  await expect(chat.locator("datafog-original")).toHaveCount(1);
-  await expect(secondChat.locator("datafog-original")).toHaveCount(0);
-  await panelAction(secondPanel, secondChat, "#restore-latest");
-  await expect(secondChat.locator("datafog-original")).toHaveCount(1);
-  expect(
-    (await extension.shadow(chat, "datafog-original").state("span")).text,
-  ).toBe(EMAIL);
-  expect(
-    (await extension.shadow(secondChat, "datafog-original").state("span")).text,
-  ).toBe(secondEmail);
-  await panelAction(firstPanel, chat, "#hide-originals");
-  await expect(chat.locator("datafog-original")).toHaveCount(0);
-  await expect(secondChat.locator("datafog-original")).toHaveCount(1);
+    .poll(async () => (await extension.badge(chat).state(".dot")).title)
+    .toBe("1 found · click to review");
 });
+
+test("the welcome page walks a new install through pinning to done", async ({
+  extension,
+}, testInfo) => {
+  const welcome = await extension.welcome();
+  await welcome.emulateMedia({ reducedMotion: "no-preference" });
+  await expect(welcome.locator("#step-label")).toHaveText("Welcome");
+  await expect(welcome.locator('[data-step="pin"]')).toBeVisible();
+  await welcome.locator("#pin-next").click();
+  await expect(welcome.locator('[data-step="done"]')).toBeVisible();
+  await expect(welcome.locator('[data-step="done"] h1')).toHaveText(
+    "Getting started",
+  );
+  await expect(welcome.getByRole("tab")).toHaveCount(0);
+  await expect(welcome.locator("[data-demo-slide]")).toHaveCount(3);
+  await expect(
+    welcome.getByText("Silent demo · Fictional details", { exact: true }),
+  ).toHaveCount(0);
+  await expect(welcome.locator('[data-step="done"] > p:not(.sr)')).toHaveCount(
+    0,
+  );
+  for (const name of ["replace", "originals", "copy"]) {
+    const index = ["replace", "originals", "copy"].indexOf(name);
+    if (index > 0) await welcome.locator("#demo-next").click();
+    const panel = welcome.locator(`[data-demo-panel="${name}"]`);
+    const video = panel.locator("video");
+    await expect(panel).toBeVisible();
+    await expect(
+      welcome.locator(`[data-demo-slide="${index}"]`),
+    ).toHaveAttribute("aria-current", "true");
+    await expect
+      .poll(() =>
+        video.evaluate((element: HTMLVideoElement) => element.readyState),
+      )
+      .toBeGreaterThanOrEqual(2);
+    const media = await video.evaluate((element: HTMLVideoElement) => ({
+      source: element.currentSrc,
+      poster: element.poster,
+      duration: element.duration,
+      muted: element.muted,
+      loop: element.loop,
+    }));
+    expect(media.source).toBe(
+      new URL(`assets/onboarding/${name}.webm`, welcome.url()).href,
+    );
+    expect(media.poster).toBe(
+      new URL(`assets/onboarding/${name}.png`, welcome.url()).href,
+    );
+    expect(media.duration).toBeCloseTo(name === "replace" ? 6 : 3, 1);
+    expect(media.muted).toBe(true);
+    expect(media.loop).toBe(true);
+    await expect
+      .poll(() => video.evaluate((element: HTMLVideoElement) => element.paused))
+      .toBe(false);
+    if (name === "copy") {
+      await video.evaluate((element: HTMLVideoElement) => {
+        element.currentTime = element.duration - 0.1;
+      });
+      await expect
+        .poll(() =>
+          video.evaluate((element: HTMLVideoElement) => element.currentTime),
+        )
+        .toBeLessThan(1);
+      await expect(welcome.locator('[data-demo-slide="2"]')).toHaveAttribute(
+        "aria-current",
+        "true",
+      );
+    }
+    await welcome.locator("#demo-playback").click();
+    await expect
+      .poll(() => video.evaluate((element: HTMLVideoElement) => element.paused))
+      .toBe(true);
+    for (const other of ["replace", "originals", "copy"].filter(
+      (value) => value !== name,
+    )) {
+      expect(
+        await welcome
+          .locator(`[data-demo-panel="${other}"] video`)
+          .evaluate((element: HTMLVideoElement) => element.paused),
+      ).toBe(true);
+    }
+  }
+
+  await welcome.locator("#demo-prev").click();
+  await expect(welcome.locator('[data-demo-slide="1"]')).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await welcome.locator("#demo-next").click();
+  await expect(welcome.locator('[data-demo-slide="2"]')).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await welcome.locator("#demo-playback").click();
+  await welcome.screenshot({
+    path: testInfo.outputPath("welcome-desktop.png"),
+    fullPage: true,
+  });
+  await welcome.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await welcome.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await welcome.screenshot({
+    path: testInfo.outputPath("welcome-mobile.png"),
+    fullPage: true,
+  });
+  await expect(welcome.locator("#done-try")).toHaveAttribute(
+    "href",
+    "https://chatgpt.com/",
+  );
+  expect(
+    await extension.worker.evaluate(
+      async () => (await chrome.storage.local.get("onboarded")).onboarded,
+    ),
+  ).toBeUndefined();
+  await welcome.locator("#done-close").click();
+  await expect
+    .poll(() =>
+      extension.worker.evaluate(
+        async () => (await chrome.storage.local.get("onboarded")).onboarded,
+      ),
+    )
+    .toBe(true);
+});
+
+test("welcome clips respect reduced motion and still support explicit keyboard playback", async ({
+  extension,
+}) => {
+  await extension.newChat({ site: "claude" });
+  const welcome = await extension.welcome();
+  await welcome.emulateMedia({ reducedMotion: "reduce" });
+  await welcome.reload();
+  await welcome.locator("#pin-next").click();
+  await expect(welcome.locator("#done-try")).toHaveAttribute(
+    "href",
+    "https://claude.ai/",
+  );
+  for (const name of ["replace", "originals", "copy"]) {
+    const tab = welcome.locator(
+      `[data-demo-slide="${["replace", "originals", "copy"].indexOf(name)}"]`,
+    );
+    await tab.focus();
+    await welcome.keyboard.press("Enter");
+    await expect(tab).toHaveAttribute("aria-current", "true");
+    const video = welcome.locator(`[data-demo-panel="${name}"] video`);
+    expect(
+      await video.evaluate((element: HTMLVideoElement) => ({
+        paused: element.paused,
+        time: element.currentTime,
+      })),
+    ).toEqual({ paused: true, time: 0 });
+  }
+  const video = welcome.locator('[data-demo-panel="copy"] video');
+  const playback = welcome.locator("#demo-playback");
+  await playback.focus();
+  await welcome.keyboard.press("Enter");
+  await expect
+    .poll(() =>
+      video.evaluate((element: HTMLVideoElement) => element.currentTime),
+    )
+    .toBeGreaterThan(0);
+  await expect(playback).toHaveAttribute("aria-label", "Pause demonstration");
+  await welcome.keyboard.press("Enter");
+  await expect
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.paused))
+    .toBe(true);
+  await expect(playback).toHaveAttribute("aria-label", "Play demonstration");
+});
+
+test("circle hover explains status, click opens actions, Escape and outside click dismiss", async ({
+  chat,
+  badge,
+}) => {
+  await chat.locator("#prompt-textarea").fill(EMAIL);
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
+  await expect(chat.locator("datafog-tab")).toHaveCount(0);
+  const { rect } = await badge.state(".dot");
+  await chat.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  expect((await badge.state(".panel")).visible).toBe(false);
+  expect((await badge.state(".tooltip")).visible).toBe(true);
+  expect((await badge.state(".tooltip")).text).toContain("found");
+  await badge.click(".dot");
+  expect((await badge.state(".panel")).visible).toBe(true);
+  expect((await badge.state('.mode[data-mode="redact"]')).visible).toBe(true);
+  await badge.click(".mode-help");
+  expect((await badge.state(".mode-tooltip")).visible).toBe(true);
+  expect((await badge.state(".mode-tooltip")).text).toContain(
+    "Redact removes details without saving originals.",
+  );
+  expect((await badge.state(".mode-tooltip")).text).toContain(
+    "Replace saves originals and inserts reversible tokens.",
+  );
+  await expect(badge.state(".sidebar")).rejects.toThrow();
+  const firstLine = (await badge.state(".mode-tooltip p:first-child")).rect;
+  const secondLine = (await badge.state(".mode-tooltip p:last-child")).rect;
+  expect(secondLine.y).toBeGreaterThan(firstLine.y + firstLine.height);
+  await chat.keyboard.press("Escape");
+  expect((await badge.state(".panel")).visible).toBe(false);
+  await badge.click(".dot");
+  expect((await badge.state(".panel")).visible).toBe(true);
+  await chat.locator("#prompt-textarea").click();
+  expect((await badge.state(".panel")).visible).toBe(false);
+});
+
+for (const reducedMotion of ["no-preference", "reduce"] as const) {
+  test(`popup and quick Undo motion respect ${reducedMotion}`, async ({
+    chat,
+    badge,
+  }) => {
+    await chat.emulateMedia({ reducedMotion });
+    const editor = chat.locator("#prompt-textarea");
+    await editor.fill(EMAIL);
+    await expect
+      .poll(async () => (await badge.state(".dot")).title)
+      .toContain("1 found");
+    await badge.click(".dot");
+    const popup = await badge.state(".panel");
+    expect(popup.animationName).toBe(
+      reducedMotion === "reduce" ? "none" : "popup-in",
+    );
+    expect(popup.animationDuration).toBe(
+      reducedMotion === "reduce" ? "0s" : "0.14s",
+    );
+    const dot = await badge.state(".dot");
+    expect(
+      dot.transitionDuration
+        .split(",")
+        .map((value) => value.trim())
+        .every(
+          (value) => value === (reducedMotion === "reduce" ? "0s" : "0.14s"),
+        ),
+    ).toBe(true);
+    await badge.click(".pseudonymize");
+    await expect(editor).toContainText("[[EMAIL_");
+    await expect
+      .poll(async () => (await badge.state(".paste-toast")).visible)
+      .toBe(true);
+    const toast = await badge.state(".paste-toast");
+    expect(toast.animationName).toBe(
+      reducedMotion === "reduce" ? "none" : "toast-in",
+    );
+    expect(toast.animationDuration).toBe(
+      reducedMotion === "reduce" ? "0s" : "0.14s",
+    );
+    await badge.click(".toast-undo");
+    await expect(editor).toHaveText(EMAIL);
+    await expect(chat.locator("#sent-count")).toHaveText("0");
+  });
+}
+
+/** Composite computed RGB/RGBA paint onto the actual opaque popup surface. */
+function composite(color: string, surface: number[]): number[] {
+  const channels = color.match(/[\d.]+/g)!.map(Number);
+  const alpha = channels[3] ?? 1;
+  return channels
+    .slice(0, 3)
+    .map((value, index) => value * alpha + surface[index] * (1 - alpha));
+}
+function luminance(channels: number[]): number {
+  const linear = channels.map((value) => {
+    const channel = value / 255;
+    return channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+}
+function contrast(
+  foreground: string,
+  background: string,
+  surface: string,
+): number {
+  const base = surface
+    .match(/[\d.]+/g)!
+    .slice(0, 3)
+    .map(Number);
+  const paintedBackground = composite(background, base);
+  const paintedForeground = composite(foreground, paintedBackground);
+  const values = [
+    luminance(paintedForeground),
+    luminance(paintedBackground),
+  ].toSorted((a, b) => b - a);
+  return (values[0] + 0.05) / (values[1] + 0.05);
+}
+function middle(rect: { y: number; height: number }): number {
+  return rect.y + rect.height / 2;
+}
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`popup row alignment, truncation and Apply hover/focus contrast in ${colorScheme}`, async ({
+    chat,
+    badge,
+  }, testInfo) => {
+    await chat.emulateMedia({ colorScheme });
+    const email = "unusually.long.onboarding.value.for.review@northpine.studio";
+    await chat.locator("#prompt-textarea").fill(email);
+    await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
+    await badge.click(".dot");
+    const original = await badge.state(".original");
+    const target = await badge.state(".to");
+    const modes = await badge.state(".modes");
+    expect(
+      Math.abs(middle(original.rect) - middle(target.rect)),
+    ).toBeLessThanOrEqual(2);
+    expect(
+      Math.abs(middle(original.rect) - middle(modes.rect)),
+    ).toBeLessThanOrEqual(2);
+    expect(original.title).toBe(email);
+    expect(original.textOverflow).toBe("ellipsis");
+    expect(original.scrollWidth).toBeGreaterThan(original.clientWidth);
+    const surface = (await badge.state(".panel")).backgroundColor;
+    const replaceMode = await badge.state('.mode[data-mode="replace"]');
+    expect(replaceMode.pressed).toBe("true");
+    expect(
+      contrast(replaceMode.color, replaceMode.backgroundColor, surface),
+    ).toBeGreaterThanOrEqual(4.5);
+    await badge.click('.mode[data-mode="redact"]');
+    await expect
+      .poll(async () => (await badge.state(".pseudonymize")).disabled)
+      .toBe(false);
+    const redactMode = await badge.state('.mode[data-mode="redact"]');
+    expect(redactMode.pressed).toBe("true");
+    expect((await badge.state('.mode[data-mode="replace"]')).pressed).toBe(
+      "false",
+    );
+    expect(
+      contrast(redactMode.color, redactMode.backgroundColor, surface),
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(redactMode.color).toBe(replaceMode.color);
+    expect(redactMode.backgroundColor).toBe(replaceMode.backgroundColor);
+    const normal = await badge.state(".pseudonymize");
+    expect(
+      contrast(normal.color, normal.backgroundColor, surface),
+    ).toBeGreaterThanOrEqual(4.5);
+    await chat.mouse.move(
+      normal.rect.x + normal.rect.width / 2,
+      normal.rect.y + normal.rect.height / 2,
+    );
+    await chat.waitForTimeout(180);
+    const hover = await badge.state(".pseudonymize");
+    expect(
+      contrast(hover.color, hover.backgroundColor, surface),
+    ).toBeGreaterThanOrEqual(4.5);
+    await chat.screenshot({
+      path: testInfo.outputPath(`popup-${colorScheme}-hover.png`),
+    });
+    await chat.mouse.move(0, 0);
+    for (
+      let index = 0;
+      index < 20 && !(await badge.state(".pseudonymize")).focused;
+      index++
+    )
+      await chat.keyboard.press("Tab");
+    const focus = await badge.state(".pseudonymize");
+    expect(focus.focused).toBe(true);
+    expect(
+      contrast(focus.color, focus.backgroundColor, surface),
+    ).toBeGreaterThanOrEqual(4.5);
+    await chat.setViewportSize({ width: 390, height: 760 });
+    await chat.waitForTimeout(180);
+    const panel = (await badge.state(".panel")).rect;
+    for (const selector of [".original", ".to", ".modes"]) {
+      const item = (await badge.state(selector)).rect;
+      expect(item.x).toBeGreaterThanOrEqual(panel.x);
+      expect(item.x + item.width).toBeLessThanOrEqual(panel.x + panel.width);
+    }
+    expect(panel.x + panel.width).toBeLessThanOrEqual(390);
+    await chat.screenshot({
+      path: testInfo.outputPath(`popup-${colorScheme}-narrow.png`),
+    });
+    await expect(chat.locator("#sent-count")).toHaveText("0");
+  });
+}

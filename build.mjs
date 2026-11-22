@@ -6,9 +6,14 @@
  */
 
 import { context } from "esbuild";
-import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, mkdirSync } from "node:fs";
 
 const watch = process.argv.includes("--watch");
+const outputFlag = process.argv.indexOf("--output-root");
+const outputRoot = outputFlag < 0 ? "." : process.argv[outputFlag + 1];
+if (!outputRoot || outputRoot.startsWith("--"))
+  throw new Error("--output-root needs a directory");
+const output = (name) => `${outputRoot}/${name}`;
 const wasm = "node_modules/@datafog/wasm/dist/datafog_wasm_bg.wasm";
 // FogVault runs in its own module Worker, loaded from these files unbundled
 const fogvault = "node_modules/@datafog/fogvault-browser/dist";
@@ -17,13 +22,12 @@ const core = "node_modules/@datafog/wasm";
 const coreFiles = ["index.js", "dist", "cnn"];
 
 /**
- * Empty an output folder and copy in the wasm and static files.
+ * Update output files without removing a possibly installed extension directory.
  *
  * @param out The output folder.
  * @param files Static files and folders to copy alongside the bundles.
  */
 function prepare(out, files) {
-  rmSync(out, { recursive: true, force: true });
   mkdirSync(`${out}/dist`, { recursive: true });
   // @datafog/wasm loads ./dist/datafog_wasm_bg.wasm relative to the bundle
   cpSync(wasm, `${out}/dist/datafog_wasm_bg.wasm`);
@@ -31,25 +35,30 @@ function prepare(out, files) {
 }
 
 // The extension's license ships with it; it also covers Core's own code
-prepare("dist", [
+prepare(output("dist"), [
   "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
+  "licenses",
+  "fonts",
+  "assets",
   "icons",
   "manifest.json",
   "offscreen.html",
   "options.html",
   "panel.html",
   "theme.css",
+  "welcome.html",
 ]);
 // Its licenses, under third-party/, ship with it
-cpSync(fogvault, "dist/fogvault", { recursive: true });
+cpSync(fogvault, output("dist/fogvault"), { recursive: true });
 for (const file of coreFiles) {
-  cpSync(`${core}/${file}`, `dist/datafog/wasm/${file}`, {
+  cpSync(`${core}/${file}`, output(`dist/datafog/wasm/${file}`), {
     recursive: true,
     // Types aren't needed at run time
     filter: (source) => !source.endsWith(".d.ts"),
   });
 }
-prepare("harness", ["harness.html"]);
+prepare(output("harness"), ["harness.html"]);
 
 const common = { bundle: true, target: "chrome120", logLevel: "info" };
 const builds = await Promise.all([
@@ -57,37 +66,43 @@ const builds = await Promise.all([
   context({
     ...common,
     entryPoints: ["src/background.ts"],
-    outfile: "dist/background.js",
+    outfile: output("dist/background.js"),
     format: "esm",
   }),
   context({
     ...common,
     entryPoints: ["src/offscreen.ts"],
-    outfile: "dist/offscreen.js",
+    outfile: output("dist/offscreen.js"),
     format: "esm",
   }),
   context({
     ...common,
     entryPoints: ["src/content.ts"],
-    outfile: "dist/content.js",
+    outfile: output("dist/content.js"),
     format: "iife",
   }),
   context({
     ...common,
     entryPoints: ["src/options.ts"],
-    outfile: "dist/options.js",
+    outfile: output("dist/options.js"),
     format: "iife",
   }),
   context({
     ...common,
     entryPoints: ["src/panel.ts"],
-    outfile: "dist/panel.js",
+    outfile: output("dist/panel.js"),
+    format: "iife",
+  }),
+  context({
+    ...common,
+    entryPoints: ["src/welcome.ts"],
+    outfile: output("dist/welcome.js"),
     format: "iife",
   }),
   context({
     ...common,
     entryPoints: ["src/harness.ts"],
-    outfile: "harness/harness.js",
+    outfile: output("harness/harness.js"),
     format: "esm",
   }),
 ]);

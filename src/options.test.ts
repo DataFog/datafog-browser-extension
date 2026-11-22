@@ -13,7 +13,9 @@ const BODY = readFileSync("options.html", "utf8")
   .split("<body>")[1]
   .split("<script")[0];
 
-let stored: { settings?: Partial<Settings> };
+let stored: { settings?: Partial<Settings>; theme?: string };
+let deleteReply: () => object = () => ({ state: "none" });
+const sent: string[] = [];
 let storageChanges: ((changes: object, area: string) => void)[];
 
 /**
@@ -38,28 +40,6 @@ function $(selector: string): HTMLElement {
 }
 
 /**
- * Find a list's text box by its selector.
- *
- * @param selector The selector.
- * @returns The text box.
- */
-function list(selector: string): HTMLTextAreaElement {
-  return document.querySelector<HTMLTextAreaElement>(selector)!;
-}
-
-/**
- * Type into a list.
- *
- * @param selector The list's selector.
- * @param value Its new text.
- */
-function type(selector: string, value: string): void {
-  const box = list(selector);
-  box.value = value;
-  box.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-/**
  * Click a checkbox.
  *
  * @param selector The checkbox's selector.
@@ -81,7 +61,20 @@ beforeEach(() => {
   stored = {};
   storageChanges = [];
   vi.stubGlobal("chrome", {
-    runtime: { getManifest: () => ({ version: "1.2.3" }) },
+    runtime: {
+      getManifest: () => ({ version: "1.2.3" }),
+      sendMessage: async (request: { type: string; settings?: Settings }) => {
+        sent.push(request.type);
+        if (request.type === "settings-get")
+          return { ...DEFAULT_SETTINGS, ...stored.settings };
+        if (request.type === "vault-delete") return deleteReply();
+        if (request.type === "settings-save") {
+          await chrome.storage.local.set({ settings: request.settings });
+          return {};
+        }
+        return {};
+      },
+    },
     storage: {
       local: {
         get: async () => structuredClone(stored),
@@ -123,15 +116,9 @@ test("groups the types by how accurately they're found, each with a tooltip", as
   expect(document.querySelector("#save")).toBeNull();
 });
 
-test("shows the version, the privacy policy and where to get help", async () => {
+test("shows the version and where to get help", async () => {
   await start();
   expect($("#version").textContent).toBe("version 1.2.3");
-  const privacy = document.querySelector<HTMLAnchorElement>(
-    'a[href="https://datafog.ai/privacy-policy"]',
-  )!;
-  expect(privacy.textContent).toBe("privacy policy");
-  expect(privacy.target).toBe("_blank");
-  expect(privacy.rel).toBe("noopener noreferrer");
   expect(document.querySelector('a[href="mailto:help@datafog.ai"]')).not.toBe(
     null,
   );
@@ -174,7 +161,7 @@ test("says when a change couldn't be saved, and keeps saving later ones", async 
   expect($("#status").classList.contains("failed")).toBe(false);
 });
 
-test("restores the default sites, types and behavior, keeping the lists", async () => {
+test("restores the default sites, types and behavior, keeping the rules", async () => {
   stored = {
     settings: {
       off: ["claude.ai"],
@@ -212,38 +199,85 @@ test("restores the default sites, types and behavior, keeping the lists", async 
   expect(
     document.querySelector<HTMLInputElement>("#block-sends")!.checked,
   ).toBe(false);
-  expect(list("#denylist").value).toBe("Acme");
 });
 
-test("saves a list once typing stops, trimmed and without repeats", async () => {
+test("has no list editors: rules live in the sidebar", async () => {
   await start();
-  type("#denylist", " Project Falcon \nProject Falcon\n\nAcme");
-  await vi.advanceTimersByTimeAsync(300);
-  expect(stored.settings?.denylist).toBeUndefined();
+  expect(document.querySelector("#allowlist")).toBeNull();
+  expect(document.querySelector("#denylist")).toBeNull();
+});
 
-  await vi.advanceTimersByTimeAsync(100);
+test("saves the theme locally and marks the page with it", async () => {
+  await start();
+  const dark = document.querySelector<HTMLInputElement>(
+    'input[name="theme"][value="dark"]',
+  )!;
+  dark.checked = true;
+  dark.dispatchEvent(new Event("change", { bubbles: true }));
+  await vi.waitFor(() => expect($("#status").textContent).toBe("Saved"));
+  expect(stored.theme).toBe("dark");
+  expect(document.documentElement.dataset.theme).toBe("dark");
+  // Theme is not part of the encrypted settings
+  expect(stored.settings).toBeUndefined();
+});
+
+test("deleting vault data needs DELETE typed, and cancelling keeps it", async () => {
+  sent.length = 0;
+  await start();
+  $("#delete-open").click();
+  expect($("#delete").hidden).toBe(false);
+  const confirm = document.querySelector<HTMLInputElement>("#delete-confirm")!;
+  confirm.value = "RESET";
+  confirm.dispatchEvent(new Event("input"));
+  expect(
+    document.querySelector<HTMLButtonElement>("#delete-submit")!.disabled,
+  ).toBe(true);
+  $("#delete").dispatchEvent(new Event("submit", { cancelable: true }));
+  $("#delete-cancel").click();
+  expect($("#delete").hidden).toBe(true);
+  expect(sent).not.toContain("vault-delete");
+
+  $("#delete-open").click();
+  confirm.value = "delete";
+  confirm.dispatchEvent(new Event("input"));
+  $("#delete").dispatchEvent(new Event("submit", { cancelable: true }));
   await vi.waitFor(() =>
-    expect(stored.settings?.denylist).toEqual(["Project Falcon", "Acme"]),
+    expect($("#delete-status").textContent).toContain("deleted"),
   );
-  expect($("#status").textContent).toBe("Saved");
+  expect(sent).toContain("vault-delete");
 });
 
-test("saves a list right away when it loses focus", async () => {
+test("reports a partial deletion as one", async () => {
+  deleteReply = () => ({ error: "vault_deletion_incomplete" });
   await start();
-  type("#allowlist", "me@work.example");
-  $("#allowlist").dispatchEvent(new Event("change", { bubbles: true }));
+  $("#delete-open").click();
+  const confirm = document.querySelector<HTMLInputElement>("#delete-confirm")!;
+  confirm.value = "DELETE";
+  confirm.dispatchEvent(new Event("input"));
+  $("#delete").dispatchEvent(new Event("submit", { cancelable: true }));
   await vi.waitFor(() =>
-    expect(stored.settings?.allowlist).toEqual(["me@work.example"]),
+    expect($("#delete-status").textContent).toContain("Some data may remain"),
   );
+  expect($("#delete-open").hidden).toBe(false);
+  deleteReply = () => ({ state: "none" });
 });
 
-test("shows a list changed in the side panel, unless it's being edited", async () => {
+test("paste replacement is opt-in, saved with other encrypted preferences and reset with behavior", async () => {
   await start();
-  saveElsewhere({ denylist: ["Acme"] });
-  await vi.waitFor(() => expect(list("#denylist").value).toBe("Acme"));
-
-  type("#allowlist", "draft");
-  saveElsewhere({ allowlist: ["me@work.example"] });
-  await vi.advanceTimersByTimeAsync(0);
-  expect(list("#allowlist").value).toBe("draft");
+  const control = document.querySelector<HTMLInputElement>(
+    "#auto-replace-on-paste",
+  )!;
+  expect(control.checked).toBe(false);
+  saveElsewhere({ allowlist: ["keep@example.com"] });
+  control.click();
+  await vi.waitFor(() =>
+    expect(stored.settings?.autoReplaceOnPaste).toBe(true),
+  );
+  expect(stored.settings?.allowlist).toEqual(["keep@example.com"]);
+  vi.stubGlobal("confirm", () => true);
+  click("#restore");
+  await vi.waitFor(() =>
+    expect(stored.settings?.autoReplaceOnPaste).toBe(false),
+  );
+  expect(stored.settings?.allowlist).toEqual(["keep@example.com"]);
 });

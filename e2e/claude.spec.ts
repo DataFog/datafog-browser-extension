@@ -1,3 +1,4 @@
+import { redactAll } from "./fixtures";
 import { expect, expectBadgeFitsBox, SAMPLE, test } from "./fixtures";
 
 test("Claude: checks the chat box, matches its size and redacts", async ({
@@ -10,12 +11,11 @@ test("Claude: checks the chat box, matches its size and redacts", async ({
   await composer.fill(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog: 2 items found. Click to review.");
+    .toBe("2 found · click to review");
   await expectBadgeFitsBox(badge, box, 44, "14px");
-  expect((await badge.state(".dismiss")).title).toContain("Claude's own");
 
   await badge.click(".dot");
-  await badge.click(".redact");
+  await redactAll(badge);
 
   await expect(composer).toHaveText(
     "my email is [EMAIL] and card [CREDIT_CARD]",
@@ -24,7 +24,7 @@ test("Claude: checks the chat box, matches its size and redacts", async ({
 });
 
 for (const sendMethod of ["button", "Enter"] as const) {
-  test(`Claude: ${sendMethod} is held once, and a second press sends`, async ({
+  test(`Claude: ${sendMethod} is held until an explicit popup choice`, async ({
     extension,
   }) => {
     const options = await extension.options();
@@ -48,9 +48,20 @@ for (const sendMethod of ["button", "Enter"] as const) {
     await expect(chat.locator("#sent-count")).toHaveText("0");
     await expect
       .poll(() => badge.state(".paused").then((state) => state.text))
-      .toContain("Sending is paused");
+      .toContain("Choose how to send this message.");
+    await expect
+      .poll(async () => (await badge.state(".pseudonymize")).text)
+      .toBe("Apply & send");
     await send();
+    if (sendMethod === "button") {
+      await expect(chat.locator("#sent-count")).toHaveText("0");
+      await badge.click(".pseudonymize");
+    }
+    // A distinct Enter activates the popup primary; the opening Enter did not.
     await expect(chat.locator("#sent-count")).toHaveText("1");
+    await expect(chat.locator("#sent-text")).toHaveText(
+      /my email is \[\[EMAIL_[A-Z0-9]+\]\] and card \[\[CREDIT_CARD_[A-Z0-9]+\]\]/,
+    );
   });
 }
 
@@ -72,7 +83,7 @@ test("settings: turning Claude off leaves ChatGPT checked", async ({
         .state(".dot")
         .then((state) => state.title),
     )
-    .toContain("disabled");
+    .toContain("is off for this site");
 
   const chatgpt = await extension.newChat();
   await chatgpt.locator("#prompt-textarea").fill(SAMPLE);
@@ -83,5 +94,5 @@ test("settings: turning Claude off leaves ChatGPT checked", async ({
         .state(".dot")
         .then((state) => state.title),
     )
-    .toBe("DataFog: 2 items found. Click to review.");
+    .toBe("2 found · click to review");
 });

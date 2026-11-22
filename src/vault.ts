@@ -1,14 +1,8 @@
 /**
- * The vault and Pseudonymize, in the offscreen document.
- *
- * FogVault keeps the workspace encrypted on this device; Core's adapter owns
- * the workspace, which maps each value to its marker. Nothing here leaves the
- * extension: the password and the original values reach only the side panel
- * and this document.
- *
- * A remembered device unlocks the vault without the password for 30 days, on
- * use, and keeps it from locking after idling. A manual lock pauses that until
- * the next password unlock.
+ * FogVault owns encrypted mappings; Core owns matching and workspace commits.
+ * Normal access uses a non-exportable local device key without expiry. Legacy
+ * password-only stores are unsupported. Original values
+ * never leave the extension except as extension-owned local display.
  */
 
 import type {
@@ -21,10 +15,16 @@ import type {
   KeyProvider,
   ProviderIdentity,
 } from "@datafog/fogvault-browser";
-import type { WorkspaceFinding, WorkspacePreview } from "@datafog/wasm";
+import {
+  transform,
+  type WorkspaceFinding,
+  type WorkspacePreview,
+} from "@datafog/wasm";
 
 import type {
+  ApplyResponse,
   CreatedVault,
+  KeepPlace,
   MarkedSensitive,
   Pseudonymized,
   RestoredValue,
@@ -38,7 +38,7 @@ import type {
   VaultStatus,
 } from "./messages";
 import { sameChecks, type Settings } from "./settings";
-import type { Devices } from "./device";
+import { identityOf, type Devices } from "./device";
 
 /** The vault's name in IndexedDB. */
 export const VAULT_NAME = "datafog";
@@ -54,14 +54,11 @@ export type Vault = Pick<
   FogVault,
   | "create"
   | "open"
-  | "unlock"
   | "lock"
   | "close"
   | "reconcileLatest"
   | "describeAccess"
   | "unlockDevice"
-  | "enrollDevice"
-  | "protectAccess"
 >;
 
 /** The parts of Core's adapter the host uses. */
@@ -69,6 +66,7 @@ export type Owner = Pick<
   FogVaultWorkspace,
   | "prepare"
   | "prepareReview"
+  | "prepareForget"
   | "preparePolicyChanges"
   | "policy"
   | "commit"
@@ -102,6 +100,7 @@ export interface VaultDeps<V extends Vault> {
 /** A prepared review, waiting for approval in the side panel. */
 interface Review extends ReviewSource {
   plan: WorkspaceVaultPlan;
+  all?: { items: ReviewItem[]; ranges: KeepPlace[] };
   items: ReviewItem[];
   /** Each item's place in the text, in UTF-8 bytes, as Core counts. */
   ranges: { start: number; end: number }[];
@@ -245,17 +244,41 @@ function toRoute(routing: VaultRouting): Route {
   };
 }
 
+/** One owner for commit outcome and the request that must be reconciled. */
+type CommitState =
+  | { phase: "idle" }
+  | {
+      phase: "saving" | "confirmed" | "uncertain" | "reconciling";
+      requestId: Uint8Array;
+    }
+  | { phase: "failed"; error: string };
+type DeletionState =
+  | { phase: "idle" | "complete" }
+  | {
+      phase: "deleting" | "partial-failure";
+      step: "vault" | "keys";
+      error?: string;
+    };
+
 export class VaultHost<V extends Vault = Vault> {
   private vault: V | null = null;
   private opened = false;
   private owner: Owner | null = null;
   private review: Review | null = null;
+  /** Core permits one prepared plan. A token prevents replacing a superseded preview. */
+  private reservation: {
+    id: string;
+    tabId: number;
+    revision: number;
+    policyVersion: string;
+  } | null = null;
   private waiting: Waiting | null = null;
   /** Counts review preparations, so a cancelled or replaced one is dropped. */
   private turn = 0;
   private error: string | null = null;
-  /** A save whose outcome is unknown, to reconcile at the next unlock. */
-  private unsettled: Uint8Array | null = null;
+  private commitState: CommitState = { phase: "idle" };
+  private deletionState: DeletionState = { phase: "idle" };
+  private automatic = false;
   private idle: ReturnType<typeof setTimeout> | undefined;
 
   /**
@@ -277,6 +300,9 @@ export class VaultHost<V extends Vault = Vault> {
     else if (this.owner && !this.owner.closed) state = "unlocked";
     return {
       state,
+      commit: this.commitState.phase,
+      deletion: this.deletionState.phase,
+      access: state === "unlocked" ? "ready" : "unavailable",
       waiting: this.waiting !== null,
       review: this.review?.items ?? null,
       reviewError: this.error,
@@ -284,6 +310,313 @@ export class VaultHost<V extends Vault = Vault> {
         ? this.deps.devices.rememberedUntil(this.deps.now())
         : null,
       notSensitive: this.notSensitive(),
+    };
+  }
+
+  /** Access uses existing keys and never silently replaces inaccessible data. */
+  async automaticAccess(routing: VaultRouting | null): Promise<void> {
+    this.automatic = true;
+    clearTimeout(this.idle);
+    if (!routing) throw failure("no_vault");
+    if (this.owner && !this.owner.closed) return;
+    // Retain legacy keys even when an old pause/expiry prevented use. They are
+    // promoted only after a successful unwrap; no credential is fabricated.
+    await this.unlockWithDevice(routing);
+    if (!this.owner || this.owner.closed) throw failure("vault_key_missing");
+    await this.deps.devices.promote?.();
+  }
+
+  async allowValue(entityType: string, value: string): Promise<void> {
+    if (!this.owner || this.owner.closed) throw failure("vault_unavailable");
+    this.drop();
+    await this.saveChoice(this.owner, entityType, value, "not_sensitive");
+    this.deps.notify();
+  }
+
+  /** Retain the exact Core allocation until consumed or explicitly superseded. */
+  async preview(
+    text: string,
+    settings: Settings,
+    tabId = -1,
+    revision = 0,
+    policyVersion = "",
+    keep?: KeepPlace[],
+    redactions?: KeepPlace[],
+  ): Promise<{ findings: ReviewItem[]; previewId?: string }> {
+    if (
+      !this.review ||
+      this.review.text !== text ||
+      this.reservation?.tabId !== tabId ||
+      this.reservation.policyVersion !== policyVersion ||
+      !sameChecks(this.review.settings, settings)
+    ) {
+      await this.pseudonymize(text, tabId, settings);
+    }
+    if (this.error && this.error !== "nothing_found") throw failure(this.error);
+    const findings =
+      (this.review?.all?.items ?? this.review?.items)?.map((item) => ({
+        ...item,
+      })) ?? [];
+    this.waiting = null;
+    this.error = null;
+    if (!this.review) return { findings };
+    const previewId = crypto.randomUUID();
+    this.reservation = { id: previewId, tabId, revision, policyVersion };
+    if (keep || redactions)
+      return this.select(
+        text,
+        settings,
+        tabId,
+        previewId,
+        policyVersion,
+        (keep ?? []).filter((place) =>
+          findings.some(
+            (item) => item.start === place.start && item.end === place.end,
+          ),
+        ),
+        redactions,
+      );
+    return { findings, previewId };
+  }
+
+  /** Refresh an exact reservation for chosen occurrences, never by value. */
+  async select(
+    text: string,
+    settings: Settings,
+    tabId: number,
+    previewId: string,
+    policyVersion: string,
+    keep: KeepPlace[],
+    redactions: KeepPlace[] = [],
+  ): Promise<{ findings: ReviewItem[]; previewId: string }> {
+    const review = this.review;
+    const owner = this.owner;
+    if (
+      !review ||
+      !owner ||
+      owner.closed ||
+      review.text !== text ||
+      this.reservation?.id !== previewId ||
+      this.reservation.tabId !== tabId ||
+      this.reservation.policyVersion !== policyVersion ||
+      !sameChecks(review.settings, settings)
+    )
+      throw failure("preview_expired");
+    const reservation = this.reservation;
+    const all = review.all ?? { items: review.items, ranges: review.ranges };
+    if (
+      !Array.isArray(keep) ||
+      !Array.isArray(redactions) ||
+      [...keep, ...redactions].some(
+        (place) =>
+          !place ||
+          !Number.isInteger(place.start) ||
+          !Number.isInteger(place.end) ||
+          !all.items.some(
+            (item) => item.start === place.start && item.end === place.end,
+          ),
+      )
+    )
+      throw failure("selection_invalid");
+    const modes = [...keep, ...redactions];
+    if (
+      new Set(modes.map((place) => `${place.start}:${place.end}`)).size !==
+      modes.length
+    )
+      throw failure("selection_invalid");
+    const items = all.items.map<ReviewItem>((item) => ({
+      ...item,
+      kept: keep.some(
+        (place) => place.start === item.start && place.end === item.end,
+      ),
+      action: keep.some(
+        (place) => place.start === item.start && place.end === item.end,
+      )
+        ? "keep"
+        : redactions.some(
+              (place) => place.start === item.start && place.end === item.end,
+            )
+          ? "redact"
+          : "replace",
+      marker: "",
+    }));
+    for (const item of items) {
+      if (item.action !== "redact") continue;
+      // Core owns label formatting, including values recalled from saved mappings.
+      // Only the authoritative reserved value/type is used, never client labels.
+      item.marker = transform(
+        item.original,
+        [
+          {
+            entityType: item.entityType,
+            matchedText: item.original,
+            byteRange: {
+              start: 0,
+              end: new TextEncoder().encode(item.original).length,
+            },
+            codepointRange: { start: 0, end: Array.from(item.original).length },
+            detectorName: "workspace-review",
+          },
+        ],
+        { default: { strategy: "redact" } },
+      ).text;
+    }
+    const chosen = items.flatMap((item, index) =>
+      item.action === "replace" ? [index] : [],
+    );
+    this.drop();
+    const plan = owner.prepare(
+      text,
+      chosen.map((index) =>
+        findingAt(review.found, all.ranges[index], all.items[index]),
+      ),
+      this.deps.randomId(),
+    );
+    const preview = plan.preview();
+    if (preview.transformations.length !== chosen.length) {
+      plan.discard();
+      throw failure("preview_expired");
+    }
+    for (const change of preview.transformations) {
+      const item = items.find(
+        (candidate) =>
+          candidate.action === "replace" &&
+          candidate.start === change.sourceUtf16Range.start &&
+          candidate.end === change.sourceUtf16Range.end,
+      );
+      if (!item) {
+        plan.discard();
+        throw failure("preview_expired");
+      }
+      item.marker = preview.text.slice(
+        change.outputUtf16Range.start,
+        change.outputUtf16Range.end,
+      );
+    }
+    this.review = {
+      ...review,
+      plan,
+      items: chosen.map((index) => items[index]),
+      ranges: chosen.map((index) => all.ranges[index]),
+      all: { items, ranges: all.ranges },
+    };
+    const next = crypto.randomUUID();
+    this.reservation = { ...reservation, id: next };
+    return { findings: items, previewId: next };
+  }
+
+  /** Retire one exact saved marker through Core's durable commit boundary. */
+  async forget(marker: string): Promise<void> {
+    const owner = this.owner;
+    if (!owner || owner.closed) throw failure("vault_unavailable");
+    const code = /^\[\[[A-Z][A-Z0-9_]*_([0-9A-HJKMNP-TV-Z]{6})\]\]$/.exec(
+      marker,
+    )?.[1];
+    if (!code) throw failure("invalid_marker");
+    this.drop();
+    await this.save(owner, owner.prepareForget([code], this.deps.randomId()));
+    this.deps.notify();
+  }
+
+  async replace(
+    text: string,
+    tabId: number,
+    settings: Settings,
+    previewId?: string,
+    policyVersion = "",
+  ): Promise<RedactResponse & { saved: true }> {
+    if (previewId) {
+      if (
+        !this.review ||
+        this.review.text !== text ||
+        this.reservation?.id !== previewId ||
+        this.reservation.tabId !== tabId ||
+        this.reservation.policyVersion !== policyVersion ||
+        !sameChecks(this.review.settings, settings)
+      )
+        throw failure("preview_expired");
+    } else {
+      await this.pseudonymize(text, tabId, settings);
+    }
+    if (!this.review || this.review.items.length === 0)
+      throw failure(this.error ?? "nothing_found");
+    const saved = await this.approve(settings);
+    this.reservation = null;
+    return { ...saved.response, saved: true };
+  }
+
+  /** Apply reserved per-occurrence modes after the one durable Replace commit. */
+  async apply(
+    text: string,
+    tabId: number,
+    settings: Settings,
+    previewId: string,
+    policyVersion: string,
+  ): Promise<ApplyResponse> {
+    const review = this.review;
+    if (
+      !review ||
+      !this.owner ||
+      this.owner.closed ||
+      review.text !== text ||
+      this.reservation?.id !== previewId ||
+      this.reservation.tabId !== tabId ||
+      this.reservation.policyVersion !== policyVersion ||
+      !sameChecks(review.settings, settings)
+    )
+      throw failure("preview_expired");
+    const items = review.all?.items ?? review.items;
+    const redactions: RedactEdit[] = items
+      .filter((item) => item.action === "redact")
+      .map((item) => ({
+        start: item.start!,
+        end: item.end!,
+        replacement: item.marker,
+      }));
+    const planned = editsOf(review.plan.preview()).edits;
+    const edits = [...planned, ...redactions].toSorted(
+      (a, b) => a.start - b.start,
+    );
+    if (!edits.length) throw failure("nothing_found");
+    if (
+      edits.some(
+        (edit, index) =>
+          !Number.isInteger(edit.start) ||
+          !Number.isInteger(edit.end) ||
+          edit.start < 0 ||
+          edit.end <= edit.start ||
+          edit.end > text.length ||
+          (index > 0 && edits[index - 1].end > edit.start),
+      )
+    )
+      throw failure("selection_invalid");
+    let response: RedactResponse;
+    if (planned.length)
+      response = await this.replace(
+        text,
+        tabId,
+        settings,
+        previewId,
+        policyVersion,
+      );
+    else {
+      this.drop();
+      response = { text, edits: [] };
+    }
+    const combined = [...response.edits, ...redactions].toSorted(
+      (a, b) => a.start - b.start,
+    );
+    let result = text;
+    for (const edit of combined.toReversed())
+      result =
+        result.slice(0, edit.start) + edit.replacement + result.slice(edit.end);
+    return {
+      text: result,
+      edits: combined,
+      applied: true,
+      saved: planned.length > 0,
+      replaced: planned.length,
+      redacted: redactions.length,
     };
   }
 
@@ -373,20 +706,28 @@ export class VaultHost<V extends Vault = Vault> {
     owner: Owner,
     plan: WorkspaceVaultPlan,
   ): Promise<SavedWorkspaceChange> {
+    const requestId = this.deps.randomId();
+    this.commitState = { phase: "saving", requestId };
     try {
-      const saved = await owner.commit(plan, { approved: true });
+      const saved = await owner.commit(plan, { approved: true, requestId });
+      this.commitState = { phase: "confirmed", requestId };
       this.touch();
       return saved;
     } catch (error) {
       this.error = codeOf(error);
       this.waiting = null;
-      if (!owner.closed) plan.discard();
-      else {
-        const requestId =
+      if (!owner.closed) {
+        plan.discard();
+        this.commitState = { phase: "failed", error: this.error };
+      } else {
+        const reportedId =
           typeof error === "object" && error !== null && "requestId" in error
             ? error.requestId
             : undefined;
-        if (requestId instanceof Uint8Array) this.unsettled = requestId;
+        this.commitState = {
+          phase: "uncertain",
+          requestId: reportedId instanceof Uint8Array ? reportedId : requestId,
+        };
         this.owner = null;
         await this.vault?.lock();
       }
@@ -433,10 +774,21 @@ export class VaultHost<V extends Vault = Vault> {
    * @param routing Where the workspace lives.
    */
   private async openWorkspace(vault: V, routing: VaultRouting): Promise<void> {
-    if (this.unsettled) {
-      // Settle the save that lost its answer before trusting the saved state
-      await vault.reconcileLatest(this.unsettled);
-      this.unsettled = null;
+    if (
+      this.commitState.phase === "uncertain" ||
+      this.commitState.phase === "reconciling"
+    ) {
+      const { requestId } = this.commitState;
+      this.commitState = { phase: "reconciling", requestId };
+      try {
+        await vault.reconcileLatest(requestId);
+        // Reconciliation establishes the current head, not that the lost
+        // operation committed. Only a returned commit receipt confirms it.
+        this.commitState = { phase: "idle" };
+      } catch (error) {
+        this.commitState = { phase: "uncertain", requestId };
+        throw error;
+      }
     }
     this.owner = await this.deps.openOwner(vault, toRoute(routing));
     this.error = null;
@@ -453,8 +805,10 @@ export class VaultHost<V extends Vault = Vault> {
   async unlockWithDevice(routing: VaultRouting | null): Promise<void> {
     if (!routing || (this.owner && !this.owner.closed)) return;
     const { devices } = this.deps;
-    await devices.prune(this.deps.now());
-    const device = devices.active(this.deps.now());
+    if (!this.automatic) await devices.prune(this.deps.now());
+    const device = this.automatic
+      ? (devices.existing?.() ?? devices.active(this.deps.now()))
+      : devices.active(this.deps.now());
     if (!device) return;
     try {
       const vault = await this.openVault();
@@ -467,8 +821,8 @@ export class VaultHost<V extends Vault = Vault> {
       await this.openWorkspace(vault, routing);
       this.deps.notify();
     } catch {
-      // A key that no longer unwraps is no use; forget it
-      await devices.forget();
+      // Preserve keys on corruption/transient failures: retries must be safe.
+      throw failure("vault_access_failed");
     }
   }
 
@@ -478,7 +832,8 @@ export class VaultHost<V extends Vault = Vault> {
    * @returns The key's identity.
    */
   private async newDevice(): Promise<ProviderIdentity> {
-    await this.deps.devices.forget();
+    const existing = this.deps.devices.existing?.();
+    if (existing) return identityOf(existing.keyId);
     const identity = await this.deps.devices.create(this.deps.now());
     await this.dropVault();
     return identity;
@@ -524,46 +879,6 @@ export class VaultHost<V extends Vault = Vault> {
     this.touch();
     await this.prepareWaiting();
     return { status: this.status(made), routing: made };
-  }
-
-  /**
-   * Unlock the vault with the password and reopen its workspace, remembering
-   * this device if asked.
-   *
-   * A vault made before remember device has no device slot. Adding one
-   * re-encrypts it with new keys.
-   *
-   * @param password The password.
-   * @param routing Where the workspace lives.
-   * @param remember Whether to remember this device for 30 days.
-   * @returns The status.
-   */
-  async unlock(
-    password: string,
-    routing: VaultRouting | null,
-    remember: boolean,
-  ): Promise<VaultStatus> {
-    if (!routing) throw failure("no_vault");
-    if (this.owner && !this.owner.closed) return this.status(routing);
-    const identity = remember ? await this.newDevice() : null;
-    const vault = await this.openVault();
-    await vault.unlock(password);
-    await this.deps.devices.setPaused(false);
-    if (identity) {
-      const source = { kind: "password" as const, password };
-      const { profile } = await vault.describeAccess();
-      if (profile === "password-or-device")
-        await vault.enrollDevice(source, identity);
-      else
-        await vault.protectAccess(source, {
-          password,
-          profile: "password-or-device",
-          devices: [identity],
-          recovery: false,
-        });
-    }
-    await this.openWorkspace(vault, routing);
-    return this.status(routing);
   }
 
   /**
@@ -613,16 +928,33 @@ export class VaultHost<V extends Vault = Vault> {
    * @returns The status, with no vault.
    */
   async deleteVault(routing: VaultRouting | null): Promise<VaultStatus> {
-    if (!routing) throw failure("no_vault");
-    await this.lock(routing);
-    // Closing stops FogVault's Worker, releasing the database to delete
-    await this.dropVault();
-    this.unsettled = null;
-    this.error = null;
-    await this.deps.deleteStore(VAULT_NAME);
-    await this.deps.devices.clear();
-    this.deps.notify();
-    return this.status(null);
+    // The background's durable tombstone survives restart; this state owns
+    // the current attempt and never claims completion before key cleanup.
+    let step: "vault" | "keys" =
+      this.deletionState.phase === "partial-failure"
+        ? this.deletionState.step
+        : "vault";
+    this.deletionState = { phase: "deleting", step };
+    try {
+      await this.lock(routing);
+      await this.dropVault();
+      if (step === "vault") await this.deps.deleteStore(VAULT_NAME);
+      step = "keys";
+      this.deletionState = { phase: "deleting", step };
+      await this.deps.devices.clear();
+      this.commitState = { phase: "idle" };
+      this.error = null;
+      this.deletionState = { phase: "complete" };
+      this.deps.notify();
+      return this.status(null);
+    } catch (error) {
+      this.deletionState = {
+        phase: "partial-failure",
+        step,
+        error: codeOf(error),
+      };
+      throw error;
+    }
   }
 
   /**
@@ -788,6 +1120,7 @@ export class VaultHost<V extends Vault = Vault> {
 
   /** Discard the review's plan, freeing the adapter's one slot. */
   private drop(): void {
+    this.reservation = null;
     this.review?.plan.discard();
     this.review = null;
   }
@@ -809,7 +1142,13 @@ export class VaultHost<V extends Vault = Vault> {
         return;
       }
       const plan = owner.prepareReview(
-        [{ text: waiting.text, scannerFindings: found, userSelections: [] }],
+        [
+          {
+            text: waiting.text,
+            scannerFindings: found,
+            userSelections: [],
+          },
+        ],
         this.deps.randomId(),
       );
       const preview = plan.preview();
@@ -828,6 +1167,8 @@ export class VaultHost<V extends Vault = Vault> {
             end: sourceByteRange.end,
           })),
           items: preview.transformations.map((item) => ({
+            start: item.sourceUtf16Range.start,
+            end: item.sourceUtf16Range.end,
             entityType: labelOf(
               preview.text.slice(
                 item.outputUtf16Range.start,
@@ -855,6 +1196,7 @@ export class VaultHost<V extends Vault = Vault> {
   /** Restart the idle timer. */
   private touch(): void {
     clearTimeout(this.idle);
+    if (this.automatic) return;
     // A remembered device keeps the vault open until its 30 days end
     const now = this.deps.now();
     const until = this.deps.devices.active(now)

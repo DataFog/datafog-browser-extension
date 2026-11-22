@@ -46,9 +46,7 @@ function mount(site?: Site): {
   const box = document.querySelector<HTMLElement>("[contenteditable]")!;
   const badge = new Badge(
     {
-      redact: () => {},
       pseudonymize: () => {},
-      dismiss: () => {},
       undo: () => {},
       redo: () => {},
       send: () => {},
@@ -157,20 +155,22 @@ test("hides when the chat box is off screen", async () => {
   expect(wrap.style.visibility).toBe("hidden");
 });
 
-test("shows Dismiss, Pseudonymize and Redact only when values are found", () => {
+test("keeps only Close in the popup header and shows Apply for findings", () => {
   const { badge, wrap } = mount();
   const actions = wrap.querySelector<HTMLElement>(".actions")!;
 
   badge.show({ kind: "clean" });
-  expect(actions.hidden).toBe(true);
+  expect(actions.hidden).toBe(false);
 
   badge.show({ kind: "found", counts: { EMAIL: 1 } });
   expect(actions.hidden).toBe(false);
-  const resolve = actions.querySelector(".resolve")!;
-  expect(Array.from(resolve.children, (button) => button.textContent)).toEqual([
-    "Pseudonymize",
-    "Redact",
-  ]);
+  expect(actions.querySelector(".pseudonymize")!.textContent).toBe("Apply");
+  expect(wrap.querySelector(".more")).toBeNull();
+  expect(wrap.querySelector(".dismiss")).toBeNull();
+  expect(wrap.querySelector(".sidebar")).toBeNull();
+  expect(
+    wrap.querySelector(".head")!.lastElementChild!.classList.contains("close"),
+  ).toBe(true);
 });
 
 test.each([
@@ -211,7 +211,7 @@ test.each([
   expect(wrap.style.right).toBe(badgeRight);
 });
 
-test("greys out while checking is off, explaining why, with its panel kept shut", () => {
+test("greys out while checking is off without an extra sidebar shortcut", () => {
   const { badge, wrap } = mount();
   const dot = wrap.querySelector<HTMLButtonElement>(".dot")!;
   const panel = wrap.querySelector<HTMLElement>(".panel")!;
@@ -222,8 +222,93 @@ test("greys out while checking is off, explaining why, with its panel kept shut"
   expect(dot.title).toBe(OFF_TITLE);
 
   dot.click();
-  badge.warnFiles(true);
-  badge.show({ kind: "checking" });
-  expect(panel.hidden).toBe(true);
+  expect(panel.hidden).toBe(false);
+  expect(wrap.querySelector(".sidebar")).toBeNull();
   expect(dot.className).toBe("dot off");
+});
+
+test("hover and keyboard focus explain status without opening actions; Escape returns focus", () => {
+  const { badge, wrap } = mount();
+  badge.show({ kind: "found", counts: { EMAIL: 1 } });
+  const dot = wrap.querySelector<HTMLButtonElement>(".dot")!;
+  const tooltip = wrap.querySelector<HTMLElement>(".tooltip")!;
+  const panel = wrap.querySelector<HTMLElement>(".panel")!;
+  dot.dispatchEvent(new Event("mouseenter"));
+  expect(tooltip.hidden).toBe(false);
+  expect(panel.hidden).toBe(true);
+  dot.dispatchEvent(new Event("mouseleave"));
+  dot.focus();
+  expect(tooltip.hidden).toBe(false);
+  dot.click();
+  expect(panel.hidden).toBe(false);
+  expect(tooltip.hidden).toBe(true);
+  const close = wrap.querySelector<HTMLButtonElement>(".close")!;
+  close.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+  );
+  expect(panel.hidden).toBe(true);
+  expect(dot.getRootNode()).toHaveProperty("activeElement", dot);
+});
+
+test("a re-check keeps the last result in view, and clean differs from idle", () => {
+  const { badge, wrap } = mount();
+  const dot = wrap.querySelector<HTMLButtonElement>(".dot")!;
+
+  badge.show({ kind: "idle" });
+  expect(dot.querySelector(".ok")).toBeNull();
+  badge.show({ kind: "checking" });
+  // A first check starts from the mark; the dots fade in later
+  expect(dot.dataset.previous).toBeUndefined();
+  expect(dot.querySelector(".mark")).not.toBeNull();
+
+  badge.show({ kind: "clean" });
+  expect(dot.querySelector(".ok")).not.toBeNull();
+  expect(dot.title).toBe("Checked · nothing found");
+
+  badge.show({ kind: "found", counts: { EMAIL: 2 } });
+  expect(dot.title).toBe("2 found · click to review");
+  badge.show({ kind: "checking" });
+  badge.show({ kind: "checking" });
+  expect(dot.dataset.previous).toBe("found");
+  expect(dot.querySelector(".count")!.textContent).toBe("2");
+  // Its actions stay in place but wait for the result
+  const replace = wrap.querySelector<HTMLButtonElement>(".pseudonymize")!;
+  expect(replace.hidden).toBe(false);
+  expect(replace.disabled).toBe(true);
+
+  badge.show({ kind: "found", counts: { EMAIL: 3 } });
+  expect(dot.dataset.previous).toBeUndefined();
+  expect(replace.disabled).toBe(false);
+});
+
+test("an open popup leaves the Undo toast unobstructed above the circle", () => {
+  const { badge, wrap, box, scroller } = mount();
+  setBox(scroller, { top: 0, right: 1024, bottom: 768, left: 0 });
+  setBox(box, { top: 0, right: 800, bottom: 240, left: 100 });
+  const dot = wrap.querySelector<HTMLButtonElement>(".dot")!;
+  const panel = wrap.querySelector<HTMLElement>(".panel")!;
+  const toast = wrap.querySelector<HTMLElement>(".paste-toast")!;
+  setBox(dot, { top: 180, bottom: 236, left: 808, right: 864 });
+  setBox(panel, { top: 0, bottom: 127, left: 0, right: 320 });
+  setBox(toast, { top: 138, bottom: 177, left: 678, right: 864 });
+  badge.show({ kind: "found", counts: { EMAIL: 2 } });
+  dot.click();
+  badge.offer({ undo: true, redo: false });
+  badge.replaced(2);
+  expect(toast.hidden).toBe(false);
+  expect(panel.hidden).toBe(false);
+  // With no room above the toast, the popup moves below the circle.
+  expect(panel.style.top).toBe("244px");
+});
+
+test("transparent space around the circle and Undo toast lets provider controls receive clicks", () => {
+  const { badge, wrap } = mount();
+  badge.show({ kind: "found", counts: { EMAIL: 1 } });
+  badge.offer({ undo: true, redo: false });
+  badge.replaced(1);
+  expect(getComputedStyle(wrap).pointerEvents).toBe("none");
+  for (const selector of [".dot", ".panel", ".paste-toast"])
+    expect(getComputedStyle(wrap.querySelector(selector)!).pointerEvents).toBe(
+      "auto",
+    );
 });

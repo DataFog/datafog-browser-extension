@@ -7,13 +7,10 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { OFF_TITLE } from "./badge";
-import {
-  NO_CHAT_BOX,
-  NO_CHAT_BOX_UPDATE,
-  type RedactResponse,
-  type Request,
-  type TabRequest,
-} from "./messages";
+import { DEFAULT_SETTINGS } from "./settings";
+let savedSettings = { ...DEFAULT_SETTINGS };
+let settingsFailure = false;
+import { type RedactResponse, type Request, type TabRequest } from "./messages";
 
 type Reply = (request: Request) => Promise<unknown>;
 
@@ -41,6 +38,7 @@ let storageListener: StorageListener;
  */
 async function setChecking(enabled: boolean): Promise<void> {
   const off = enabled ? [] : [location.hostname];
+  savedSettings = { ...savedSettings, off };
   storageListener({ settings: { newValue: { off } } }, "local");
   await vi.advanceTimersByTimeAsync(0);
 }
@@ -59,8 +57,14 @@ async function start(
   reply: Reply,
   page = PAGE,
   enabled = true,
+  beforeLoad?: () => void,
 ): Promise<HTMLTextAreaElement> {
   document.body.innerHTML = page;
+  settingsFailure = false;
+  savedSettings = {
+    ...DEFAULT_SETTINGS,
+    off: enabled ? [] : [location.hostname],
+  };
   Object.assign(globalThis, {
     chrome: {
       storage: {
@@ -74,13 +78,22 @@ async function start(
         },
       },
       runtime: {
-        sendMessage: vi.fn(reply),
+        sendMessage: vi.fn((request) =>
+          request.type === "settings-get"
+            ? Promise.resolve(
+                settingsFailure
+                  ? { error: "storage_unavailable" }
+                  : savedSettings,
+              )
+            : reply(request),
+        ),
         onMessage: {
           addListener: (added: TabListener) => (tabListener = added),
         },
       },
     },
   });
+  beforeLoad?.();
   await import("./content");
   return Array.from(document.querySelectorAll("textarea")).at(-1)!;
 }
@@ -174,7 +187,7 @@ test("shows a failure, not checking, when the scan errors", async () => {
   await type(box, "jane@example.com");
   expect(badge().dot.className).toBe("dot failed");
   expect(badge().dot.textContent).toBe("!");
-  expect(badge().title).toBe("DataFog couldn't check this text");
+  expect(badge().title).toBe("datafog couldn't check this text");
 });
 
 test("asks for a page reload when the extension was updated", async () => {
@@ -185,39 +198,32 @@ test("asks for a page reload when the extension was updated", async () => {
   });
   await type(box, "jane@example.com");
   expect(badge().dot.className).toBe("dot failed");
-  expect(badge().title).toBe("DataFog was updated");
+  expect(badge().title).toBe("datafog was updated");
   const root = document.querySelector("datafog-badge")!.shadowRoot!;
   expect(root.querySelector(".note")!.textContent).toBe(
     "Reload this page to keep checking this chat box.",
   );
 });
 
-test("shows a failure when Redact errors", async () => {
-  const box = await start(async (request) => {
-    if (request.type === "scan")
-      return { seq: request.seq, enabled: true, counts: { EMAIL: 1 } };
-    return request.type === "redact" ? { error: "review_conflict" } : {};
-  });
+test("preserves the draft and offers retry when Redact errors", async () => {
+  const box = await start(async (request) =>
+    request.type === "scan"
+      ? { seq: request.seq, enabled: true, counts: { EMAIL: 1 } }
+      : request.type === "apply"
+        ? { error: "review_conflict" }
+        : {},
+  );
   await type(box, "jane@example.com");
   const root = document.querySelector("datafog-badge")!.shadowRoot!;
-  root.querySelector<HTMLButtonElement>(".redact")!.click();
+  root.querySelector<HTMLButtonElement>(".pseudonymize")!.click();
   await vi.advanceTimersByTimeAsync(0);
-  expect(badge().dot.className).toBe("dot failed");
-  expect(badge().title).toBe("DataFog couldn't redact this text");
-  expect(root.querySelector("li")!.textContent).toBe("Email address: 1");
-  expect(root.querySelector(".note")!.textContent).toBe(
-    "Remove these before sending, or reload the page to try again. Error code: review_conflict",
+  expect(root.querySelector(".progress")!.textContent).toContain(
+    "draft is unchanged",
+  );
+  expect(root.querySelector<HTMLButtonElement>(".pseudonymize")!.disabled).toBe(
+    false,
   );
   expect(box.value).toBe("jane@example.com");
-});
-
-test("asks for the side panel when the page tab is clicked", async () => {
-  await start(async () => ({}));
-  const tab = document.querySelector("datafog-tab")!.shadowRoot!;
-  tab.querySelector<HTMLButtonElement>("button")!.click();
-  expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
-    type: "open-panel",
-  });
 });
 
 test("watches the visible chat box, not one a page change left hidden", async () => {
@@ -333,9 +339,13 @@ async function redactRichText(
     async (request) => {
       if (request.type === "scan")
         return { seq: request.seq, enabled: true, counts: { EMAIL: 1 } };
-      if (request.type !== "redact") return {};
+      if (request.type !== "apply") return {};
       const at = request.text.indexOf(value);
       return {
+        applied: true,
+        saved: false,
+        replaced: 0,
+        redacted: 1,
         text: request.text.replace(value, "[EMAIL]"),
         edits: [{ start: at, end: at + value.length, replacement: "[EMAIL]" }],
       };
@@ -348,7 +358,7 @@ async function redactRichText(
   box.dispatchEvent(new Event("input"));
   await vi.advanceTimersByTimeAsync(400);
   const root = document.querySelector("datafog-badge")!.shadowRoot!;
-  root.querySelector<HTMLButtonElement>(".redact")!.click();
+  root.querySelector<HTMLButtonElement>(".pseudonymize")!.click();
   await vi.advanceTimersByTimeAsync(0);
   return box;
 }
@@ -418,9 +428,13 @@ test("undoes in place in one paragraph of lines, as ChatGPT's editor has", async
   await start(async (request) => {
     if (request.type === "scan")
       return { seq: request.seq, enabled: true, counts: { ADDRESS: 1 } };
-    if (request.type !== "redact") return {};
+    if (request.type !== "apply") return {};
     const at = request.text.indexOf(value);
     return {
+      applied: true,
+      saved: false,
+      replaced: 0,
+      redacted: 1,
       text: request.text.replace(value, "[ADDRESS]"),
       edits: [{ start: at, end: at + value.length, replacement: "[ADDRESS]" }],
     };
@@ -435,7 +449,7 @@ test("undoes in place in one paragraph of lines, as ChatGPT's editor has", async
   });
   box.dispatchEvent(new Event("input"));
   await vi.advanceTimersByTimeAsync(400);
-  await press("redact");
+  await press("pseudonymize");
   expect(box.innerHTML).toContain("[ADDRESS]");
   exec.mockClear();
 
@@ -483,49 +497,6 @@ test("offers ways to report a failure, but not an update", async () => {
   code = "extension_reloaded";
   await type(box, "jane@example.org");
   expect(report.hidden).toBe(true);
-});
-
-test("says an update may fix a missing chat box once one is waiting", async () => {
-  let updateReady = false;
-  await start(
-    async (request) => (request.type === "protection" ? { updateReady } : {}),
-    "<main></main>",
-  );
-  await vi.advanceTimersByTimeAsync(10_000);
-  const tab = document.querySelector("datafog-tab")!.shadowRoot!;
-  const button = tab.querySelector("button")!;
-  expect(button.title).toBe(NO_CHAT_BOX);
-
-  updateReady = true;
-  storageListener({ pendingUpdate: { newValue: "0.2.0" } }, "local");
-  await vi.advanceTimersByTimeAsync(0);
-  expect(button.title).toBe(NO_CHAT_BOX_UPDATE);
-});
-
-test("warns on the page tab until a chat box appears", async () => {
-  await start(async () => ({}), "<main></main>");
-  await vi.advanceTimersByTimeAsync(10_000);
-  const tab = document.querySelector("datafog-tab")!.shadowRoot!;
-  const button = tab.querySelector("button")!;
-  expect(button.className).toBe("warning");
-  expect(button.title).toBe(NO_CHAT_BOX);
-
-  document.body.innerHTML = PAGE;
-  await vi.advanceTimersByTimeAsync(0);
-  expect(button.className).toBe("");
-  expect(button.title).toBe("Open or close DataFog");
-});
-
-test("asks for a page reload when the tab is clicked after an update", async () => {
-  await start(async (request) => {
-    if (request.type === "open-panel")
-      throw new Error("Extension context invalidated");
-    return {};
-  });
-  const tab = document.querySelector("datafog-tab")!.shadowRoot!;
-  tab.querySelector<HTMLButtonElement>("button")!.click();
-  await vi.advanceTimersByTimeAsync(0);
-  expect(badge().title).toBe("DataFog was updated");
 });
 
 test("shows pulsing dots until the scan answers", async () => {
@@ -620,7 +591,7 @@ test("ignores an answer about text that has since changed", async () => {
   expect(badge().dot.className).toBe("dot checking");
 });
 
-test("checks the chat box again when the types or lists change, and only then", async () => {
+test("rechecks unchanged drafts on committed behavior and rule changes", async () => {
   let flagged = 0;
   let scans = 0;
   const box = await start(async (request) => {
@@ -646,7 +617,7 @@ test("checks the chat box again when the types or lists change, and only then", 
     "local",
   );
   await vi.advanceTimersByTimeAsync(0);
-  expect(scans).toBe(before);
+  expect(scans).toBe(before + 1);
 
   flagged = 1;
   storageListener(
@@ -659,7 +630,7 @@ test("checks the chat box again when the types or lists change, and only then", 
     "local",
   );
   await vi.advanceTimersByTimeAsync(0);
-  expect(scans).toBe(before + 1);
+  expect(scans).toBe(before + 2);
   expect(badge().dot.className).toBe("dot found");
   expect(badge().dot.textContent).toBe("1");
 });
@@ -777,12 +748,16 @@ async function coreForTwoEmails(request: Request): Promise<unknown> {
       counts: found ? { EMAIL: 2 } : {},
     };
   }
-  if (request.type !== "redact") return {};
+  if (request.type !== "apply") return {};
   const edits = ["jane@example.com", "al@example.org"].map((value) => {
     const at = request.text.indexOf(value);
     return { start: at, end: at + value.length, replacement: "[EMAIL]" };
   });
   return {
+    applied: true,
+    saved: false,
+    replaced: 0,
+    redacted: 2,
     text: request.text
       .replace("jane@example.com", "[EMAIL]")
       .replace("al@example.org", "[EMAIL]"),
@@ -798,7 +773,7 @@ test("undoes and redoes a redaction from the panel", async () => {
   await type(box, TWO_EMAILS);
   expect(panelButton("undo").disabled).toBe(true);
 
-  await press("redact");
+  await press("pseudonymize");
   expect(box.value).toBe(REDACTED);
   expect(badge().dot.className).toBe("dot clean");
   expect(panelButton("undo").disabled).toBe(false);
@@ -815,17 +790,13 @@ test("undoes and redoes a redaction from the panel", async () => {
   expect(panelButton("undo").disabled).toBe(false);
 });
 
-test("keeps offering undo when the editor redraws line breaks", async () => {
+test("editing even line breaks invalidates Undo and Redo", async () => {
   const box = await start(coreForTwoEmails);
   await type(box, TWO_EMAILS);
-  await press("redact");
-
-  // As ChatGPT's editor does around a link, innerText gains a line break
+  await press("pseudonymize");
   await type(box, REDACTED.replace("or ", "or\n"));
-
-  expect(panelButton("undo").disabled).toBe(false);
-  await press("undo");
-  expect(box.value).toBe(TWO_EMAILS);
+  expect(panelButton("undo").disabled).toBe(true);
+  expect(panelButton("redo").disabled).toBe(true);
 });
 
 test("undoes a rich-text redaction with one edit per value", async () => {
@@ -837,7 +808,7 @@ test("undoes a rich-text redaction with one edit per value", async () => {
   const box = document.querySelector<HTMLElement>("#prompt-textarea")!;
   box.dispatchEvent(new Event("input"));
   await vi.advanceTimersByTimeAsync(400);
-  await press("redact");
+  await press("pseudonymize");
   exec.mockClear();
 
   await press("undo");
@@ -855,7 +826,7 @@ test("undoes in place when the editor redraws line breaks", async () => {
   const box = document.querySelector<HTMLElement>("#prompt-textarea")!;
   box.dispatchEvent(new Event("input"));
   await vi.advanceTimersByTimeAsync(400);
-  await press("redact");
+  await press("pseudonymize");
   // As ChatGPT's editor does around a link, innerText loses a line break
   const read = Object.getOwnPropertyDescriptor(
     HTMLElement.prototype,
@@ -877,7 +848,7 @@ test("undoes in place when the editor redraws line breaks", async () => {
 test("stops offering undo once the text changes", async () => {
   const box = await start(coreForTwoEmails);
   await type(box, TWO_EMAILS);
-  await press("redact");
+  await press("pseudonymize");
 
   await type(box, `${REDACTED}!`);
 
@@ -916,22 +887,23 @@ function markers(): RedactResponse {
   };
 }
 
-test("asks for a review in the side panel when Pseudonymize is clicked", async () => {
+test("applies one reserved batch when Apply is clicked", async () => {
   const box = await start(coreForTwoEmails);
   await type(box, TWO_EMAILS);
 
   await press("pseudonymize");
 
   expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
-    type: "pseudonymize",
+    type: "apply",
     text: TWO_EMAILS,
+    previewId: "",
   });
-  expect(box.value).toBe(TWO_EMAILS);
+  expect(box.value).toBe(REDACTED);
 });
 
 test("shows a failure when Pseudonymize can't be asked for", async () => {
   const box = await start(async (request) =>
-    request.type === "pseudonymize"
+    request.type === "apply"
       ? { error: "no_response" }
       : coreForTwoEmails(request),
   );
@@ -939,8 +911,11 @@ test("shows a failure when Pseudonymize can't be asked for", async () => {
 
   await press("pseudonymize");
 
-  expect(badge().dot.className).toBe("dot failed");
-  expect(badge().title).toBe("DataFog couldn't pseudonymize this text");
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector(".progress")!.textContent,
+  ).toContain("draft is unchanged");
 });
 
 test("tells the service worker what's in the chat box", async () => {
@@ -988,7 +963,7 @@ test("leaves the chat box alone when it changed since the review", async () => {
 test("keeps the panel open through Undo and Redo, until a click elsewhere", async () => {
   const box = await start(coreForTwoEmails);
   await type(box, TWO_EMAILS);
-  await press("redact");
+  await press("pseudonymize");
   badge().dot.click();
   const panel = document
     .querySelector("datafog-badge")!
@@ -1008,7 +983,7 @@ test("keeps the panel open through Undo and Redo, until a click elsewhere", asyn
 test("ignores Undo when the text changed since the last scan", async () => {
   const box = await start(coreForTwoEmails);
   await type(box, TWO_EMAILS);
-  await press("redact");
+  await press("pseudonymize");
 
   box.value = `${REDACTED}!`;
   await press("undo");
@@ -1089,18 +1064,28 @@ test("lets a send through when blocking is off", async () => {
   expect(pressEnter(box)).toBe(true);
 });
 
-test("holds the first Enter, and a second sends anyway", async () => {
+test("holds repeated native sends until an explicit popup choice", async () => {
   const { box } = await startBlocking(() => FOUND);
   await type(box, "jane@example.com");
 
   expect(pressEnter(box)).toBe(false);
-  expect(panelButton("send").hidden).toBe(false);
+  expect(panelButton("send").hidden).toBe(true);
 
-  expect(pressEnter(box)).toBe(true);
+  const native = document.querySelector<HTMLButtonElement>("#go")!;
+  native.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+  const panel = document
+    .querySelector("datafog-badge")!
+    .shadowRoot!.querySelector<HTMLElement>(".panel")!;
+  expect(panel.hidden).toBe(true);
+  const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+  expect(native.dispatchEvent(event)).toBe(false);
+  expect(panel.hidden).toBe(false);
+  expect(panelButton("pseudonymize").hidden).toBe(false);
+  expect(panelButton("pseudonymize").textContent).toBe("Apply & send");
   expect(panelButton("send").hidden).toBe(true);
 });
 
-test("sends anyway on a quick double Enter, before the scan answers", async () => {
+test("quick double Enter does not send raw text before the scan answers", async () => {
   const { box, sent } = await startBlocking(() => FOUND);
   box.value = "jane@example.com";
   box.dispatchEvent(new Event("input"));
@@ -1109,7 +1094,8 @@ test("sends anyway on a quick double Enter, before the scan answers", async () =
   expect(pressEnter(box)).toBe(false);
   await vi.advanceTimersByTimeAsync(0);
 
-  expect(sent).toHaveBeenCalledOnce();
+  expect(sent).not.toHaveBeenCalled();
+  expect(panelButton("send").textContent).toBe("Send as is");
 });
 
 test("doesn't treat a held-down Enter as a second press", async () => {
@@ -1140,7 +1126,7 @@ test("warns after the scan when the text has a value", async () => {
   await vi.advanceTimersByTimeAsync(0);
 
   expect(sent).not.toHaveBeenCalled();
-  expect(panelButton("send").hidden).toBe(false);
+  expect(panelButton("send").hidden).toBe(true);
 });
 
 test("sends with the Send anyway button", async () => {
@@ -1154,14 +1140,13 @@ test("sends with the Send anyway button", async () => {
   expect(panelButton("send").hidden).toBe(true);
 });
 
-test("lets a send through after Dismiss", async () => {
-  const { box } = await startBlocking(() => FOUND);
+test("closing review does not authorize a native send", async () => {
+  const { box, sent } = await startBlocking(() => FOUND);
   await type(box, "jane@example.com");
-  pressEnter(box);
-
-  panelButton("dismiss").click();
-
-  expect(pressEnter(box)).toBe(true);
+  expect(pressEnter(box)).toBe(false);
+  await press("close");
+  expect(pressEnter(box)).toBe(false);
+  expect(sent).not.toHaveBeenCalled();
 });
 
 test("warns again once the text changes", async () => {
@@ -1267,7 +1252,8 @@ test("shows the original values in the latest answer, and hides them", async () 
   expect(await fromWorker({ type: "show-originals", values })).toEqual({
     shown: 1,
   });
-  expect(latest.querySelector("datafog-original")).not.toBeNull();
+  expect(document.querySelector("datafog-original")).not.toBeNull();
+  expect(latest.textContent).toContain("[[EMAIL_");
   expect(older.querySelector("datafog-original")).toBeNull();
 
   await fromWorker({ type: "hide-originals" });
@@ -1288,4 +1274,778 @@ test("reads the markers under shown values, so Restore works again", async () =>
   expect(await fromWorker({ type: "show-originals", values })).toEqual({
     shown: 1,
   });
+});
+
+test("popup has no redundant sidebar entry point or floating tab", async () => {
+  await start(async () => ({}));
+  expect(document.querySelector("datafog-tab")).toBeNull();
+  badge().dot.click();
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector(".sidebar"),
+  ).toBeNull();
+  expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith({
+    type: "open-panel",
+  });
+});
+
+test("Replace waits for confirmed encrypted save and preserves a newer draft even if text returns", async () => {
+  let finish!: (response: object) => void;
+  const box = await start(async (request) =>
+    request.type === "apply"
+      ? new Promise((resolve) => {
+          finish = resolve;
+        })
+      : coreForTwoEmails(request),
+  );
+  await type(box, TWO_EMAILS);
+  panelButton("pseudonymize").click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe(TWO_EMAILS);
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector(".progress")!.textContent,
+  ).toContain("Applying choices");
+  await type(box, "new draft");
+  await type(box, TWO_EMAILS);
+  finish({
+    text: "[[EMAIL_A]]",
+    edits: [],
+    saved: true,
+    applied: true,
+    replaced: 1,
+    redacted: 0,
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe(TWO_EMAILS);
+  expect(panelButton("undo").disabled).toBe(true);
+});
+
+test("Replace applies a confirmed save locally and supports valid Undo/Redo", async () => {
+  const box = await start(async (request) =>
+    request.type === "apply"
+      ? {
+          text: "[[EMAIL_A]]",
+          edits: [
+            { start: 0, end: request.text.length, replacement: "[[EMAIL_A]]" },
+          ],
+          saved: true,
+          applied: true,
+          replaced: 1,
+          redacted: 0,
+        }
+      : coreForTwoEmails(request),
+  );
+  await type(box, "jane@example.com");
+  await press("pseudonymize");
+  expect(box.value).toBe("[[EMAIL_A]]");
+  expect(panelButton("undo").disabled).toBe(false);
+  await press("undo");
+  expect(box.value).toBe("jane@example.com");
+  await press("redo");
+  expect(box.value).toBe("[[EMAIL_A]]");
+});
+
+test("an unconfirmed encrypted save leaves the draft unchanged", async () => {
+  const box = await start(async (request) =>
+    request.type === "apply"
+      ? { text: "[[EMAIL_A]]", edits: [] }
+      : coreForTwoEmails(request),
+  );
+  await type(box, "jane@example.com");
+  await press("pseudonymize");
+  expect(box.value).toBe("jane@example.com");
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector(".progress")!.textContent,
+  ).toContain("could not be confirmed");
+});
+
+test("policy notices reject a completed scan carrying the previous policy token", async () => {
+  let version = "old";
+  const box = await start(async (request) =>
+    request.type === "scan"
+      ? { seq: request.seq, enabled: true, counts: {}, policyVersion: version }
+      : {},
+  );
+  await type(box, "jane@example.com");
+  expect(badge().dot.className).toBe("dot clean");
+  await fromWorker({ type: "recheck", policyVersion: "new" });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(badge().dot.className).toBe("dot checking");
+  version = "new";
+  await fromWorker({ type: "recheck", policyVersion: "new" });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(badge().dot.className).toBe("dot clean");
+});
+
+test("reports a saved mapping separately when the editor rejects application", async () => {
+  const box = await start(async (request) =>
+    request.type === "apply"
+      ? {
+          text: "[[EMAIL_A]]",
+          edits: [],
+          saved: true,
+          applied: true,
+          replaced: 1,
+          redacted: 0,
+        }
+      : coreForTwoEmails(request),
+  );
+  await type(box, "jane@example.com");
+  vi.spyOn(HTMLTextAreaElement.prototype, "value", "set").mockImplementation(
+    () => {},
+  );
+  await press("pseudonymize");
+  expect(box.value).toBe("jane@example.com");
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector(".progress")!.textContent,
+  ).toContain("Originals saved, but the editor did not accept");
+  expect(panelButton("undo").disabled).toBe(true);
+});
+
+test("unavailable settings never report a clean draft and Retry checks encrypted access", async () => {
+  const box = await start(coreForTwoEmails);
+  await type(box, "ordinary words");
+  settingsFailure = true;
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(badge().dot.className).toBe("dot failed");
+  settingsFailure = false;
+  await press("retry");
+  expect(badge().dot.className).toBe("dot clean");
+});
+
+test("Replace sends the accepted scan reservation and refreshes an expired preview before retry", async () => {
+  let scans = 0;
+  let replacements = 0;
+  const box = await start(async (request) => {
+    if (request.type === "scan") {
+      scans++;
+      return {
+        seq: request.seq,
+        enabled: true,
+        counts: request.text.includes("@") ? { EMAIL: 1 } : {},
+        findings: request.text.includes("@")
+          ? [
+              {
+                entityType: "EMAIL",
+                original: request.text,
+                marker: scans === 1 ? "[[EMAIL_FIRST]]" : "[[EMAIL_FRESH]]",
+              },
+            ]
+          : [],
+        previewId: scans === 1 ? "reservation-first" : "reservation-fresh",
+      };
+    }
+    if (request.type === "apply") {
+      replacements++;
+      if (replacements === 1) {
+        expect(request.previewId).toBe("reservation-first");
+        return { error: "preview_expired" };
+      }
+      expect(request.previewId).toBe("reservation-fresh");
+      return {
+        text: "[[EMAIL_FRESH]]",
+        edits: [],
+        saved: true,
+        applied: true,
+        replaced: 1,
+        redacted: 0,
+      };
+    }
+    return {};
+  });
+  await type(box, "jane@example.com");
+  await press("pseudonymize");
+  expect(box.value).toBe("jane@example.com");
+  expect(replacements).toBe(1);
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  expect(root.querySelector(".preview")!.textContent).toContain(
+    "[[EMAIL_FRESH]]",
+  );
+  expect(root.querySelector(".progress")!.textContent).toContain(
+    "preview expired",
+  );
+  expect(panelButton("pseudonymize").disabled).toBe(false);
+  await press("pseudonymize");
+  expect(box.value).toBe("[[EMAIL_FRESH]]");
+});
+
+const CHOOSABLE = [
+  {
+    entityType: "EMAIL",
+    original: "jane@example.com",
+    marker: "[[EMAIL_A]]",
+    start: 0,
+    end: 16,
+  },
+  {
+    entityType: "EMAIL",
+    original: "john@example.com",
+    marker: "[[EMAIL_B]]",
+    start: 17,
+    end: 33,
+  },
+];
+function choices(): NodeListOf<HTMLButtonElement> {
+  return document
+    .querySelector("datafog-badge")!
+    .shadowRoot!.querySelectorAll<HTMLButtonElement>(".choose");
+}
+function selectionReply(request: Request): unknown {
+  if (request.type !== "scan" && request.type !== "select") return {};
+  return {
+    seq: request.seq,
+    enabled: true,
+    counts: { EMAIL: 2 },
+    blockSends: true,
+    previewId: request.type === "select" ? "chosen" : "initial",
+    findings: CHOOSABLE.map((item) => ({
+      ...item,
+      action: request.keep?.some((place) => place.start === item.start)
+        ? "keep"
+        : request.redact?.some((place) => place.start === item.start)
+          ? "redact"
+          : "replace",
+      kept: request.keep?.some((place) => place.start === item.start) ?? false,
+      marker: request.keep?.some((place) => place.start === item.start)
+        ? ""
+        : request.redact?.some((place) => place.start === item.start)
+          ? "[EMAIL]"
+          : "[[EMAIL_NEW]]",
+    })),
+  };
+}
+test("selection shows exact refreshed tokens, preserves choices on recheck and resets on edit", async () => {
+  const box = await start(async (request) => selectionReply(request));
+  await type(box, "jane@example.com john@example.com");
+  choices()[1].focus();
+  choices()[1].click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(choices()[1].getAttribute("aria-checked")).toBe("false");
+  expect(panelButton("pseudonymize").textContent).toBe("Apply");
+  expect(
+    document.querySelector("datafog-badge")!.shadowRoot!.activeElement,
+  ).toBe(choices()[1]);
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(choices()[1].getAttribute("aria-checked")).toBe("false");
+  await type(box, "jane@example.com john@example.com!");
+  expect(choices()[1].getAttribute("aria-checked")).toBe("true");
+});
+test("row modes refresh the reservation and popup has no Always allow shortcut", async () => {
+  const seen: Request[] = [];
+  const box = await start(async (request) => {
+    seen.push(request);
+    return selectionReply(request);
+  });
+  await type(box, "jane@example.com john@example.com");
+  choices()[1].click();
+  await vi.advanceTimersByTimeAsync(0);
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  root.querySelector<HTMLButtonElement>('.mode[data-mode="redact"]')!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(seen).toContainEqual(
+    expect.objectContaining({
+      type: "select",
+      keep: [{ start: 17, end: 33 }],
+      redact: [{ start: 0, end: 16 }],
+    }),
+  );
+  expect(root.querySelector(".allow")).toBeNull();
+});
+test("late selection response cannot restore a stale draft's checkbox choices or preview", async () => {
+  let resolve!: (value: unknown) => void;
+  const box = await start(async (request) =>
+    request.type === "select"
+      ? new Promise((done) => {
+          resolve = done;
+        })
+      : selectionReply(request),
+  );
+  await type(box, "jane@example.com john@example.com");
+  choices()[1].click();
+  await type(box, "new draft");
+  resolve({
+    seq: 0,
+    enabled: true,
+    counts: { EMAIL: 2 },
+    findings: CHOOSABLE.map((item) => ({ ...item, kept: true })),
+    previewId: "stale",
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("new draft");
+  expect(choices()[0].getAttribute("aria-checked")).toBe("true");
+  expect(panelButton("pseudonymize").textContent).toBe("Apply");
+});
+
+test("failed selection refreshes intended skips and disables both transforms when all are skipped", async () => {
+  let fail = true;
+  const box = await start(async (request) => {
+    if (request.type === "select" && fail) {
+      fail = false;
+      return { error: "preview_expired" };
+    }
+    return selectionReply(request);
+  });
+  await type(box, "jane@example.com john@example.com");
+  choices()[0].click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(choices()[0].getAttribute("aria-checked")).toBe("false");
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector(".progress")!.textContent,
+  ).toContain("preview was refreshed");
+  choices()[1].click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(panelButton("pseudonymize").disabled).toBe(true);
+  expect(
+    Array.from(choices()).every(
+      (choice) => choice.getAttribute("aria-checked") === "false",
+    ),
+  ).toBe(true);
+  expect(panelButton("pseudonymize").textContent).toBe("Apply");
+  choices()[0].click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(panelButton("pseudonymize").disabled).toBe(false);
+  expect(panelButton("pseudonymize").textContent).toBe("Apply");
+});
+
+function replacementReply(request: Request): unknown {
+  if (request.type === "block-sends") return { blockSends: true };
+  if (request.type === "scan")
+    return {
+      seq: request.seq,
+      enabled: true,
+      blockSends: true,
+      counts: request.text.includes("jane@example.com") ? { EMAIL: 1 } : {},
+      previewId: "exact",
+      findings: request.text.includes("jane@example.com")
+        ? [
+            {
+              entityType: "EMAIL",
+              original: "jane@example.com",
+              marker: "[[EMAIL_A]]",
+              start: 0,
+              end: 16,
+            },
+          ]
+        : [],
+    };
+  if (request.type === "apply" || request.type === "pseudonymize")
+    return {
+      saved: true,
+      applied: true,
+      replaced: 1,
+      redacted: 0,
+      text: "[[EMAIL_A]]",
+      edits: [{ start: 0, end: 16, replacement: "[[EMAIL_A]]" }],
+    };
+  return {};
+}
+function watchSent(): ReturnType<typeof vi.fn> {
+  const sent = vi.fn((event: Event) => event.preventDefault());
+  document.querySelector("#go")!.addEventListener("click", sent);
+  return sent;
+}
+test("intercepted primary waits for durable save and sends the applied current draft exactly once", async () => {
+  let finish!: (value: unknown) => void;
+  const box = await start(
+    async (request) =>
+      request.type === "apply"
+        ? new Promise((done) => {
+            finish = done;
+          })
+        : replacementReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  await type(box, "jane@example.com");
+  expect(pressEnter(box)).toBe(false);
+  expect(panelButton("pseudonymize").textContent).toBe("Apply & send");
+  expect(pressEnter(box)).toBe(false);
+  expect(sent).not.toHaveBeenCalled();
+  expect(pressEnter(box, true)).toBe(false);
+  panelButton("pseudonymize").click();
+  finish(
+    replacementReply({
+      type: "apply",
+      text: box.value,
+      previewId: "exact",
+    }),
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("[[EMAIL_A]]");
+  expect(sent).toHaveBeenCalledOnce();
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector<HTMLElement>(".paste-toast")!.hidden,
+  ).toBe(true);
+});
+test.each(["failed", "edited", "policy"])(
+  "intercepted Replace never sends after a %s save outcome",
+  async (outcome) => {
+    let finish!: (value: unknown) => void;
+    const box = await start(
+      async (request) =>
+        request.type === "apply"
+          ? new Promise((done) => {
+              finish = done;
+            })
+          : replacementReply(request),
+      SEND_PAGE,
+    );
+    const sent = watchSent();
+    await type(box, "jane@example.com");
+    pressEnter(box);
+    panelButton("pseudonymize").click();
+    if (outcome === "edited") await type(box, "new draft");
+    if (outcome === "policy") await fromWorker({ type: "recheck" });
+    finish(
+      outcome === "failed"
+        ? { error: "write_failed" }
+        : replacementReply({
+            type: "apply",
+            previewId: "exact",
+            text: "jane@example.com",
+          }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).not.toHaveBeenCalled();
+    expect(box.value).toBe(
+      outcome === "edited" ? "new draft" : "jane@example.com",
+    );
+  },
+);
+test("proactive review Enter replaces without sending; IME and repeat do not activate primary", async () => {
+  const box = await start(
+    async (request) => replacementReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  await type(box, "jane@example.com");
+  badge().dot.click();
+  box.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      isComposing: true,
+      cancelable: true,
+    }),
+  );
+  pressEnter(box, true);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("jane@example.com");
+  pressEnter(box);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("[[EMAIL_A]]");
+  expect(sent).not.toHaveBeenCalled();
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  expect(root.querySelector<HTMLElement>(".paste-toast")!.hidden).toBe(false);
+  root.querySelector<HTMLButtonElement>(".toast-undo")!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("jane@example.com");
+  expect(root.querySelector<HTMLElement>(".paste-toast")!.hidden).toBe(true);
+  expect(sent).not.toHaveBeenCalled();
+});
+test("Escape closes interception without allowing raw send or replacing", async () => {
+  const box = await start(
+    async (request) => replacementReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  await type(box, "jane@example.com");
+  pressEnter(box);
+  box.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector<HTMLElement>(".panel")!.hidden,
+  ).toBe(true);
+  document.querySelector<HTMLButtonElement>("#go")!.click();
+  expect(sent).not.toHaveBeenCalled();
+  expect(box.value).toBe("jane@example.com");
+});
+async function pasteText(
+  box: HTMLTextAreaElement,
+  text: string,
+): Promise<void> {
+  box.dispatchEvent(new Event("paste", { bubbles: true, cancelable: true }));
+  box.value = text;
+  box.dispatchEvent(new Event("input", { bubbles: true }));
+  await vi.advanceTimersByTimeAsync(10);
+}
+test("paste replacement is opt-in, uses the exact preview, offers Undo and never sends", async () => {
+  const seen: Request[] = [];
+  const box = await start(async (request) => {
+    seen.push(request);
+    return replacementReply(request);
+  }, SEND_PAGE);
+  const sent = watchSent();
+  await pasteText(box, "jane@example.com");
+  expect(seen.some((request) => request.type === "apply")).toBe(false);
+  await type(box, "");
+  savedSettings.autoReplaceOnPaste = true;
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  await pasteText(box, "jane@example.com");
+  expect(seen).toContainEqual({
+    type: "pseudonymize",
+    text: "jane@example.com",
+    previewId: "exact",
+  });
+  expect(box.value).toBe("[[EMAIL_A]]");
+  expect(sent).not.toHaveBeenCalled();
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  expect(root.querySelector<HTMLElement>(".paste-toast")!.hidden).toBe(false);
+  expect(root.querySelector(".paste-toast")!.textContent).toContain(
+    "Replaced 1 item · Undo",
+  );
+  root.querySelector<HTMLButtonElement>(".toast-undo")!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("jane@example.com");
+  expect(sent).not.toHaveBeenCalled();
+});
+test("an edit supersedes an in-flight paste replacement without a toast or send", async () => {
+  let finish!: (value: unknown) => void;
+  const box = await start(
+    async (request) =>
+      request.type === "pseudonymize"
+        ? new Promise((done) => {
+            finish = done;
+          })
+        : replacementReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  savedSettings.autoReplaceOnPaste = true;
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  await pasteText(box, "jane@example.com");
+  await type(box, "new draft");
+  finish(replacementReply({ type: "pseudonymize", text: "jane@example.com" }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("new draft");
+  expect(sent).not.toHaveBeenCalled();
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector<HTMLElement>(".paste-toast")!.hidden,
+  ).toBe(true);
+});
+
+test("a provider paste handler registered before datafog cannot hide the pre-paste draft", async () => {
+  const box = await start(
+    async (request) => replacementReply(request),
+    SEND_PAGE,
+    true,
+    () => {
+      const editor = document.querySelector<HTMLTextAreaElement>("textarea")!;
+      editor.addEventListener("paste", (event) => {
+        event.preventDefault();
+        editor.value = "jane@example.com";
+        editor.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    },
+  );
+  const sent = watchSent();
+  savedSettings.autoReplaceOnPaste = true;
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  box.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  await vi.advanceTimersByTimeAsync(10);
+  expect(box.value).toBe("[[EMAIL_A]]");
+  expect(sent).not.toHaveBeenCalled();
+});
+
+test("failed intercepted scan retains send intent through retry and confirmed replacement", async () => {
+  let fail = true;
+  const box = await start(
+    async (request) =>
+      request.type === "scan" && fail
+        ? { error: "scan_failed" }
+        : replacementReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  await type(box, "jane@example.com");
+  pressEnter(box);
+  expect(panelButton("send").hidden).toBe(false);
+  fail = false;
+  document
+    .querySelector("datafog-badge")!
+    .shadowRoot!.querySelector<HTMLButtonElement>(".retry")!
+    .click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(panelButton("pseudonymize").textContent).toBe("Apply & send");
+  panelButton("pseudonymize").click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("[[EMAIL_A]]");
+  expect(sent).toHaveBeenCalledOnce();
+});
+
+test("popup checkbox Enter and composing primary Enter never dispatch replacement", async () => {
+  const box = await start(
+    async (request) => replacementReply(request),
+    SEND_PAGE,
+  );
+  await type(box, "jane@example.com");
+  badge().dot.click();
+  const check = choices()[0];
+  check.focus();
+  check.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  const primary = panelButton("pseudonymize");
+  primary.focus();
+  const ime = new KeyboardEvent("keydown", {
+    key: "Enter",
+    isComposing: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  primary.dispatchEvent(ime);
+  expect(ime.defaultPrevented).toBe(true);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("jane@example.com");
+  expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: "pseudonymize" }),
+  );
+});
+
+test("failed automatic paste save keeps original draft and offers no Undo toast", async () => {
+  const box = await start(
+    async (request) =>
+      request.type === "pseudonymize"
+        ? { error: "write_failed" }
+        : replacementReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  savedSettings.autoReplaceOnPaste = true;
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  await pasteText(box, "jane@example.com");
+  expect(box.value).toBe("jane@example.com");
+  expect(sent).not.toHaveBeenCalled();
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  expect(root.querySelector<HTMLElement>(".paste-toast")!.hidden).toBe(true);
+  expect(root.querySelector(".progress")!.textContent).toContain(
+    "draft is unchanged",
+  );
+});
+
+test("mixed row choices apply one saved batch and one Undo restores both occurrences", async () => {
+  const original = "jane@example.com john@example.com";
+  let finish!: (value: unknown) => void;
+  const box = await start(async (request) =>
+    request.type === "apply"
+      ? new Promise((done) => {
+          finish = done;
+        })
+      : selectionReply(request),
+  );
+  await type(box, original);
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  root
+    .querySelectorAll<HTMLButtonElement>('.mode[data-mode="redact"]')[1]
+    .click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(
+    root
+      .querySelectorAll('.mode[data-mode="redact"]')[1]
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+  expect(root.activeElement).toBe(
+    root.querySelectorAll('.mode[data-mode="redact"]')[1],
+  );
+  panelButton("pseudonymize").click();
+  expect(box.value).toBe(original);
+  expect(root.querySelector<HTMLButtonElement>(".mode")!.disabled).toBe(true);
+  finish({
+    applied: true,
+    saved: true,
+    replaced: 1,
+    redacted: 1,
+    text: "[[EMAIL_NEW]] [EMAIL]",
+    edits: [
+      { start: 0, end: 16, replacement: "[[EMAIL_NEW]]" },
+      { start: 17, end: 33, replacement: "[EMAIL]" },
+    ],
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("[[EMAIL_NEW]] [EMAIL]");
+  expect(root.querySelector(".progress")!.textContent).toContain(
+    "1 replaced; 1 redacted",
+  );
+  await press("undo");
+  expect(box.value).toBe(original);
+});
+
+test("all skipped held findings only send unchanged on the explicit primary", async () => {
+  const box = await start(
+    async (request) => selectionReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  await type(box, "jane@example.com john@example.com");
+  pressEnter(box);
+  choices()[0].click();
+  await vi.advanceTimersByTimeAsync(0);
+  choices()[1].click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(panelButton("pseudonymize").textContent).toBe("Send as is");
+  expect(panelButton("pseudonymize").disabled).toBe(false);
+  expect(sent).not.toHaveBeenCalled();
+  panelButton("pseudonymize").click();
+  expect(sent).toHaveBeenCalledOnce();
+  expect(box.value).toBe("jane@example.com john@example.com");
+  expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: "apply" }),
+  );
+});
+
+test("late row mode response cannot revive choices after editing the draft", async () => {
+  let finish!: (value: unknown) => void;
+  let pending!: Request;
+  const box = await start(async (request) =>
+    request.type === "select"
+      ? new Promise((done) => {
+          pending = request;
+          finish = done;
+        })
+      : selectionReply(request),
+  );
+  await type(box, "jane@example.com john@example.com");
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  root.querySelector<HTMLButtonElement>('.mode[data-mode="redact"]')!.click();
+  await type(box, "jane@example.com john@example.com!");
+  finish(selectionReply(pending));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(
+    root
+      .querySelector('.mode[data-mode="replace"]')!
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+  expect(box.value).toBe("jane@example.com john@example.com!");
 });

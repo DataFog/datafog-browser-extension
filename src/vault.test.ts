@@ -133,6 +133,8 @@ function makeOwner(): FakeOwner {
     failNextSave: null,
     prepare: (text, findings, operationId) =>
       wrap(workspace.prepare(text, findings, operationId)),
+    prepareForget: (codes, operationId) =>
+      wrap(workspace.prepareForget(codes, operationId)),
     prepareReview: (inputs, operationId) =>
       wrap(workspace.prepareReview(inputs, operationId)),
     preparePolicyChanges: (edits, operationId) =>
@@ -219,24 +221,7 @@ beforeEach(() => {
       unlocked: true as const,
       receipt: RECEIPT,
     })),
-    enrollDevice: vi.fn(async (_source, identity) => {
-      slots.push(keyIdOf(identity));
-      return { receipt: RECEIPT, key_effect: "Preserved" as const };
-    }),
-    protectAccess: vi.fn(async (_source, target) => {
-      profile = "password-or-device";
-      slots = target.devices.map(keyIdOf);
-      return {
-        receipt: RECEIPT,
-        key_effect: "FreshRootAndContentKeys" as const,
-      };
-    }),
     open: vi.fn(async () => ({ opened: true as const })),
-    unlock: vi.fn(async (password: string) => {
-      if (password !== "correct horse")
-        throw Object.assign(new Error(), { code: "Integrity" });
-      return { unlocked: true as const, receipt: RECEIPT };
-    }),
     lock: vi.fn(async () => ({ locked: true as const })),
     close: vi.fn(async () => ({ closed: true as const })),
     reconcileLatest: vi.fn(async () => ({
@@ -340,7 +325,13 @@ test("gives a value the same marker the next time", async () => {
   await host.pseudonymize("Write to jane@example.com", 7, DEFAULT_SETTINGS);
 
   expect(host.status(routing).review).toEqual([
-    { entityType: "EMAIL", original: "jane@example.com", marker: first },
+    {
+      entityType: "EMAIL",
+      original: "jane@example.com",
+      marker: first,
+      start: 9,
+      end: 25,
+    },
   ]);
 });
 
@@ -449,25 +440,20 @@ test("says when there's nothing to pseudonymize", async () => {
   });
 });
 
-test("waits for an unlock, then prepares the review", async () => {
-  const routing = await create();
+test("automatic access prepares a waiting review without a password", async () => {
+  const { routing } = await host.create("correct horse", null, true);
   await host.lock(routing);
-
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
   expect(host.status(routing)).toMatchObject({
     state: "locked",
     waiting: true,
   });
-
-  await expect(host.unlock("wrong", routing, false)).rejects.toMatchObject({
-    code: "Integrity",
+  await host.automaticAccess(routing);
+  expect(host.status(routing)).toMatchObject({
+    state: "unlocked",
+    waiting: false,
   });
-  expect(host.status(routing).state).toBe("locked");
-
-  const status = await host.unlock("correct horse", routing, false);
-  expect(status.state).toBe("unlocked");
-  expect(status.waiting).toBe(false);
-  expect(status.review).toHaveLength(2);
+  expect(host.status(routing).review).toHaveLength(2);
 });
 
 test("discards the plan when the review is cancelled or replaced", async () => {
@@ -572,8 +558,8 @@ test("locks after idling again once the device is forgotten", async () => {
   expect(host.status(routing).state).toBe("locked");
 });
 
-test("locks after a lost save, and settles it at the next unlock", async () => {
-  const routing = await create();
+test("locks after a lost save, and settles it with automatic access", async () => {
+  const { routing } = await host.create("correct horse", null, true);
   await host.pseudonymize(TEXT, 7, DEFAULT_SETTINGS);
   const requestId = new Uint8Array([9]);
   owner.failNextSave = Object.assign(new Error(), {
@@ -590,7 +576,7 @@ test("locks after a lost save, and settles it at the next unlock", async () => {
   });
   expect(vi.mocked(vault.lock)).toHaveBeenCalled();
 
-  await host.unlock("correct horse", routing, false);
+  await host.automaticAccess(routing);
   expect(vi.mocked(vault.reconcileLatest)).toHaveBeenCalledWith(requestId);
 });
 
@@ -600,7 +586,6 @@ test("deletes the vault without its password", async () => {
 
   const status = await host.deleteVault(routing);
 
-  expect(vi.mocked(vault.unlock)).not.toHaveBeenCalled();
   expect(vi.mocked(vault.close)).toHaveBeenCalled();
   expect(deleteStore).toHaveBeenCalledWith("datafog");
   expect(status).toMatchObject({ state: "none", review: null });
@@ -692,58 +677,487 @@ test("unlocks with a remembered device on use, for 30 days", async () => {
   expect(devices.records.every((record) => record.key === null)).toBe(true);
 });
 
-test("asks for the password after a manual lock", async () => {
+test("automatic access preserves a failing existing key and never creates a replacement", async () => {
   const { routing } = await host.create("correct horse", null, true);
-
-  await host.lock(routing, true);
-  await host.unlockWithDevice(routing);
-  expect(host.status(routing).state).toBe("locked");
-  expect(vi.mocked(vault.unlockDevice)).not.toHaveBeenCalled();
-
-  await host.unlock("correct horse", routing, false);
   await host.lock(routing);
-  await host.unlockWithDevice(routing);
-  expect(host.status(routing).state).toBe("unlocked");
-});
-
-test("remembers the device at unlock, keeping the vault's keys", async () => {
-  const routing = await create();
-  await host.lock(routing);
-
-  const unlocked = await host.unlock("correct horse", routing, true);
-
-  expect(vi.mocked(vault.enrollDevice)).toHaveBeenCalled();
-  expect(vi.mocked(vault.protectAccess)).not.toHaveBeenCalled();
-  expect(unlocked.rememberedUntil).toBe(now + REMEMBER_MS);
-});
-
-test("gives an older password-only vault new keys to remember a device", async () => {
-  const routing = await create();
-  await host.lock(routing);
-  profile = "password";
-
-  const unlocked = await host.unlock("correct horse", routing, true);
-
-  expect(vi.mocked(vault.protectAccess)).toHaveBeenCalledWith(
-    { kind: "password", password: "correct horse" },
-    expect.objectContaining({ profile: "password-or-device", recovery: false }),
-  );
-  expect(unlocked.state).toBe("unlocked");
-});
-
-test("forgets the device, and stays locked when its key fails", async () => {
-  const { routing } = await host.create("correct horse", null, true);
-
-  expect((await host.forgetDevice(routing)).rememberedUntil).toBeNull();
-
-  await host.unlock("correct horse", routing, true);
-  await host.lock(routing);
+  const keys = devices.records.map((record) => record.key);
   vi.mocked(vault.unlockDevice).mockRejectedValueOnce(
     Object.assign(new Error(), { code: "ProviderFailure" }),
   );
-  await host.unlockWithDevice(routing);
-  expect(host.status(routing)).toMatchObject({
-    state: "locked",
-    rememberedUntil: null,
+  await expect(host.automaticAccess(routing)).rejects.toMatchObject({
+    code: "vault_access_failed",
   });
+  expect(devices.records.map((record) => record.key)).toEqual(keys);
+  expect(vault.create).toHaveBeenCalledTimes(1);
+  expect(host.status(routing).state).toBe("locked");
+  await host.automaticAccess(routing);
+  expect(host.status(routing).state).toBe("unlocked");
+});
+
+test("automatic access reconciles an uncertain replacement before another edit", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+  await host.automaticAccess(routing);
+  const requestId = new Uint8Array([8]);
+  owner.failNextSave = Object.assign(new Error(), {
+    code: "OutcomeUnknown",
+    requestId,
+  });
+  await expect(host.replace(TEXT, 7, DEFAULT_SETTINGS)).rejects.toMatchObject({
+    code: "OutcomeUnknown",
+  });
+  await host.automaticAccess(routing);
+  expect(vault.reconcileLatest).toHaveBeenCalledWith(requestId);
+  const result = await host.replace(TEXT, 7, DEFAULT_SETTINGS);
+  expect(result.saved).toBe(true);
+  expect(host.restore(result.text).text).toBe(TEXT);
+});
+
+test("failed database deletion retains keys and supports cleanup retry", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+  const keys = devices.records.map((record) => record.key);
+  deleteStore.mockRejectedValueOnce(
+    Object.assign(new Error(), { code: "delete_failed" }),
+  );
+  await expect(host.deleteVault(routing)).rejects.toMatchObject({
+    code: "delete_failed",
+  });
+  expect(devices.records.map((record) => record.key)).toEqual(keys);
+  expect((await host.deleteVault(routing)).state).toBe("none");
+  expect(devices.records).toEqual([]);
+});
+
+test("automatic access does not idle-lock or require a second approval for replacement", async () => {
+  vi.useFakeTimers();
+  const { routing } = await host.create("correct horse", null, true);
+  await host.automaticAccess(routing);
+  await vi.advanceTimersByTimeAsync(IDLE_LOCK_MS * 2);
+  expect(host.status(routing).state).toBe("unlocked");
+  const result = await host.replace(TEXT, 7, DEFAULT_SETTINGS);
+  expect(result.saved).toBe(true);
+  expect(host.restore(result.text).text).toBe(TEXT);
+});
+
+test("partial key cleanup retains its deletion stage and retries without deleting twice", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+  vi.spyOn(devices, "clear").mockRejectedValueOnce(
+    Object.assign(new Error(), { code: "device_storage" }),
+  );
+  await expect(host.deleteVault(routing)).rejects.toMatchObject({
+    code: "device_storage",
+  });
+  expect(host.status(routing).deletion).toBe("partial-failure");
+  expect((await host.deleteVault(routing)).deletion).toBe("complete");
+  expect(deleteStore).toHaveBeenCalledTimes(1);
+  expect(devices.records).toEqual([]);
+});
+
+test("Replace commits exactly the reserved preview markers without reallocating", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+  await host.automaticAccess(routing);
+  const preview = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy-a");
+  expect(preview.findings).toHaveLength(2);
+  const saved = await host.replace(
+    TEXT,
+    7,
+    DEFAULT_SETTINGS,
+    preview.previewId,
+    "policy-a",
+  );
+  for (const item of preview.findings)
+    expect(saved.text).toContain(item.marker);
+  expect(host.restore(saved.text).text).toBe(TEXT);
+});
+
+test("another tab invalidates a reservation instead of silently applying different markers", async () => {
+  await host.create("correct horse", null, true);
+  const first = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy-a");
+  await host.preview("other@example.com", DEFAULT_SETTINGS, 8, 1, "policy-a");
+  await expect(
+    host.replace(TEXT, 7, DEFAULT_SETTINGS, first.previewId, "policy-a"),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+  expect(host.restore(first.findings[0].marker).restored).toBe(0);
+  const refreshed = await host.preview(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    2,
+    "policy-a",
+  );
+  const saved = await host.replace(
+    TEXT,
+    7,
+    DEFAULT_SETTINGS,
+    refreshed.previewId,
+    "policy-a",
+  );
+  expect(saved.text).toContain(refreshed.findings[0].marker);
+});
+
+test("changed policy or draft cannot consume an old preview reservation", async () => {
+  await host.create("correct horse", null, true);
+  const preview = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy-a");
+  await expect(
+    host.replace(TEXT, 7, DEFAULT_SETTINGS, preview.previewId, "policy-b"),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+  await expect(
+    host.replace(
+      TEXT + " edited",
+      7,
+      DEFAULT_SETTINGS,
+      preview.previewId,
+      "policy-a",
+    ),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+  expect(host.restore(preview.findings[0].marker).restored).toBe(0);
+});
+
+test("selection keeps only one repeated occurrence and commits refreshed exact tokens", async () => {
+  await host.create("correct horse", null, true);
+  const text = "🙂 jane@example.com and jane@example.com";
+  const first = await host.preview(text, DEFAULT_SETTINGS, 7, 1, "policy");
+  const place = {
+    start: first.findings[0].start!,
+    end: first.findings[0].end!,
+  };
+  const selected = await host.select(
+    text,
+    DEFAULT_SETTINGS,
+    7,
+    first.previewId!,
+    "policy",
+    [place],
+  );
+  expect(selected.previewId).not.toBe(first.previewId);
+  expect(selected.findings[0]).toMatchObject({ kept: true, marker: "" });
+  expect(selected.findings[1].marker).toMatch(/^\[\[EMAIL_/);
+  await expect(
+    host.replace(text, 7, DEFAULT_SETTINGS, first.previewId, "policy"),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+  const saved = await host.replace(
+    text,
+    7,
+    DEFAULT_SETTINGS,
+    selected.previewId,
+    "policy",
+  );
+  expect(saved.text).toBe(
+    "🙂 jane@example.com and " + selected.findings[1].marker,
+  );
+  expect(saved.edits).toHaveLength(1);
+  expect(host.restore(saved.text).text).toBe(text);
+});
+
+test("all-kept reservations cannot save and can select again after a rescan", async () => {
+  await host.create("correct horse", null, true);
+  const first = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  const keep = first.findings.map((item) => ({
+    start: item.start!,
+    end: item.end!,
+  }));
+  const none = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    first.previewId!,
+    "policy",
+    keep,
+  );
+  await expect(
+    host.replace(TEXT, 7, DEFAULT_SETTINGS, none.previewId, "policy"),
+  ).rejects.toMatchObject({ code: "nothing_found" });
+  const rescanned = await host.preview(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    2,
+    "policy",
+    keep,
+  );
+  expect(rescanned.findings.every((item) => item.kept)).toBe(true);
+  const one = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    rescanned.previewId!,
+    "policy",
+    [keep[1]],
+  );
+  const saved = await host.replace(
+    TEXT,
+    7,
+    DEFAULT_SETTINGS,
+    one.previewId,
+    "policy",
+  );
+  expect(saved.edits).toHaveLength(1);
+  expect(saved.text).toContain(one.findings[0].marker);
+});
+
+test("selection rejects stale draft policy tab and malformed occurrences before discarding valid plan", async () => {
+  await host.create("correct horse", null, true);
+  const first = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  for (const [text, tab, policy] of [
+    [TEXT + "x", 7, "policy"],
+    [TEXT, 8, "policy"],
+    [TEXT, 7, "new"],
+  ] as const)
+    await expect(
+      host.select(text, DEFAULT_SETTINGS, tab, first.previewId!, policy, []),
+    ).rejects.toMatchObject({ code: "preview_expired" });
+  await expect(
+    host.select(TEXT, DEFAULT_SETTINGS, 7, first.previewId!, "policy", [
+      { start: 0, end: 1 },
+    ]),
+  ).rejects.toMatchObject({ code: "selection_invalid" });
+  const selected = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    first.previewId!,
+    "policy",
+    [],
+  );
+  await host.preview(TEXT, DEFAULT_SETTINGS, 8, 2, "policy");
+  await expect(
+    host.select(TEXT, DEFAULT_SETTINGS, 7, selected.previewId, "policy", []),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+});
+
+test("forget retires only the confirmed marker and rejects malformed markers", async () => {
+  await host.create("correct horse", null, true);
+  const saved = await host.replace(TEXT, 7, DEFAULT_SETTINGS);
+  const markers = saved.text.match(/\[\[[A-Z0-9_]+\]\]/g)!;
+  await expect(host.forget("prefix" + markers[0])).rejects.toMatchObject({
+    code: "invalid_marker",
+  });
+  await host.forget(markers[0]);
+  expect(host.restore(markers[0]).restored).toBe(0);
+  expect(host.restore(markers[1]).restored).toBe(1);
+});
+
+test("uncertain forget reconciles before access and never reports an unconfirmed retirement", async () => {
+  const { routing } = await host.create("correct horse", null, true);
+  await host.automaticAccess(routing);
+  const saved = await host.replace(TEXT, 7, DEFAULT_SETTINGS);
+  const marker = saved.text.match(/\[\[[A-Z0-9_]+\]\]/g)![0];
+  owner.failNextSave = Object.assign(new Error(), {
+    code: "OutcomeUnknown",
+    requestId: new Uint8Array([4]),
+  });
+  await expect(host.forget(marker)).rejects.toMatchObject({
+    code: "OutcomeUnknown",
+  });
+  expect(host.status(routing).commit).toBe("uncertain");
+  await host.automaticAccess(routing);
+  expect(vault.reconcileLatest).toHaveBeenCalledWith(new Uint8Array([4]));
+  expect(host.restore(marker).restored).toBe(1);
+  await host.forget(marker);
+  expect(host.restore(marker).restored).toBe(0);
+});
+
+test("mixed apply preserves repeated occurrences and UTF16 offsets while storing only Replace", async () => {
+  await host.create("correct horse", null, true);
+  const text = "🙂 jane@example.com then jane@example.com and al@example.org";
+  const initial = await host.preview(text, DEFAULT_SETTINGS, 7, 1, "policy");
+  const place = (index: number) => ({
+    start: initial.findings[index].start!,
+    end: initial.findings[index].end!,
+  });
+  const selected = await host.select(
+    text,
+    DEFAULT_SETTINGS,
+    7,
+    initial.previewId!,
+    "policy",
+    [place(2)],
+    [place(0)],
+  );
+  expect(selected.findings.map((item) => item.action)).toEqual([
+    "redact",
+    "replace",
+    "keep",
+  ]);
+  const result = await host.apply(
+    text,
+    7,
+    DEFAULT_SETTINGS,
+    selected.previewId,
+    "policy",
+  );
+  expect(result).toMatchObject({
+    applied: true,
+    saved: true,
+    replaced: 1,
+    redacted: 1,
+  });
+  expect(result.text).toBe(
+    `🙂 ${selected.findings[0].marker} then ${selected.findings[1].marker} and al@example.org`,
+  );
+  expect(result.edits.map((edit) => edit.start)).toEqual([3, 25]);
+  expect(host.restore(result.text).text).toBe(
+    `🙂 ${selected.findings[0].marker} then jane@example.com and al@example.org`,
+  );
+  expect(host.restore(selected.findings[1].marker).restored).toBe(1);
+});
+
+test("all-redact applies authoritative detector labels without a commit", async () => {
+  await host.create("correct horse", null, true);
+  const initial = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  const places = initial.findings.map((item) => ({
+    start: item.start!,
+    end: item.end!,
+  }));
+  const selected = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    initial.previewId!,
+    "policy",
+    [],
+    places,
+  );
+  const commit = vi.spyOn(owner, "commit");
+  const result = await host.apply(
+    TEXT,
+    7,
+    DEFAULT_SETTINGS,
+    selected.previewId,
+    "policy",
+  );
+  expect(result).toMatchObject({
+    applied: true,
+    saved: false,
+    replaced: 0,
+    redacted: 2,
+  });
+  expect(result.text).not.toContain("@");
+  expect(commit).not.toHaveBeenCalled();
+  await expect(
+    host.apply(TEXT, 7, DEFAULT_SETTINGS, selected.previewId, "policy"),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+});
+
+test("mixed selection rejects overlapping modes, duplicate and malformed ranges without consuming the plan", async () => {
+  await host.create("correct horse", null, true);
+  const initial = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  const place = {
+    start: initial.findings[0].start!,
+    end: initial.findings[0].end!,
+  };
+  for (const [keep, redact] of [
+    [[place], [place]],
+    [[], [place, place]],
+    [[], [{ start: place.start + 1, end: place.end }]],
+  ]) {
+    await expect(
+      host.select(
+        TEXT,
+        DEFAULT_SETTINGS,
+        7,
+        initial.previewId!,
+        "policy",
+        keep,
+        redact,
+      ),
+    ).rejects.toMatchObject({ code: "selection_invalid" });
+  }
+  const selected = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    initial.previewId!,
+    "policy",
+    [],
+    [place],
+  );
+  for (const [text, tab, policy] of [
+    [TEXT + " edit", 7, "policy"],
+    [TEXT, 8, "policy"],
+    [TEXT, 7, "changed"],
+  ] as const) {
+    await expect(
+      host.apply(text, tab, DEFAULT_SETTINGS, selected.previewId, policy),
+    ).rejects.toMatchObject({ code: "preview_expired" });
+  }
+  const result = await host.apply(
+    TEXT,
+    7,
+    DEFAULT_SETTINGS,
+    selected.previewId,
+    "policy",
+  );
+  expect(result.replaced).toBe(1);
+});
+
+test("a mixed save failure returns no editor patch and commits no originals", async () => {
+  await host.create("correct horse", null, true);
+  const initial = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  const selected = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    initial.previewId!,
+    "policy",
+    [],
+    [{ start: initial.findings[0].start!, end: initial.findings[0].end! }],
+  );
+  owner.failNextSave = new Error("write failed");
+  await expect(
+    host.apply(TEXT, 7, DEFAULT_SETTINGS, selected.previewId, "policy"),
+  ).rejects.toThrow();
+  expect(workspace.counts().transformedSpans).toBe(0);
+});
+
+test("mixed selection supplies Core only the Replace findings and refuses stale cross-tab apply", async () => {
+  await host.create("correct horse", null, true);
+  const initial = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  const prepare = vi.spyOn(owner, "prepare");
+  const selected = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    initial.previewId!,
+    "policy",
+    [],
+    [{ start: initial.findings[0].start!, end: initial.findings[0].end! }],
+  );
+  expect(prepare).toHaveBeenLastCalledWith(
+    TEXT,
+    [expect.objectContaining({ matchedText: "al@example.org" })],
+    expect.any(Uint8Array),
+  );
+  expect(prepare.mock.calls.at(-1)![1]).toHaveLength(1);
+  await host.preview(TEXT, DEFAULT_SETTINGS, 8, 1, "policy");
+  await expect(
+    host.apply(TEXT, 7, DEFAULT_SETTINGS, selected.previewId, "policy"),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+  expect(workspace.counts().transformedSpans).toBe(0);
+});
+
+test("Redact can label a trusted recalled original without a fresh detector match", async () => {
+  await host.create("correct horse", null, true);
+  const initial = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  await host.replace(TEXT, 7, DEFAULT_SETTINGS, initial.previewId, "policy");
+  const noDetectors = { ...DEFAULT_SETTINGS, entities: [] };
+  const recalled = await host.preview(TEXT, noDetectors, 7, 2, "policy-next");
+  expect(recalled.findings).toHaveLength(2);
+  const selected = await host.select(
+    TEXT,
+    noDetectors,
+    7,
+    recalled.previewId!,
+    "policy-next",
+    [],
+    recalled.findings.map((item) => ({ start: item.start!, end: item.end! })),
+  );
+  const commit = vi.spyOn(owner, "commit");
+  const result = await host.apply(
+    TEXT,
+    7,
+    noDetectors,
+    selected.previewId,
+    "policy-next",
+  );
+  expect(result.text).toBe("Ask [EMAIL] or [EMAIL] today");
+  expect(commit).not.toHaveBeenCalled();
 });

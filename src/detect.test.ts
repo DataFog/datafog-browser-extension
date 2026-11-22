@@ -24,6 +24,7 @@ const settings: Settings = {
   allowlist: [],
   denylist: [],
   blockSends: false,
+  autoReplaceOnPaste: false,
 };
 const countFindings = (text: string, chosen: Settings) =>
   countWith(text, chosen, scanRules);
@@ -349,4 +350,15 @@ describe("deny list", () => {
       detectorName: "datafog-core/denylist",
     });
   });
+});
+
+test("redact preserves only the selected occurrence with UTF16 ranges", async () => {
+  const text = "🙂 jane@example.com and jane@example.com";
+  const first = text.indexOf("jane@example.com");
+  const result = await redactWith(text, settings, scanRules, [
+    { start: first, end: first + 16 },
+  ]);
+  expect(result.text).toBe("🙂 jane@example.com and [EMAIL]");
+  expect(result.edits).toHaveLength(1);
+  expect(await countFindings(text, settings)).toEqual({ EMAIL: 2 });
 });

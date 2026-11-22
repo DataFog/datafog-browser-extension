@@ -139,6 +139,8 @@ export const LABELS: Record<string, string> = {
 };
 
 export interface Settings {
+  /** Committed policy fingerprint, supplied on reads; never a setting. */
+  policyVersion?: string;
   /**
    * Whether checking is on for the site at hand. Not saved: worked out from
    * `off` for the page asking.
@@ -152,6 +154,8 @@ export interface Settings {
   denylist: string[];
   /** Hold a send until the user has chosen what to do about found values. */
   blockSends: boolean;
+  /** Replace findings in pasted text automatically, only when explicitly enabled. */
+  autoReplaceOnPaste: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -161,6 +165,7 @@ export const DEFAULT_SETTINGS: Settings = {
   allowlist: [],
   denylist: [],
   blockSends: false,
+  autoReplaceOnPaste: false,
 };
 
 /**
@@ -171,13 +176,10 @@ export const DEFAULT_SETTINGS: Settings = {
  * @returns The current settings.
  */
 export async function loadSettings(host?: string): Promise<Settings> {
-  const stored = await chrome.storage.local.get<{
-    settings?: Partial<Settings>;
-  }>("settings");
-  const saved = stored.settings ?? {};
-  // One switch used to cover every site; off then means off everywhere
-  const off = saved.off ?? (saved.enabled === false ? [...HOSTS] : []);
-  return forSite({ ...DEFAULT_SETTINGS, ...saved, off }, host);
+  const response = await chrome.runtime.sendMessage({ type: "settings-get" });
+  if (!response || response.error)
+    throw new Error(response?.error ?? "settings_unavailable");
+  return forSite(normalizeSettings(response), host);
 }
 
 /**
@@ -237,9 +239,12 @@ export function sameChecks(a: Settings, b: Settings): boolean {
  * @param settings The settings to store.
  */
 export async function saveSettings(settings: Settings): Promise<void> {
-  // Whether checking is on depends on the site, so only `off` is kept
-  const { enabled: _enabled, ...saved } = settings;
-  await chrome.storage.local.set({ settings: saved });
+  const response = await chrome.runtime.sendMessage({
+    type: "settings-save",
+    settings,
+  });
+  if (!response || response.error)
+    throw new Error(response?.error ?? "settings_unavailable");
 }
 
 /** The settings lists of values the user keeps by hand. */
@@ -282,4 +287,15 @@ export async function removeFromList(
     ...settings,
     [name]: settings[name].filter((item) => item !== value),
   });
+}
+
+/** Keep legacy global-off and exact allowlist semantics during migration. */
+export function normalizeSettings(saved: Partial<Settings>): Settings {
+  const off = saved.off ?? (saved.enabled === false ? [...HOSTS] : []);
+  return {
+    ...DEFAULT_SETTINGS,
+    ...saved,
+    off,
+    autoReplaceOnPaste: saved.autoReplaceOnPaste === true,
+  };
 }

@@ -31,11 +31,17 @@ export interface Site {
   sendButtons: string;
   /** The site's answers, newest last. */
   answers: string[];
+  answerContainer?: string;
+  answerActions?: string;
   badge: BadgeShape;
 }
 
 const CHATGPT: Site = {
   name: "ChatGPT",
+  answerContainer:
+    "[data-talvt-turn-state], [data-turn-key], article, [data-message-author-role='assistant']",
+  answerActions:
+    "[data-actions], [role='toolbar'], .flex:has(> button[data-testid='copy-turn-action-button']), .turn-action-controls .flex:has(> button[aria-label='Copy'])",
   composers: [
     "#prompt-textarea",
     "form [contenteditable='true']",
@@ -56,6 +62,9 @@ const CHATGPT: Site = {
 
 const CLAUDE: Site = {
   name: "Claude",
+  answerContainer: "[data-testid='assistant-message']",
+  answerActions:
+    "[data-actions], [role='toolbar'], .flex:has(> button[aria-label='Copy'])",
   composers: [
     '[data-testid="chat-input"]',
     "fieldset [contenteditable='true']",
@@ -76,6 +85,8 @@ const CLAUDE: Site = {
 
 const GEMINI: Site = {
   name: "Gemini",
+  answerContainer: "model-response",
+  answerActions: "[data-actions], message-actions, [role='toolbar']",
   composers: [
     'rich-textarea .ql-editor[contenteditable="true"]',
     "input-area-v2 [contenteditable='true']",
@@ -91,6 +102,9 @@ const GEMINI: Site = {
 
 const GROK: Site = {
   name: "Grok",
+  answerContainer: "[data-testid='assistant-message']",
+  answerActions:
+    "[data-actions], [role='toolbar'], .flex:has(> button[aria-label='Copy'])",
   composers: [
     "form[data-composer] .ProseMirror",
     "form [contenteditable='true']",
@@ -106,6 +120,10 @@ const GROK: Site = {
 
 const DEEPSEEK: Site = {
   name: "DeepSeek",
+  answerContainer:
+    "[data-assistant-message], .ds-message, .ds-markdown.ds-assistant-message-main-content + div",
+  answerActions:
+    "[data-actions], [role='toolbar'], .ds-flex:has(.ds-icon-button)",
   composers: ['textarea[name="search"]', "textarea"],
   // Its class names are hashed, so the box is found by its shape: the
   // rounded card two levels above the chat box

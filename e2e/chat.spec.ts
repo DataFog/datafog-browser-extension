@@ -1,3 +1,4 @@
+import { redactAll } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 import { expect, expectBadgeFitsBox, SAMPLE, test } from "./fixtures";
@@ -15,9 +16,7 @@ interface BadgeControls {
 async function found(badge: BadgeControls, count: number): Promise<void> {
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe(
-      `DataFog: ${count} item${count === 1 ? "" : "s"} found. Click to review.`,
-    );
+    .toBe(`${count} found · click to review`);
 }
 
 async function openBadge(badge: BadgeControls): Promise<void> {
@@ -46,8 +45,8 @@ test("the extension scans the editor and shows type counts", async ({
   await expect
     .poll(() => badge.state("ul").then((state) => state.text))
     .toContain("Card number: 1");
-  // The warning describes types and counts without exposing prompt values.
-  expect((await badge.state(".panel")).text).not.toContain("jane@example.com");
+  // The draft popup previews the finding before replacement.
+  expect((await badge.state(".panel")).text).toContain("jane@example.com");
 });
 
 test("checking and Redact still work after Chrome stops the idle service worker", async ({
@@ -67,7 +66,7 @@ test("checking and Redact still work after Chrome stops the idle service worker"
     await extension.worker.evaluate(() => "stoppedByTest" in globalThis),
   ).toBe(false);
   await openBadge(badge);
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(composer).toHaveText(
     "my email is [EMAIL] and card [CREDIT_CARD] typed later",
   );
@@ -85,10 +84,10 @@ test("the badge keeps one round size in every state, as the box grows and as the
   await found(badge, 2);
   await expectBadgeFitsBox(badge, box, 56, "50%");
   await openBadge(badge);
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog: no sensitive data found");
+    .toBe("Checked · nothing found");
   await expectBadgeFitsBox(badge, box, 56, "50%");
 
   // A long prompt makes the box taller; the badge keeps its size, level with
@@ -130,7 +129,7 @@ for (const { entity, label, text } of modelDetectors) {
     await chat.locator("#prompt-textarea").fill(text);
     await expect
       .poll(() => badge.state(".dot").then((state) => state.title))
-      .toContain("found. Click to review.");
+      .toContain("found · click to review");
     await openBadge(badge);
     await expect
       .poll(() => badge.state("ul").then((state) => state.text))
@@ -157,7 +156,7 @@ for (const { entity, label, text } of optInDetectors) {
     await chat.locator("#prompt-textarea").fill(text);
     await expect
       .poll(() => badge.state(".dot").then((state) => state.title))
-      .toBe("DataFog: no sensitive data found");
+      .toBe("Checked · nothing found");
 
     const options = await extension.options();
     await expect(options.locator(`input[value="${entity}"]`)).not.toBeChecked();
@@ -185,11 +184,11 @@ test("Redact, Undo and Redo preserve the prompt and edits invalidate history", a
   await composer.fill(SAMPLE);
   await found(badge, 2);
   await openBadge(badge);
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(composer).toHaveText(redacted);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog: no sensitive data found");
+    .toBe("Checked · nothing found");
 
   await openBadge(badge);
   await expect
@@ -207,7 +206,7 @@ test("Redact, Undo and Redo preserve the prompt and edits invalidate history", a
   await composer.fill(`${redacted} edited`);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog: no sensitive data found");
+    .toBe("Checked · nothing found");
   await openBadge(badge);
   await expect
     .poll(() => badge.state(".undo").then((state) => state.disabled))
@@ -233,13 +232,13 @@ test("Redact replaces a link chip, so its target is redacted too", async ({
     .poll(() => badge.state(".dot").then((state) => state.title))
     .toContain("found");
   await openBadge(badge);
-  await badge.click(".redact");
+  await redactAll(badge);
 
   await expect(composer).toContainText("[EMAIL]");
   expect(await composer.innerHTML()).not.toContain("jane@example.com");
 });
 
-test("Dismiss leaves text intact and an edit restores the warning", async ({
+test("Close leaves text intact and keeps findings available for review", async ({
   chat,
   badge,
 }) => {
@@ -247,11 +246,11 @@ test("Dismiss leaves text intact and an edit restores the warning", async ({
   await composer.fill(SAMPLE);
   await found(badge, 2);
   await openBadge(badge);
-  await badge.click(".dismiss");
+  await badge.click(".close");
   await expect(composer).toHaveText(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog");
+    .toBe("2 found · click to review");
   await expect(chat.locator("#sent-count")).toHaveText("0");
 
   await composer.fill(`${SAMPLE} and jane@example.com`);
@@ -288,7 +287,7 @@ test("sending is unrestricted by default even when findings are present", async 
 });
 
 for (const sendMethod of ["button", "Enter"] as const) {
-  test(`send blocking: ${sendMethod} pauses once and a second press sends`, async ({
+  test(`send blocking: ${sendMethod} holds native retries until an explicit popup choice`, async ({
     chat,
     badge,
     extension,
@@ -310,16 +309,25 @@ for (const sendMethod of ["button", "Enter"] as const) {
     await expect(chat.locator("#sent-count")).toHaveText("0");
     await expect
       .poll(() => badge.state(".paused").then((state) => state.text))
-      .toContain("Sending is paused");
+      .toContain("Choose how to send this message.");
+    expect((await badge.state(".send")).visible).toBe(false);
     await expect
-      .poll(() => badge.state(".send").then((state) => state.visible))
-      .toBe(true);
+      .poll(async () => (await badge.state(".pseudonymize")).text)
+      .toBe("Apply & send");
     await send();
+    if (sendMethod === "button") {
+      await expect(chat.locator("#sent-count")).toHaveText("0");
+      await badge.click(".pseudonymize");
+    }
+    // A distinct Enter activates the popup primary; the opening Enter did not.
     await expect(chat.locator("#sent-count")).toHaveText("1");
+    await expect(chat.locator("#sent-text")).toHaveText(
+      /my email is \[\[EMAIL_[A-Z0-9]+\]\] and card \[\[CREDIT_CARD_[A-Z0-9]+\]\]/,
+    );
   });
 }
 
-test("send blocking: Send anyway bypasses the warning exactly once", async ({
+test("send blocking: Send as is bypasses the warning exactly once", async ({
   chat,
   badge,
   extension,
@@ -332,11 +340,21 @@ test("send blocking: Send anyway bypasses the warning exactly once", async ({
   await found(badge, 2);
   await chat.locator('[data-testid="send-button"]').click();
   await expect(chat.locator("#sent-count")).toHaveText("0");
+  await badge.click(".preview li:first-child .choose");
   await expect
-    .poll(() => badge.state(".send").then((state) => state.visible))
-    .toBe(true);
-  await badge.click(".send");
+    .poll(
+      async () =>
+        (await badge.state(".preview li:nth-child(2) .choose")).disabled,
+    )
+    .toBe(false);
+  await badge.click(".preview li:nth-child(2) .choose");
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).text)
+    .toBe("Send as is");
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  await badge.click(".pseudonymize");
   await expect(chat.locator("#sent-count")).toHaveText("1");
+  await expect(chat.locator("#sent-text")).toHaveText(SAMPLE);
 });
 
 test("send blocking waits for an immediate send to be checked", async ({
@@ -353,7 +371,7 @@ test("send blocking waits for an immediate send to be checked", async ({
   await chat.locator('[data-testid="send-button"]').click();
   await expect
     .poll(() => badge.state(".paused").then((state) => state.text))
-    .toContain("Sending is paused");
+    .toContain("Choose how to send this message.");
   await expect(chat.locator("#sent-count")).toHaveText("0");
 });
 
@@ -400,7 +418,7 @@ for (const attachment of ["file picker", "drop", "image paste"] as const) {
     await chat.locator("#prompt-textarea").fill("A message with an attachment");
     await expect
       .poll(() => badge.state(".dot").then((state) => state.title))
-      .toBe("DataFog: no sensitive data found");
+      .toBe("Checked · nothing found");
 
     if (attachment === "file picker") {
       await chat.locator('input[type="file"]').setInputFiles({
@@ -458,7 +476,7 @@ test("settings: disabling a detector persists and leaves that type untouched", a
   await openBadge(badge);
   expect((await badge.state("ul")).text).toContain("Card number: 1");
   expect((await badge.state("ul")).text).not.toContain("Email address");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(chat.locator("#prompt-textarea")).toHaveText(
     "my email is jane@example.com and card [CREDIT_CARD]",
   );
@@ -471,20 +489,26 @@ test("settings: exact allowlist survives reopening and Redact preserves allowed 
   badge,
   extension,
 }) => {
-  const options = await extension.options();
-  await options.locator("#allowlist").fill("jane@example.com");
-  await saveOptions(options);
+  const panel = await extension.panel();
+  await panel.locator('[data-view="rules"]').click();
+  await panel.locator("#allowlist-value").fill("jane@example.com");
+  await panel.locator("#allowlist-add button").click();
+  await expect(panel.locator("#allowlist li")).toContainText(
+    "jane@example.com",
+  );
   await chat.locator("#prompt-textarea").fill(SAMPLE);
   await found(badge, 1);
   await openBadge(badge);
   expect((await badge.state("ul")).text).toContain("Card number: 1");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(chat.locator("#prompt-textarea")).toHaveText(
     "my email is jane@example.com and card [CREDIT_CARD]",
   );
-  const reopened = await extension.options();
-  await expect(reopened.locator("#allowlist")).toHaveValue("jane@example.com");
-  await reopened.close();
+  await panel.reload();
+  await panel.locator('[data-view="rules"]').click();
+  await expect(panel.locator("#allowlist li")).toContainText(
+    "jane@example.com",
+  );
   await chat.locator("#prompt-textarea").fill("other@example.com");
   await found(badge, 1);
 });
@@ -502,7 +526,7 @@ test("settings: off greys out the badge and disabling checks also disables send 
   await chat.locator("#prompt-textarea").fill(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toContain("disabled");
+    .toContain("is off for this site");
   await chat.locator('[data-testid="send-button"]').click();
   await expect(chat.locator("#sent-count")).toHaveText("1");
 
@@ -523,12 +547,165 @@ test("non-English text and emoji survive detection, redaction and Undo", async (
   await composer.fill(text);
   await found(badge, 1);
   await openBadge(badge);
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(composer).toHaveText("こんにちは 👩🏽‍💻 café — correo [EMAIL] 🙂");
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("DataFog: no sensitive data found");
+    .toBe("Checked · nothing found");
   await openBadge(badge);
   await badge.click(".undo");
   await expect(composer).toHaveText(text);
+});
+
+test("held mixed Apply & send commits exactly the chosen preview and sends once", async ({
+  chat,
+  badge,
+  extension,
+}) => {
+  const settings = await extension.options();
+  await settings.locator("#block-sends").check();
+  await saveOptions(settings);
+  const composer = chat.locator("#prompt-textarea");
+  await composer.fill(SAMPLE);
+  await found(badge, 2);
+  await chat.locator('[data-testid="send-button"]').click();
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).text)
+    .toBe("Apply & send");
+  expect((await badge.state(".send")).visible).toBe(false);
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  await badge.click('.preview li:nth-child(2) .mode[data-mode="redact"]');
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).text)
+    .toBe("Apply & send");
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).disabled)
+    .toBe(false);
+  const marker = (await badge.state(".preview")).text.match(
+    /\[\[EMAIL_[A-Z0-9]+\]\]/,
+  )![0];
+  await badge.click(".pseudonymize");
+  await expect(chat.locator("#sent-count")).toHaveText("1");
+  await expect(chat.locator("#sent-text")).toHaveText(
+    `my email is ${marker} and card [CREDIT_CARD]`,
+  );
+  const panel = await extension.panel();
+  await expect(panel.locator("#originals")).toContainText("jane@example.com");
+  await expect(panel.locator("#originals")).not.toContainText(
+    "4111 1111 1111 1111",
+  );
+});
+
+test("proactive Enter replaces without sending and quick Undo restores the draft", async ({
+  chat,
+  badge,
+}) => {
+  const composer = chat.locator("#prompt-textarea");
+  await composer.fill(SAMPLE);
+  await found(badge, 2);
+  await badge.click(".dot");
+  expect((await badge.state(".pseudonymize")).text).toBe("Apply");
+  expect((await badge.state(".close")).visible).toBe(true);
+  await chat.keyboard.press("Escape");
+  await expect
+    .poll(async () => (await badge.state(".panel")).visible)
+    .toBe(false);
+  await expect(composer).toHaveText(SAMPLE);
+  await badge.click(".dot");
+  await chat.keyboard.press("Enter");
+  await expect(composer).toContainText("[[EMAIL_");
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  await expect
+    .poll(async () => (await badge.state(".paste-toast")).visible)
+    .toBe(true);
+  await badge.click(".toast-undo");
+  await expect(composer).toHaveText(SAMPLE);
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+});
+
+test("paste auto-replacement is opt-in, saves first, never sends, and offers Undo", async ({
+  chat,
+  badge,
+  extension,
+}) => {
+  const settings = await extension.options();
+  await expect(settings.locator("#auto-replace-on-paste")).not.toBeChecked();
+  await settings.locator("#auto-replace-on-paste").check();
+  await saveOptions(settings);
+  await extension.context.grantPermissions(
+    ["clipboard-read", "clipboard-write"],
+    { origin: "https://chatgpt.com" },
+  );
+  await chat.bringToFront();
+  await chat.evaluate((text) => navigator.clipboard.writeText(text), SAMPLE);
+  const composer = chat.locator("#prompt-textarea");
+  await composer.focus();
+  await chat.keyboard.press("ControlOrMeta+V");
+  await expect(composer).toHaveText(
+    /my email is \[\[EMAIL_[A-Z0-9]+\]\] and card \[\[CREDIT_CARD_[A-Z0-9]+\]\]/,
+  );
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  await expect
+    .poll(async () => (await badge.state(".paste-toast")).text)
+    .toContain("Replaced 2 items");
+  await badge.click(".toast-undo");
+  await expect(composer).toHaveText(SAMPLE);
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  const panel = await extension.panel();
+  await expect(panel.locator("#originals")).toContainText("jane@example.com");
+  const reopened = await extension.options();
+  await expect(reopened.locator("#auto-replace-on-paste")).toBeChecked();
+});
+
+test("manual Undo toast leaves the nearby native Send hit target unobstructed", async ({
+  chat,
+  badge,
+}) => {
+  const composer = chat.locator("#prompt-textarea");
+  await composer.fill(SAMPLE);
+  await found(badge, 2);
+  await badge.click(".dot");
+  await badge.click(".pseudonymize");
+  await expect(composer).toContainText("[[EMAIL_");
+  await expect
+    .poll(async () => (await badge.state(".paste-toast")).visible)
+    .toBe(true);
+  const dot = (await badge.state(".dot")).rect;
+  const send = chat.locator('[data-testid="send-button"]');
+  // Real ChatGPT puts Send just left of the circle, within the toast wrapper's
+  // rectangular bounds but outside every painted extension control.
+  await send.evaluate((element, circle) => {
+    if (!(element instanceof HTMLElement))
+      throw new Error("Send is not an HTML control");
+    Object.assign(element.style, {
+      position: "fixed",
+      left: `${circle.x - 53}px`,
+      top: `${circle.y + 12}px`,
+      right: "auto",
+      bottom: "auto",
+      width: "36px",
+      height: "36px",
+      boxSizing: "border-box",
+      margin: "0",
+      padding: "0",
+    });
+  }, dot);
+  await expect
+    .poll(() =>
+      send.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return (
+          document.elementFromPoint(
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2,
+          ) === element
+        );
+      }),
+    )
+    .toBe(true);
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  const replaced = await composer.innerText();
+  await send.click();
+  await expect(chat.locator("#sent-count")).toHaveText("1");
+  await expect(chat.locator("#sent-text")).toHaveText(replaced);
 });

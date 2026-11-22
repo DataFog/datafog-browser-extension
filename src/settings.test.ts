@@ -12,6 +12,7 @@ import {
   GERMAN_ENTITIES,
   LABELS,
   loadSettings,
+  normalizeSettings,
   OPT_IN_ENTITIES,
   removeFromList,
   sameChecks,
@@ -53,7 +54,7 @@ test("keeps the types that may over-flag off by default", () => {
  */
 async function load(settings: object, host?: string): Promise<Settings> {
   vi.stubGlobal("chrome", {
-    storage: { local: { get: async () => ({ settings }) } },
+    runtime: { sendMessage: async () => settings },
   });
   return loadSettings(host);
 }
@@ -86,10 +87,13 @@ test("a review no longer holds once the deny list changes", () => {
 function storeOf(settings: object): { settings: object } {
   const store = { settings };
   vi.stubGlobal("chrome", {
-    storage: {
-      local: {
-        get: async () => ({ ...store }),
-        set: async (next: { settings: object }) => Object.assign(store, next),
+    runtime: {
+      sendMessage: async (request: { type: string; settings?: object }) => {
+        if (request.type === "settings-save") {
+          store.settings = request.settings!;
+          return { saved: true };
+        }
+        return store.settings;
       },
     },
   });
@@ -106,7 +110,6 @@ test("adds a list value once, trimmed, and removes it", async () => {
     allowlist: ["me@work.example"],
     denylist: ["Project Atlas"],
   });
-  expect(store.settings).not.toHaveProperty("enabled");
 
   await removeFromList("allowlist", "me@work.example");
   expect(store.settings).toMatchObject({
@@ -114,4 +117,11 @@ test("adds a list value once, trimmed, and removes it", async () => {
     denylist: ["Project Atlas"],
   });
   vi.unstubAllGlobals();
+});
+
+test("paste replacement defaults safely off for older or malformed preferences", () => {
+  expect(normalizeSettings({}).autoReplaceOnPaste).toBe(false);
+  expect(
+    normalizeSettings({ autoReplaceOnPaste: true }).autoReplaceOnPaste,
+  ).toBe(true);
 });

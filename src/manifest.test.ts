@@ -13,6 +13,18 @@ describe("manifest", () => {
     );
   });
 
+  it("can reach chat tabs that were open before install, and only those", () => {
+    expect(manifest.permissions).toContain("scripting");
+    expect(manifest.host_permissions).toEqual(
+      manifest.content_scripts[0].matches,
+    );
+  });
+
+  it("ships the welcome page and its script", () => {
+    expect(build).toContain('"welcome.html"');
+    expect(build).toContain('"src/welcome.ts"');
+  });
+
   it("opens the side panel page", () => {
     expect(manifest.permissions).toContain("sidePanel");
     expect(manifest.side_panel.default_path).toBe("panel.html");
