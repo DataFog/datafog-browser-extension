@@ -15,6 +15,7 @@ for (const site of sites) {
     extension,
   }) => {
     const chat = await extension.newChat({ site });
+    await chat.emulateMedia({ reducedMotion: "no-preference" });
     const badge = extension.badge(chat);
     const composer = chat.locator(composers[site]);
     await composer.fill(EMAIL);
@@ -95,6 +96,9 @@ for (const site of sites) {
     const restored = extension.shadow(chat, "datafog-original");
     expect((await restored.state(".restored-value")).title).toContain(marker);
     expect((await restored.state(".restored-value")).text).toBe(EMAIL);
+    const revealMotion = await restored.state(".restored-value");
+    expect(revealMotion.animationName).toBe("original-in");
+    expect(revealMotion.animationDuration).toBe("0.14s");
     for (const colorScheme of ["dark", "light"] as const) {
       await chat.emulateMedia({ colorScheme });
       const providerColor = await chat
@@ -104,6 +108,11 @@ for (const site of sites) {
         .poll(async () => (await restored.state(".restored-value")).color)
         .toBe(providerColor);
       await expect(chat.locator("datafog-original")).toHaveCount(1);
+      await expect
+        .poll(
+          async () => (await restored.state(".restored-value")).animationName,
+        )
+        .toBe("none");
       await expect(chat.locator("#answer-one .provider-text")).toHaveText(text);
     }
     await extension.context.grantPermissions(
@@ -127,11 +136,22 @@ for (const site of sites) {
     expect((await second.state("button")).text).toContain("Show originals");
     await expect(chat.locator("#answer-one")).not.toContainText(EMAIL);
     await expect(chat.locator("#sent-count")).toHaveText("0");
+    await chat.emulateMedia({ reducedMotion: "reduce" });
     await second.click("button");
     await expect
       .poll(async () => (await second.state("button")).text)
       .toContain("Show tokens");
     await expect(chat.locator("datafog-original")).toHaveCount(2);
+    const reducedReveal = extension.shadow(
+      chat,
+      "datafog-original:last-of-type",
+    );
+    expect((await reducedReveal.state(".restored-value")).animationName).toBe(
+      "none",
+    );
+    expect(
+      (await reducedReveal.state(".restored-value")).animationDuration,
+    ).toBe("0s");
     await first.click("button");
     await expect
       .poll(async () => (await first.state("button")).text)

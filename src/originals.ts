@@ -56,7 +56,7 @@ function refreshAppearance(answer: HTMLElement, force = false): void {
   const reveal = reveals.get(answer);
   if (!reveal || !providerVisible(answer)) return;
   if (force || appearanceOf(answer) !== reveal.appearance)
-    showOriginals(answer, reveal.values);
+    showOriginals(answer, reveal.values, false);
 }
 
 /** Copy presentation into an extension-owned closed shadow tree. */
@@ -100,6 +100,7 @@ function position(answer: HTMLElement, host: HTMLElement): void {
 export function showOriginals(
   answer: Element,
   restored: readonly RestoredValue[],
+  animate = true,
 ): number {
   if (!(answer instanceof HTMLElement)) return 0;
   hideOriginals(answer);
@@ -119,7 +120,7 @@ export function showOriginals(
       if (original === undefined) continue;
       fragment.append(text.slice(last, match.index));
       const value = document.createElement("span");
-      value.className = "restored-value";
+      value.className = animate ? "restored-value revealing" : "restored-value";
       value.textContent = original;
       value.title = `Local original for ${match[0]}`;
       value.setAttribute("aria-description", value.title);
@@ -140,7 +141,15 @@ export function showOriginals(
   host.style.cssText =
     "position:fixed;z-index:2147483645;pointer-events:none;display:block;";
   const root = host.attachShadow({ mode: "closed" });
-  root.append(clone);
+  const style = document.createElement("style");
+  style.textContent = `
+    .restored-value.revealing { animation-name: original-in; animation-duration: 0.14s; animation-timing-function: ease-out; }
+    @keyframes original-in { from { opacity: 0; } to { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) {
+      .restored-value.revealing { animation: none; }
+    }
+  `;
+  root.append(clone, style);
   const resize = new ResizeObserver(() => {
     answer.style.setProperty(
       "min-height",

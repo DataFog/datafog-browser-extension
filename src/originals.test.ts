@@ -386,3 +386,29 @@ test("shown originals track provider palette changes in both directions without 
   expect(content.firstChild).toBe(node);
   expect(content.textContent).toBe("[[EMAIL_A]]");
 });
+
+test("only explicitly revealed value spans fade; theme refresh does not replay motion", async () => {
+  const content = answer("Known [[EMAIL_A]] and unknown [[UNKNOWN_X]]");
+  content.style.color = "rgb(14, 19, 22)";
+  const watcher = watchAnswers(siteFor("chatgpt.com"), async () => RESULT);
+  stop = watcher.dispose;
+  await tick();
+  toggle().click();
+  await tick();
+  let root = document.querySelector("datafog-original")!.shadowRoot!;
+  const cue = root.querySelector<HTMLElement>(".restored-value")!;
+  expect(cue.classList.contains("revealing")).toBe(true);
+  expect(getComputedStyle(cue).animationName).toBe("original-in");
+  expect(getComputedStyle(cue).animationDuration).toBe("0.14s");
+  expect(root.querySelectorAll(".revealing")).toHaveLength(1);
+  expect(root.querySelector("style")!.textContent).not.toContain("transform");
+  content.style.color = "rgb(238, 240, 239)";
+  await tick();
+  root = document.querySelector("datafog-original")!.shadowRoot!;
+  expect(root.querySelector(".revealing")).toBeNull();
+  expect(content.textContent).toBe(
+    "Known [[EMAIL_A]] and unknown [[UNKNOWN_X]]",
+  );
+  toggle().click();
+  expect(document.querySelector("datafog-original")).toBeNull();
+});
