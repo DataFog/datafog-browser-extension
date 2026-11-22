@@ -954,3 +954,210 @@ test("uncertain forget reconciles before access and never reports an unconfirmed
   await host.forget(marker);
   expect(host.restore(marker).restored).toBe(0);
 });
+
+test("mixed apply preserves repeated occurrences and UTF16 offsets while storing only Replace", async () => {
+  await host.create("correct horse", null, true);
+  const text = "🙂 jane@example.com then jane@example.com and al@example.org";
+  const initial = await host.preview(text, DEFAULT_SETTINGS, 7, 1, "policy");
+  const place = (index: number) => ({
+    start: initial.findings[index].start!,
+    end: initial.findings[index].end!,
+  });
+  const selected = await host.select(
+    text,
+    DEFAULT_SETTINGS,
+    7,
+    initial.previewId!,
+    "policy",
+    [place(2)],
+    [place(0)],
+  );
+  expect(selected.findings.map((item) => item.action)).toEqual([
+    "redact",
+    "replace",
+    "keep",
+  ]);
+  const result = await host.apply(
+    text,
+    7,
+    DEFAULT_SETTINGS,
+    selected.previewId,
+    "policy",
+  );
+  expect(result).toMatchObject({
+    applied: true,
+    saved: true,
+    replaced: 1,
+    redacted: 1,
+  });
+  expect(result.text).toBe(
+    `🙂 ${selected.findings[0].marker} then ${selected.findings[1].marker} and al@example.org`,
+  );
+  expect(result.edits.map((edit) => edit.start)).toEqual([3, 25]);
+  expect(host.restore(result.text).text).toBe(
+    `🙂 ${selected.findings[0].marker} then jane@example.com and al@example.org`,
+  );
+  expect(host.restore(selected.findings[1].marker).restored).toBe(1);
+});
+
+test("all-redact applies authoritative detector labels without a commit", async () => {
+  await host.create("correct horse", null, true);
+  const initial = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  const places = initial.findings.map((item) => ({
+    start: item.start!,
+    end: item.end!,
+  }));
+  const selected = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    initial.previewId!,
+    "policy",
+    [],
+    places,
+  );
+  const commit = vi.spyOn(owner, "commit");
+  const result = await host.apply(
+    TEXT,
+    7,
+    DEFAULT_SETTINGS,
+    selected.previewId,
+    "policy",
+  );
+  expect(result).toMatchObject({
+    applied: true,
+    saved: false,
+    replaced: 0,
+    redacted: 2,
+  });
+  expect(result.text).not.toContain("@");
+  expect(commit).not.toHaveBeenCalled();
+  await expect(
+    host.apply(TEXT, 7, DEFAULT_SETTINGS, selected.previewId, "policy"),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+});
+
+test("mixed selection rejects overlapping modes, duplicate and malformed ranges without consuming the plan", async () => {
+  await host.create("correct horse", null, true);
+  const initial = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  const place = {
+    start: initial.findings[0].start!,
+    end: initial.findings[0].end!,
+  };
+  for (const [keep, redact] of [
+    [[place], [place]],
+    [[], [place, place]],
+    [[], [{ start: place.start + 1, end: place.end }]],
+  ]) {
+    await expect(
+      host.select(
+        TEXT,
+        DEFAULT_SETTINGS,
+        7,
+        initial.previewId!,
+        "policy",
+        keep,
+        redact,
+      ),
+    ).rejects.toMatchObject({ code: "selection_invalid" });
+  }
+  const selected = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    initial.previewId!,
+    "policy",
+    [],
+    [place],
+  );
+  for (const [text, tab, policy] of [
+    [TEXT + " edit", 7, "policy"],
+    [TEXT, 8, "policy"],
+    [TEXT, 7, "changed"],
+  ] as const) {
+    await expect(
+      host.apply(text, tab, DEFAULT_SETTINGS, selected.previewId, policy),
+    ).rejects.toMatchObject({ code: "preview_expired" });
+  }
+  const result = await host.apply(
+    TEXT,
+    7,
+    DEFAULT_SETTINGS,
+    selected.previewId,
+    "policy",
+  );
+  expect(result.replaced).toBe(1);
+});
+
+test("a mixed save failure returns no editor patch and commits no originals", async () => {
+  await host.create("correct horse", null, true);
+  const initial = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  const selected = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    initial.previewId!,
+    "policy",
+    [],
+    [{ start: initial.findings[0].start!, end: initial.findings[0].end! }],
+  );
+  owner.failNextSave = new Error("write failed");
+  await expect(
+    host.apply(TEXT, 7, DEFAULT_SETTINGS, selected.previewId, "policy"),
+  ).rejects.toThrow();
+  expect(workspace.counts().transformedSpans).toBe(0);
+});
+
+test("mixed selection supplies Core only the Replace findings and refuses stale cross-tab apply", async () => {
+  await host.create("correct horse", null, true);
+  const initial = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  const prepare = vi.spyOn(owner, "prepare");
+  const selected = await host.select(
+    TEXT,
+    DEFAULT_SETTINGS,
+    7,
+    initial.previewId!,
+    "policy",
+    [],
+    [{ start: initial.findings[0].start!, end: initial.findings[0].end! }],
+  );
+  expect(prepare).toHaveBeenLastCalledWith(
+    TEXT,
+    [expect.objectContaining({ matchedText: "al@example.org" })],
+    expect.any(Uint8Array),
+  );
+  expect(prepare.mock.calls.at(-1)![1]).toHaveLength(1);
+  await host.preview(TEXT, DEFAULT_SETTINGS, 8, 1, "policy");
+  await expect(
+    host.apply(TEXT, 7, DEFAULT_SETTINGS, selected.previewId, "policy"),
+  ).rejects.toMatchObject({ code: "preview_expired" });
+  expect(workspace.counts().transformedSpans).toBe(0);
+});
+
+test("Redact can label a trusted recalled original without a fresh detector match", async () => {
+  await host.create("correct horse", null, true);
+  const initial = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  await host.replace(TEXT, 7, DEFAULT_SETTINGS, initial.previewId, "policy");
+  const noDetectors = { ...DEFAULT_SETTINGS, entities: [] };
+  const recalled = await host.preview(TEXT, noDetectors, 7, 2, "policy-next");
+  expect(recalled.findings).toHaveLength(2);
+  const selected = await host.select(
+    TEXT,
+    noDetectors,
+    7,
+    recalled.previewId!,
+    "policy-next",
+    [],
+    recalled.findings.map((item) => ({ start: item.start!, end: item.end! })),
+  );
+  const commit = vi.spyOn(owner, "commit");
+  const result = await host.apply(
+    TEXT,
+    7,
+    noDetectors,
+    selected.previewId,
+    "policy-next",
+  );
+  expect(result.text).toBe("Ask [EMAIL] or [EMAIL] today");
+  expect(commit).not.toHaveBeenCalled();
+});

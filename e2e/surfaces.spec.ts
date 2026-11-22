@@ -1,3 +1,4 @@
+import { redactAll } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 import { test, expect, SAMPLE } from "./fixtures";
@@ -54,8 +55,7 @@ test("reattaches to a replacement contenteditable editor", async ({
     .poll(async () => (await badge.state(".dot")).title)
     .toContain("found");
   await badge.click(".dot");
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(chat.locator("#editing-earlier-message")).toContainText(
     "[EMAIL]",
   );
@@ -76,8 +76,7 @@ test("checks the textarea composer fallback", async ({ extension }) => {
     .poll(async () => (await badge.state(".dot")).title)
     .toContain("found");
   await badge.click(".dot");
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(page.locator("textarea")).toHaveValue("[EMAIL]");
 });
 
@@ -141,12 +140,16 @@ for (const colorScheme of ["light", "dark"] as const) {
     expect(panel.rect.y + panel.rect.height).toBeLessThanOrEqual(
       viewport.height,
     );
-    await badge.click(".more-toggle");
-    await badge.click(".redact");
+    await redactAll(badge);
     await expect(chat.locator("#prompt-textarea")).toHaveText("[EMAIL]");
     const sidePanel = await extension.panel();
     await sidePanel.emulateMedia({ colorScheme });
     await expect(sidePanel.locator("#unlocked")).toBeVisible();
+    await expect(
+      sidePanel.locator("header.top .brand, header.top .logo"),
+    ).toHaveCount(0);
+    await expect(sidePanel.locator("header.top")).not.toContainText("datafog");
+    await expect(sidePanel.locator("#vault-chip")).toBeVisible();
     await expect(sidePanel.locator("body")).toHaveCSS(
       "background-color",
       colorScheme === "dark" ? "rgb(26, 34, 38)" : "rgb(255, 255, 255)",
@@ -499,15 +502,22 @@ test("circle hover explains status, click opens actions, Escape and outside clic
   expect((await badge.state(".tooltip")).text).toContain("found");
   await badge.click(".dot");
   expect((await badge.state(".panel")).visible).toBe(true);
-  expect((await badge.state(".more")).visible).toBe(false);
-  await badge.click(".more-toggle");
-  expect((await badge.state(".redact")).visible).toBe(true);
-  await chat.keyboard.press("Escape");
-  expect((await badge.state(".more")).visible).toBe(false);
-  expect((await badge.state(".panel")).visible).toBe(true);
+  expect((await badge.state('.mode[data-mode="redact"]')).visible).toBe(true);
+  await badge.click(".mode-help");
+  expect((await badge.state(".mode-tooltip")).visible).toBe(true);
+  expect((await badge.state(".mode-tooltip")).text).toContain(
+    "Redact removes details without saving originals.",
+  );
+  expect((await badge.state(".mode-tooltip")).text).toContain(
+    "Replace saves originals and inserts reversible tokens.",
+  );
+  await expect(badge.state(".sidebar")).rejects.toThrow();
+  const firstLine = (await badge.state(".mode-tooltip p:first-child")).rect;
+  const secondLine = (await badge.state(".mode-tooltip p:last-child")).rect;
+  expect(secondLine.y).toBeGreaterThan(firstLine.y + firstLine.height);
   await chat.keyboard.press("Escape");
   expect((await badge.state(".panel")).visible).toBe(false);
-  await chat.keyboard.press("Enter");
+  await badge.click(".dot");
   expect((await badge.state(".panel")).visible).toBe(true);
   await chat.locator("#prompt-textarea").click();
   expect((await badge.state(".panel")).visible).toBe(false);
@@ -555,6 +565,129 @@ for (const reducedMotion of ["no-preference", "reduce"] as const) {
     );
     await badge.click(".toast-undo");
     await expect(editor).toHaveText(EMAIL);
+    await expect(chat.locator("#sent-count")).toHaveText("0");
+  });
+}
+
+/** Composite computed RGB/RGBA paint onto the actual opaque popup surface. */
+function composite(color: string, surface: number[]): number[] {
+  const channels = color.match(/[\d.]+/g)!.map(Number);
+  const alpha = channels[3] ?? 1;
+  return channels
+    .slice(0, 3)
+    .map((value, index) => value * alpha + surface[index] * (1 - alpha));
+}
+function luminance(channels: number[]): number {
+  const linear = channels.map((value) => {
+    const channel = value / 255;
+    return channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+}
+function contrast(
+  foreground: string,
+  background: string,
+  surface: string,
+): number {
+  const base = surface
+    .match(/[\d.]+/g)!
+    .slice(0, 3)
+    .map(Number);
+  const paintedBackground = composite(background, base);
+  const paintedForeground = composite(foreground, paintedBackground);
+  const values = [
+    luminance(paintedForeground),
+    luminance(paintedBackground),
+  ].toSorted((a, b) => b - a);
+  return (values[0] + 0.05) / (values[1] + 0.05);
+}
+function middle(rect: { y: number; height: number }): number {
+  return rect.y + rect.height / 2;
+}
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`popup row alignment, truncation and Apply hover/focus contrast in ${colorScheme}`, async ({
+    chat,
+    badge,
+  }, testInfo) => {
+    await chat.emulateMedia({ colorScheme });
+    const email = "unusually.long.onboarding.value.for.review@northpine.studio";
+    await chat.locator("#prompt-textarea").fill(email);
+    await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
+    await badge.click(".dot");
+    const original = await badge.state(".original");
+    const target = await badge.state(".to");
+    const modes = await badge.state(".modes");
+    expect(
+      Math.abs(middle(original.rect) - middle(target.rect)),
+    ).toBeLessThanOrEqual(2);
+    expect(
+      Math.abs(middle(original.rect) - middle(modes.rect)),
+    ).toBeLessThanOrEqual(2);
+    expect(original.title).toBe(email);
+    expect(original.textOverflow).toBe("ellipsis");
+    expect(original.scrollWidth).toBeGreaterThan(original.clientWidth);
+    const surface = (await badge.state(".panel")).backgroundColor;
+    const replaceMode = await badge.state('.mode[data-mode="replace"]');
+    expect(replaceMode.pressed).toBe("true");
+    expect(
+      contrast(replaceMode.color, replaceMode.backgroundColor, surface),
+    ).toBeGreaterThanOrEqual(4.5);
+    await badge.click('.mode[data-mode="redact"]');
+    await expect
+      .poll(async () => (await badge.state(".pseudonymize")).disabled)
+      .toBe(false);
+    const redactMode = await badge.state('.mode[data-mode="redact"]');
+    expect(redactMode.pressed).toBe("true");
+    expect((await badge.state('.mode[data-mode="replace"]')).pressed).toBe(
+      "false",
+    );
+    expect(
+      contrast(redactMode.color, redactMode.backgroundColor, surface),
+    ).toBeGreaterThanOrEqual(4.5);
+    expect(redactMode.color).toBe(replaceMode.color);
+    expect(redactMode.backgroundColor).toBe(replaceMode.backgroundColor);
+    const normal = await badge.state(".pseudonymize");
+    expect(
+      contrast(normal.color, normal.backgroundColor, surface),
+    ).toBeGreaterThanOrEqual(4.5);
+    await chat.mouse.move(
+      normal.rect.x + normal.rect.width / 2,
+      normal.rect.y + normal.rect.height / 2,
+    );
+    await chat.waitForTimeout(180);
+    const hover = await badge.state(".pseudonymize");
+    expect(
+      contrast(hover.color, hover.backgroundColor, surface),
+    ).toBeGreaterThanOrEqual(4.5);
+    await chat.screenshot({
+      path: testInfo.outputPath(`popup-${colorScheme}-hover.png`),
+    });
+    await chat.mouse.move(0, 0);
+    for (
+      let index = 0;
+      index < 20 && !(await badge.state(".pseudonymize")).focused;
+      index++
+    )
+      await chat.keyboard.press("Tab");
+    const focus = await badge.state(".pseudonymize");
+    expect(focus.focused).toBe(true);
+    expect(
+      contrast(focus.color, focus.backgroundColor, surface),
+    ).toBeGreaterThanOrEqual(4.5);
+    await chat.setViewportSize({ width: 390, height: 760 });
+    await chat.waitForTimeout(180);
+    const panel = (await badge.state(".panel")).rect;
+    for (const selector of [".original", ".to", ".modes"]) {
+      const item = (await badge.state(selector)).rect;
+      expect(item.x).toBeGreaterThanOrEqual(panel.x);
+      expect(item.x + item.width).toBeLessThanOrEqual(panel.x + panel.width);
+    }
+    expect(panel.x + panel.width).toBeLessThanOrEqual(390);
+    await chat.screenshot({
+      path: testInfo.outputPath(`popup-${colorScheme}-narrow.png`),
+    });
     await expect(chat.locator("#sent-count")).toHaveText("0");
   });
 }

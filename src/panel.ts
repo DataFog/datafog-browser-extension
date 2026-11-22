@@ -15,7 +15,6 @@ import {
   type ListName,
 } from "./settings";
 import { icon, isIconName, setIconButton } from "./icons";
-import { LOGO } from "./logo";
 import { followTheme } from "./theme";
 
 const element = (id: string) => document.getElementById(id)!;
@@ -41,7 +40,6 @@ for (const target of document.querySelectorAll<HTMLElement>("[data-icon]")) {
       icon(name, target.tagName === "H2" ? 14 : 16),
     );
 }
-document.getElementById("brand")?.insertAdjacentHTML("afterbegin", LOGO);
 
 /** Explanations live behind info buttons instead of under every heading. */
 function toggleInfo(button: HTMLElement, id: string): void {

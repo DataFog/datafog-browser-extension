@@ -23,6 +23,7 @@ export type Request =
       text: string;
       tabId?: number;
       keep?: KeepPlace[];
+      redact?: KeepPlace[];
     }
   | {
       type: "select";
@@ -31,9 +32,11 @@ export type Request =
       tabId?: number;
       previewId: string;
       keep: KeepPlace[];
+      redact?: KeepPlace[];
     }
   | { type: "redact"; text: string; keep?: KeepPlace[] }
   | { type: "pseudonymize"; text: string; previewId?: string }
+  | { type: "apply"; text: string; previewId: string }
   | { type: "protection"; protected: boolean }
   | { type: "open-panel" }
   | { type: "block-sends" }
@@ -46,6 +49,7 @@ export type Request =
 export type CoreRequest = Exclude<
   Request,
   | { type: "pseudonymize" }
+  | { type: "apply" }
   | { type: "protection" }
   | { type: "open-panel" }
   | { type: "block-sends" }
@@ -93,6 +97,7 @@ export type VaultRequest =
     >
   | { type: "restore"; text: string }
   | { type: "pseudonymize"; text: string; tabId: number; previewId?: string }
+  | { type: "apply"; text: string; tabId: number; previewId: string }
   | { type: "always-allow"; entityType: string; value: string }
   | { type: "settings-get" }
   | { type: "settings-save"; settings: Settings }
@@ -152,6 +157,7 @@ export interface KeepPlace {
 }
 
 export interface ReviewItem {
+  action?: "replace" | "redact" | "keep";
   start?: number;
   end?: number;
   kept?: boolean;
@@ -252,6 +258,14 @@ export interface RedactEdit {
   start: number;
   end: number;
   replacement: string;
+}
+
+export interface ApplyResponse extends RedactResponse {
+  applied: true;
+  replaced: number;
+  redacted: number;
+  saved: boolean;
+  warning?: string;
 }
 
 export interface RedactResponse {

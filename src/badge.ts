@@ -125,7 +125,7 @@ const STYLE = `
   }
   .panel {
     position: fixed; box-sizing: border-box;
-    width: min(320px, calc(100vw - 16px)); overflow: auto;
+    width: min(560px, calc(100vw - 16px)); overflow: auto;
     border: 1px solid var(--df-line); border-radius: var(--df-radius-panel);
     background: var(--df-surface); color: var(--df-text); padding: 12px;
   }
@@ -139,6 +139,16 @@ const STYLE = `
   .history { display: flex; gap: 2px; }
   .panel ul { margin: 0 0 8px; padding: 0; list-style: none; }
   .counts li { color: var(--df-muted); font-size: 12px; }
+  .preview-head { position: relative; display: flex; justify-content: flex-end; }
+  .mode-tooltip { display: none; position: absolute; right: 0; top: 100%; z-index: 2; max-width: 270px; padding: 8px 10px; border-radius: 8px; background: var(--df-text); color: var(--df-surface); font-size: 11px; box-shadow: 0 4px 16px #0002; }
+  .mode-tooltip p { margin: 0; }
+  .mode-tooltip p + p { margin-top: 6px; }
+  .mode-help:hover + .mode-tooltip, .mode-help:focus + .mode-tooltip { display: block; }
+  .modes { grid-column: 3; grid-row: 2; display: flex; justify-self: end; gap: 2px; padding: 2px; border: 1px solid var(--df-line); border-radius: 8px; }
+  .mode { padding: 3px 8px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--df-muted); font: inherit; font-size: 11px; cursor: pointer; }
+  .mode[aria-pressed="true"] { background: var(--df-hover); color: var(--df-text); border-color: var(--df-muted); font-weight: 600; }
+  .mode:focus-visible { outline: 2px solid var(--df-focus); }
+  .mode:disabled { opacity: .5; cursor: default; }
   .preview li {
     display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 2px 8px;
     align-items: center; padding: 6px 0; border-top: 1px solid var(--df-line);
@@ -148,19 +158,21 @@ const STYLE = `
   .preview .choose:focus-visible { outline:2px solid var(--df-focus); outline-offset:2px; }
   .preview li:first-child { border-top: 0; }
   .preview .type {
-    grid-column: 2 / -1; color: var(--df-muted);
+    grid-column: 2 / -1; grid-row: 1; color: var(--df-muted);
     font: 10px/1.2 var(--df-mono); text-transform: uppercase; letter-spacing: 0.08em;
   }
+  .value-pair { grid-column: 2; grid-row: 2; display: flex; align-items: center; gap: 8px; min-width: 0; }
   .preview .original {
+    flex: 0 1 auto; max-width: 55%;
     min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     color: var(--df-text); font-weight: 500;
   }
-  .preview .to { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .preview .to { flex: 0 1 auto; display: flex; align-items: center; gap: 6px; min-width: 0; }
   .preview .kept-token { padding: 2px 8px; border: 1px dashed var(--df-line); border-radius: 999px; color: var(--df-muted); font: 11px/1.4 system-ui, sans-serif; }
   .preview [data-kept="true"] .original, .preview [data-kept="true"] .type { opacity: 0.65; }
   .preview .to svg { flex: none; color: var(--df-muted); opacity: .65; }
   .token {
-    display: inline-block; max-width: 150px; overflow: hidden;
+    display: inline-block; min-width: 0; max-width: 150px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; padding: 1px 8px;
     border-radius: var(--df-radius-pill); background: var(--df-token-bg);
     color: var(--df-token-text); font: 11px/1.5 var(--df-mono);
@@ -193,22 +205,20 @@ const STYLE = `
   button.primary {
     background: var(--df-primary); color: var(--df-primary-text); border-color: var(--df-primary);
   }
-  button.primary:hover:not(:disabled) { opacity: 0.85; }
+  button.act.primary:hover:not(:disabled), button.act.primary:focus-visible {
+    background: var(--df-primary); color: var(--df-primary-text); border-color: var(--df-primary);
+    box-shadow: 0 0 0 2px var(--df-line);
+  }
+  button.act.primary:disabled { opacity: 1; background: var(--df-hover); color: var(--df-muted); border-color: var(--df-line); }
+  @media (max-width: 480px) {
+    .value-pair { grid-column: 2 / -1; }
+    .modes { grid-column: 2 / -1; grid-row: 3; justify-self: start; }
+  }
   button.act:disabled { opacity: 0.4; cursor: default; }
   /* In flow under the actions, so it never covers Undo or the findings */
   .paste-toast { padding: 8px 12px; border: 1px solid var(--df-line); border-radius: 999px; background: var(--df-surface); color: var(--df-text); }
   .paste-toast:not([hidden]) { animation: toast-in 140ms ease-out; }
   .paste-toast button { border:0; background:transparent; color:inherit; font:inherit; text-decoration:underline; cursor:pointer; }
-  .redact-note { font-size:11px; color:var(--df-muted); margin-left:auto; }
-  .more {
-    flex-basis: 100%; display: flex; flex-direction: column; padding: 4px;
-    border: 1px solid var(--df-line); border-radius: 12px;
-  }
-  .more button.act {
-    justify-content: flex-start; border: 0; border-radius: 8px; min-height: 32px;
-    padding: 0 8px; font-weight: 400;
-  }
-  .more button.act svg { color: var(--df-muted); }
   .spin { animation: spin 1s linear infinite; }
   @media (prefers-reduced-motion: reduce) {
     .dot { transition: none; }
@@ -219,14 +229,7 @@ const STYLE = `
   [hidden] { display: none !important; }
 `;
 
-const ACTIONS = [
-  "redact",
-  "pseudonymize",
-  "dismiss",
-  "undo",
-  "redo",
-  "send",
-] as const;
+const ACTIONS = ["pseudonymize", "undo", "redo", "send"] as const;
 type Action = (typeof ACTIONS)[number];
 
 const DOTS = '<span class="dots"><i></i><i></i><i></i></span>';
@@ -278,7 +281,7 @@ function items(count: number): string {
   return `${count} item${count === 1 ? "" : "s"}`;
 }
 
-export type CircleSurface = "circle" | "tooltip" | "popup" | "more";
+export type CircleSurface = "circle" | "tooltip" | "popup";
 
 export class Badge {
   private readonly host = document.createElement("datafog-badge");
@@ -308,11 +311,12 @@ export class Badge {
   private frame = 0;
   private busy = false;
   private readonly toast: HTMLDivElement;
-  private readonly more: HTMLDivElement;
-  private readonly moreButton: HTMLButtonElement;
   private readonly previewList: HTMLUListElement;
   private readonly progress: HTMLParagraphElement;
   private choiceFocus = -1;
+  private modeFocus: "replace" | "redact" | null = null;
+  private readonly mode:
+    ((index: number, mode: "replace" | "redact") => void) | undefined;
   private readonly choose: ((index: number) => void) | undefined;
 
   /**
@@ -322,14 +326,14 @@ export class Badge {
    */
   constructor(
     actions: Record<Action, () => void> & {
-      sidebar?: () => void;
-      allow?: () => void;
       retry?: () => void;
       choose?: (index: number) => void;
+      mode?: (index: number, mode: "replace" | "redact") => void;
     },
     site: Site = siteFor(location.hostname),
   ) {
     this.choose = actions.choose;
+    this.mode = actions.mode;
     this.shape = site.badge;
     const root = this.host.attachShadow({ mode: "closed" });
     followTheme(this.host);
@@ -346,29 +350,18 @@ export class Badge {
               <button class="act icon redo" type="button"
                 title="Redo: replace the same values again">${iconLabel("redo", "Redo")}</button>
             </div>
-            <span class="local" title="Checked on this device. Nothing was sent.">${icon("lock", 14)}<span class="sr">Checked on this device</span></span>
+            <button class="act icon close" type="button" title="Close">${iconLabel("remove", "Close")}</button>
           </div>
           <p class="files" hidden title="datafog only checks text in the chat box.">${icon("attachment", 14)}<span>Attached files aren't protected.</span></p>
           <p class="paused" hidden></p>
           <ul class="counts"></ul>
-          <ul class="preview"></ul><p class="progress" role="status"></p><p class="note"></p>
+          <div class="preview-head"><button class="act icon mode-help" type="button" aria-label="About Redact and Replace" aria-describedby="mode-tooltip">${icon("info", 14)}</button><div class="mode-tooltip" id="mode-tooltip" role="tooltip"><p>Redact removes details without saving originals.</p><p>Replace saves originals and inserts reversible tokens.</p></div></div><ul class="preview"></ul><p class="progress" role="status"></p><p class="note"></p>
           <p class="report" hidden>
             Report this problem to
             <a href="mailto:${HELP_EMAIL}">${HELP_EMAIL}</a>
           </p>
           <div class="actions">
-            <button class="act dismiss" type="button"
-              title="Hide this warning. Send with ${site.name}'s own button.">Keep as is</button>
-            <div class="resolve">
-              <button class="act primary pseudonymize" type="button"
-                title="Swap each value for a token. The original stays encrypted in your vault so it can be shown again.">Replace</button>
-              <button class="act icon more-toggle" type="button" title="More actions" aria-haspopup="menu" aria-expanded="false" aria-controls="draft-more">${iconLabel("more", "More")}</button>
-            </div>
-            <div class="more" id="draft-more" role="menu" hidden>
-              <button class="act redact" type="button" role="menuitem" title="Remove the values without keeping them">${icon("redact")}Redact<span class="redact-note">Not saved to vault</span></button>
-              <button class="act allow" type="button" role="menuitem" title="Always allow these exact values for their detected type. Always flag still wins.">${icon("allow")}Always allow</button>
-              <button class="act sidebar" type="button" role="menuitem">${icon("sidebar")}Open sidebar</button>
-            </div>
+            <button class="act primary pseudonymize" type="button">Apply</button>
             <button class="act retry" type="button" hidden>${icon("retry", 14)}Retry checking</button>
             <button class="act send" type="button" hidden>Send anyway</button>
           </div>
@@ -386,8 +379,6 @@ export class Badge {
     this.note = root.querySelector(".note")!;
     this.report = root.querySelector(".report")!;
     this.actions = root.querySelector(".actions")!;
-    this.more = root.querySelector(".more")!;
-    this.moreButton = root.querySelector(".more-toggle")!;
     this.toast = document.createElement("div");
     this.toast.className = "paste-toast";
     this.toast.setAttribute("role", "status");
@@ -420,22 +411,9 @@ export class Badge {
     });
     this.dot.setAttribute("aria-haspopup", "dialog");
     this.dot.setAttribute("aria-expanded", "false");
-    this.moreButton.addEventListener("click", () => {
-      this.more.hidden = !this.more.hidden;
-      this.moreButton.setAttribute("aria-expanded", String(!this.more.hidden));
-      if (!this.more.hidden)
-        this.more
-          .querySelector<HTMLButtonElement>("button:not([hidden])")
-          ?.focus();
-      this.place();
-    });
-    root.querySelector(".sidebar")!.addEventListener("click", () => {
+    root.querySelector(".close")!.addEventListener("click", () => {
       this.close();
-      actions.sidebar?.();
-    });
-    root.querySelector(".allow")!.addEventListener("click", () => {
-      this.closeMore();
-      actions.allow?.();
+      this.dot.focus();
     });
     root
       .querySelector(".retry")!
@@ -448,14 +426,8 @@ export class Badge {
       ) {
         event.preventDefault();
         event.stopPropagation();
-        if (!this.more.hidden) {
-          this.more.hidden = true;
-          this.moreButton.setAttribute("aria-expanded", "false");
-          this.moreButton.focus();
-        } else {
-          this.close();
-          this.dot.focus();
-        }
+        this.close();
+        this.dot.focus();
       }
     });
 
@@ -487,7 +459,7 @@ export class Badge {
 
     this.dot.addEventListener("click", () => {
       tooltip.hidden = true;
-      if (this.surface === "popup" || this.surface === "more") this.close();
+      if (this.surface === "popup") this.close();
       else this.openPopup();
       this.place();
       // Start on the recommended action, so Enter replaces
@@ -502,9 +474,7 @@ export class Badge {
         )?.focus();
     });
     this.buttons = {
-      redact: root.querySelector(".redact")!,
       pseudonymize: root.querySelector(".pseudonymize")!,
-      dismiss: root.querySelector(".dismiss")!,
       undo: root.querySelector(".undo")!,
       redo: root.querySelector(".redo")!,
       send: root.querySelector(".send")!,
@@ -512,10 +482,8 @@ export class Badge {
     for (const action of ACTIONS) {
       this.buttons[action].addEventListener("click", () => {
         // Undo and Redo can be repeated; the others resolve the warning
-        if (action === "dismiss" || action === "send") this.close();
-        if (action === "redact") this.closeMore();
+        if (action === "send") this.close();
         actions[action]();
-        if (action === "dismiss") this.dot.focus();
       });
     }
 
@@ -676,7 +644,7 @@ export class Badge {
   holdSend(reason: string | null): void {
     this.paused.textContent = reason;
     this.paused.hidden = reason === null;
-    this.buttons.send.hidden = reason === null;
+    this.buttons.send.hidden = reason === null || this.kind !== "failed";
     this.buttons.send.textContent = "Send as is";
     this.showActions();
     if (reason !== null) this.openPopup();
@@ -698,7 +666,7 @@ export class Badge {
       this.close();
       return true;
     }
-    if (event.key !== "Enter" || !this.more.hidden) return false;
+    if (event.key !== "Enter") return false;
     if (event.repeat || this.busy) return true;
     const primary = this.buttons.pseudonymize;
     if (primary.hidden) return false;
@@ -707,9 +675,9 @@ export class Badge {
     return true;
   }
 
-  replaced(count: number): void {
+  replaced(count: number, action = "Replaced"): void {
     this.toast.querySelector("span")!.textContent =
-      `Replaced ${count} ${count === 1 ? "item" : "items"} · `;
+      `${action} ${count} ${count === 1 ? "item" : "items"} · `;
     this.toast.hidden = false;
     this.place();
   }
@@ -746,6 +714,7 @@ export class Badge {
       marker: string;
       entityType?: string;
       kept?: boolean;
+      action?: "replace" | "redact" | "keep";
     }[],
   ): void {
     const focused = this.previewList.querySelector(":focus");
@@ -753,48 +722,76 @@ export class Badge {
       this.previewList.querySelectorAll(".choose"),
     ).indexOf(focused!);
     this.previewList.replaceChildren(
-      ...findings.map(({ original, marker, entityType, kept }, index) => {
-        const row = document.createElement("li");
-        const type = document.createElement("span");
-        type.className = "type";
-        const entity =
-          entityType ?? /^\[\[([A-Z_]+?)_[A-Z0-9]+\]\]$/.exec(marker)?.[1];
-        type.textContent = entity ? (LABELS[entity] ?? entity) : "";
-        const value = document.createElement("span");
-        value.className = "original";
-        value.title = original;
-        value.textContent = original;
-        const to = document.createElement("span");
-        to.className = "to";
-        to.innerHTML = icon("arrow", 14);
-        // Screen readers and copy-paste keep the old "a → b" reading
-        to.insertAdjacentHTML("afterbegin", '<span class="sr"> → </span>');
-        const token = document.createElement("span");
-        token.className = "token";
-        token.title = marker;
-        token.textContent = marker;
-        to.append(token);
-        const check = document.createElement("button");
-        check.type = "button";
-        check.className = "choose";
-        check.setAttribute("role", "checkbox");
-        check.setAttribute("aria-label", `Replace ${original}`);
-        check.setAttribute("aria-checked", String(!kept));
-        check.innerHTML = icon("check", 14);
-        check.addEventListener("click", () => {
-          this.choiceFocus = index;
-          this.choose?.(index);
-        });
-        row.dataset.kept = String(Boolean(kept));
-        if (kept) {
-          const keptToken = document.createElement("span");
-          keptToken.className = "kept-token";
-          keptToken.textContent = "kept as typed";
-          to.replaceChildren(keptToken);
-        }
-        row.append(check, ...(entity ? [type] : []), value, to);
-        return row;
-      }),
+      ...findings.map(
+        ({ original, marker, entityType, kept, action }, index) => {
+          const row = document.createElement("li");
+          const type = document.createElement("span");
+          type.className = "type";
+          const entity =
+            entityType ?? /^\[\[([A-Z_]+?)_[A-Z0-9]+\]\]$/.exec(marker)?.[1];
+          type.textContent = entity ? (LABELS[entity] ?? entity) : "";
+          const value = document.createElement("span");
+          value.className = "original";
+          value.title = original;
+          value.textContent = original;
+          const to = document.createElement("span");
+          to.className = "to";
+          to.innerHTML = icon("arrow", 14);
+          // Screen readers and copy-paste keep the old "a → b" reading
+          to.insertAdjacentHTML("afterbegin", '<span class="sr"> → </span>');
+          const token = document.createElement("span");
+          token.className = "token";
+          token.title = marker;
+          token.textContent = marker;
+          to.append(token);
+          const check = document.createElement("button");
+          check.type = "button";
+          check.className = "choose";
+          check.setAttribute("role", "checkbox");
+          check.setAttribute("aria-label", `Include ${original}`);
+          check.setAttribute("aria-checked", String(!kept));
+          check.innerHTML = icon("check", 14);
+          check.addEventListener("click", () => {
+            this.choiceFocus = index;
+            this.modeFocus = null;
+            this.choose?.(index);
+          });
+          row.dataset.kept = String(Boolean(kept));
+          if (kept) {
+            const keptToken = document.createElement("span");
+            keptToken.className = "kept-token";
+            keptToken.textContent = "kept as typed";
+            to.replaceChildren(keptToken);
+          }
+          const modes = document.createElement("div");
+          modes.className = "modes";
+          modes.setAttribute("role", "group");
+          modes.setAttribute("aria-label", `Action for ${original}`);
+          for (const mode of ["redact", "replace"] as const) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "mode";
+            button.dataset.mode = mode;
+            button.textContent = mode === "replace" ? "Replace" : "Redact";
+            button.setAttribute(
+              "aria-pressed",
+              String((action ?? "replace") === mode),
+            );
+            button.disabled = Boolean(kept);
+            button.addEventListener("click", () => {
+              this.choiceFocus = index;
+              this.modeFocus = mode;
+              this.mode?.(index, mode);
+            });
+            modes.append(button);
+          }
+          const pair = document.createElement("div");
+          pair.className = "value-pair";
+          pair.append(value, to);
+          row.append(check, ...(entity ? [type] : []), pair, modes);
+          return row;
+        },
+      ),
     );
     this.showActions();
     if (focusIndex >= 0)
@@ -809,39 +806,28 @@ export class Badge {
   /** Per-type counts only when there are no preview rows saying the same. */
   private syncLists(): void {
     this.previewList.hidden = this.previewList.childElementCount === 0;
+    this.panel.querySelector<HTMLElement>(".preview-head")!.hidden =
+      this.previewList.hidden;
     this.list.hidden =
       this.list.childElementCount === 0 || !this.previewList.hidden;
   }
 
   /** The DOM visibility is the sole surface owner; this typed projection adds no duplicate state. */
   get surface(): CircleSurface {
-    if (!this.panel.hidden) return this.more.hidden ? "popup" : "more";
+    if (!this.panel.hidden) return "popup";
     return this.wrap.querySelector<HTMLElement>(".tooltip")!.hidden
       ? "circle"
       : "tooltip";
   }
 
   private openPopup(): void {
-    if (this.panel.hidden) {
-      // Each opening starts from the main actions, not a stale menu
-      this.more.hidden = true;
-      this.moreButton.setAttribute("aria-expanded", "false");
-    }
     this.panel.hidden = false;
     this.wrap.querySelector<HTMLElement>(".tooltip")!.hidden = true;
     this.dot.setAttribute("aria-expanded", "true");
   }
 
-  private closeMore(): void {
-    this.more.hidden = true;
-    this.moreButton.setAttribute("aria-expanded", "false");
-    this.place();
-  }
-
   close(): void {
     this.panel.hidden = true;
-    this.more.hidden = true;
-    this.moreButton.setAttribute("aria-expanded", "false");
     this.dot.setAttribute("aria-expanded", "false");
   }
 
@@ -868,36 +854,37 @@ export class Badge {
     const rechecking =
       this.kind === "checking" && this.dot.dataset.previous === "found";
     const found = this.kind === "found" || rechecking;
-    this.buttons.redact.hidden = !found;
     this.buttons.pseudonymize.hidden = !found;
     const intercepted = !this.paused.hidden;
-    this.buttons.dismiss.hidden = !found || intercepted;
     this.buttons.send.disabled = this.busy;
     const skipped =
       this.previewList.querySelectorAll('[data-kept="true"]').length;
     const chosen = this.previewList.childElementCount - skipped;
-    const allow = this.panel.querySelector<HTMLButtonElement>(".allow")!;
-    allow.innerHTML = `${icon("allow")}Always allow skipped (${skipped})`;
-    allow.disabled = this.busy || !found || rechecking || skipped === 0;
-    this.buttons.pseudonymize.textContent = `${skipped ? `Replace ${chosen}` : "Replace"}${intercepted ? " & send" : ""}`;
-    for (const check of this.previewList.querySelectorAll<HTMLButtonElement>(
-      ".choose",
+    this.buttons.pseudonymize.textContent = intercepted
+      ? chosen === 0 && skipped > 0
+        ? "Send as is"
+        : "Apply & send"
+      : "Apply";
+    for (const control of this.previewList.querySelectorAll<HTMLButtonElement>(
+      ".choose, .mode",
     ))
-      check.disabled = this.busy || rechecking;
-    this.actions.hidden = false;
-    this.moreButton.hidden = false;
-    for (const action of ["redact", "pseudonymize", "dismiss"] as const)
-      this.buttons[action].disabled =
+      control.disabled =
         this.busy ||
         rechecking ||
-        (action !== "dismiss" && skipped > 0 && chosen === 0);
+        (control.classList.contains("mode") &&
+          control.closest("li")?.dataset.kept === "true");
+    this.actions.hidden = false;
+    this.buttons.pseudonymize.disabled =
+      this.busy || rechecking || (skipped > 0 && chosen === 0 && !intercepted);
     this.buttons.undo.hidden = !this.history.undo;
     this.buttons.redo.hidden = !this.history.redo;
     this.buttons.undo.disabled = this.busy || !this.history.undo;
     this.buttons.redo.disabled = this.busy || !this.history.redo;
     if (!this.busy && !rechecking && this.choiceFocus >= 0) {
       this.previewList
-        .querySelectorAll<HTMLButtonElement>(".choose")
+        .querySelectorAll<HTMLButtonElement>(
+          this.modeFocus ? `.mode[data-mode="${this.modeFocus}"]` : ".choose",
+        )
         .item(this.choiceFocus)
         ?.focus();
       this.choiceFocus = -1;

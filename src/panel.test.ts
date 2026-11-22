@@ -309,3 +309,16 @@ test("long originals retain full tooltip, searchable middle and exact copy while
   await settle();
   expect(writeText).toHaveBeenCalledWith(original);
 });
+
+test("sidebar header leaves branding to Chrome and retains vault and settings controls", async () => {
+  await start();
+  const header = document.querySelector("header")!;
+  expect(header.querySelector("#brand")).toBeNull();
+  expect(header.querySelector("h1")).toBeNull();
+  expect(Array.from(header.children, (child) => child.id)).toEqual([
+    "vault-chip",
+    "settings",
+  ]);
+  expect($("vault-state").textContent).toBeTruthy();
+  expect($("settings").getAttribute("title")).toBe("Settings");
+});

@@ -1,3 +1,4 @@
+import { redactAll } from "./fixtures";
 import { expect, expectBadgeFitsBox, SAMPLE, test } from "./fixtures";
 
 test("Claude: checks the chat box, matches its size and redacts", async ({
@@ -12,11 +13,9 @@ test("Claude: checks the chat box, matches its size and redacts", async ({
     .poll(() => badge.state(".dot").then((state) => state.title))
     .toBe("2 found · click to review");
   await expectBadgeFitsBox(badge, box, 44, "14px");
-  expect((await badge.state(".dismiss")).title).toContain("Claude's own");
 
   await badge.click(".dot");
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
 
   await expect(composer).toHaveText(
     "my email is [EMAIL] and card [CREDIT_CARD]",
@@ -52,7 +51,7 @@ for (const sendMethod of ["button", "Enter"] as const) {
       .toContain("Choose how to send this message.");
     await expect
       .poll(async () => (await badge.state(".pseudonymize")).text)
-      .toBe("Replace & send");
+      .toBe("Apply & send");
     await send();
     if (sendMethod === "button") {
       await expect(chat.locator("#sent-count")).toHaveText("0");

@@ -15,9 +15,14 @@ import type {
   KeyProvider,
   ProviderIdentity,
 } from "@datafog/fogvault-browser";
-import type { WorkspaceFinding, WorkspacePreview } from "@datafog/wasm";
+import {
+  transform,
+  type WorkspaceFinding,
+  type WorkspacePreview,
+} from "@datafog/wasm";
 
 import type {
+  ApplyResponse,
   CreatedVault,
   KeepPlace,
   MarkedSensitive,
@@ -336,6 +341,7 @@ export class VaultHost<V extends Vault = Vault> {
     revision = 0,
     policyVersion = "",
     keep?: KeepPlace[],
+    redactions?: KeepPlace[],
   ): Promise<{ findings: ReviewItem[]; previewId?: string }> {
     if (
       !this.review ||
@@ -356,18 +362,19 @@ export class VaultHost<V extends Vault = Vault> {
     if (!this.review) return { findings };
     const previewId = crypto.randomUUID();
     this.reservation = { id: previewId, tabId, revision, policyVersion };
-    if (keep)
+    if (keep || redactions)
       return this.select(
         text,
         settings,
         tabId,
         previewId,
         policyVersion,
-        keep.filter((place) =>
+        (keep ?? []).filter((place) =>
           findings.some(
             (item) => item.start === place.start && item.end === place.end,
           ),
         ),
+        redactions,
       );
     return { findings, previewId };
   }
@@ -380,6 +387,7 @@ export class VaultHost<V extends Vault = Vault> {
     previewId: string,
     policyVersion: string,
     keep: KeepPlace[],
+    redactions: KeepPlace[] = [],
   ): Promise<{ findings: ReviewItem[]; previewId: string }> {
     const review = this.review;
     const owner = this.owner;
@@ -398,8 +406,10 @@ export class VaultHost<V extends Vault = Vault> {
     const all = review.all ?? { items: review.items, ranges: review.ranges };
     if (
       !Array.isArray(keep) ||
-      keep.some(
+      !Array.isArray(redactions) ||
+      [...keep, ...redactions].some(
         (place) =>
+          !place ||
           !Number.isInteger(place.start) ||
           !Number.isInteger(place.end) ||
           !all.items.some(
@@ -408,14 +418,52 @@ export class VaultHost<V extends Vault = Vault> {
       )
     )
       throw failure("selection_invalid");
-    const items = all.items.map((item) => ({
+    const modes = [...keep, ...redactions];
+    if (
+      new Set(modes.map((place) => `${place.start}:${place.end}`)).size !==
+      modes.length
+    )
+      throw failure("selection_invalid");
+    const items = all.items.map<ReviewItem>((item) => ({
       ...item,
       kept: keep.some(
         (place) => place.start === item.start && place.end === item.end,
       ),
+      action: keep.some(
+        (place) => place.start === item.start && place.end === item.end,
+      )
+        ? "keep"
+        : redactions.some(
+              (place) => place.start === item.start && place.end === item.end,
+            )
+          ? "redact"
+          : "replace",
       marker: "",
     }));
-    const chosen = items.flatMap((item, index) => (item.kept ? [] : [index]));
+    for (const item of items) {
+      if (item.action !== "redact") continue;
+      // Core owns label formatting, including values recalled from saved mappings.
+      // Only the authoritative reserved value/type is used, never client labels.
+      item.marker = transform(
+        item.original,
+        [
+          {
+            entityType: item.entityType,
+            matchedText: item.original,
+            byteRange: {
+              start: 0,
+              end: new TextEncoder().encode(item.original).length,
+            },
+            codepointRange: { start: 0, end: Array.from(item.original).length },
+            detectorName: "workspace-review",
+          },
+        ],
+        { default: { strategy: "redact" } },
+      ).text;
+    }
+    const chosen = items.flatMap((item, index) =>
+      item.action === "replace" ? [index] : [],
+    );
     this.drop();
     const plan = owner.prepare(
       text,
@@ -432,7 +480,7 @@ export class VaultHost<V extends Vault = Vault> {
     for (const change of preview.transformations) {
       const item = items.find(
         (candidate) =>
-          !candidate.kept &&
+          candidate.action === "replace" &&
           candidate.start === change.sourceUtf16Range.start &&
           candidate.end === change.sourceUtf16Range.end,
       );
@@ -495,6 +543,81 @@ export class VaultHost<V extends Vault = Vault> {
     const saved = await this.approve(settings);
     this.reservation = null;
     return { ...saved.response, saved: true };
+  }
+
+  /** Apply reserved per-occurrence modes after the one durable Replace commit. */
+  async apply(
+    text: string,
+    tabId: number,
+    settings: Settings,
+    previewId: string,
+    policyVersion: string,
+  ): Promise<ApplyResponse> {
+    const review = this.review;
+    if (
+      !review ||
+      !this.owner ||
+      this.owner.closed ||
+      review.text !== text ||
+      this.reservation?.id !== previewId ||
+      this.reservation.tabId !== tabId ||
+      this.reservation.policyVersion !== policyVersion ||
+      !sameChecks(review.settings, settings)
+    )
+      throw failure("preview_expired");
+    const items = review.all?.items ?? review.items;
+    const redactions: RedactEdit[] = items
+      .filter((item) => item.action === "redact")
+      .map((item) => ({
+        start: item.start!,
+        end: item.end!,
+        replacement: item.marker,
+      }));
+    const planned = editsOf(review.plan.preview()).edits;
+    const edits = [...planned, ...redactions].toSorted(
+      (a, b) => a.start - b.start,
+    );
+    if (!edits.length) throw failure("nothing_found");
+    if (
+      edits.some(
+        (edit, index) =>
+          !Number.isInteger(edit.start) ||
+          !Number.isInteger(edit.end) ||
+          edit.start < 0 ||
+          edit.end <= edit.start ||
+          edit.end > text.length ||
+          (index > 0 && edits[index - 1].end > edit.start),
+      )
+    )
+      throw failure("selection_invalid");
+    let response: RedactResponse;
+    if (planned.length)
+      response = await this.replace(
+        text,
+        tabId,
+        settings,
+        previewId,
+        policyVersion,
+      );
+    else {
+      this.drop();
+      response = { text, edits: [] };
+    }
+    const combined = [...response.edits, ...redactions].toSorted(
+      (a, b) => a.start - b.start,
+    );
+    let result = text;
+    for (const edit of combined.toReversed())
+      result =
+        result.slice(0, edit.start) + edit.replacement + result.slice(edit.end);
+    return {
+      text: result,
+      edits: combined,
+      applied: true,
+      saved: planned.length > 0,
+      replaced: planned.length,
+      redacted: redactions.length,
+    };
   }
 
   /**
@@ -1019,7 +1142,13 @@ export class VaultHost<V extends Vault = Vault> {
         return;
       }
       const plan = owner.prepareReview(
-        [{ text: waiting.text, scannerFindings: found, userSelections: [] }],
+        [
+          {
+            text: waiting.text,
+            scannerFindings: found,
+            userSelections: [],
+          },
+        ],
         this.deps.randomId(),
       );
       const preview = plan.preview();

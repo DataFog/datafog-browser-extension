@@ -355,6 +355,7 @@ async function handle(message: OffscreenRequest): Promise<unknown> {
               request.previewId,
               version,
               request.keep,
+              request.redact,
             )
           : await host.preview(
               request.text,
@@ -363,6 +364,7 @@ async function handle(message: OffscreenRequest): Promise<unknown> {
               request.seq,
               version,
               request.keep,
+              request.redact,
             )
         : { findings: [] };
       result = {
@@ -413,15 +415,26 @@ async function handle(message: OffscreenRequest): Promise<unknown> {
         originals: originals(stored),
       };
       break;
+    case "apply":
     case "pseudonymize": {
-      const response = await host.replace(
-        request.text,
-        request.tabId,
-        settings,
-        request.previewId,
-        await policyVersion(stored),
-      );
+      const response =
+        request.type === "apply"
+          ? await host.apply(
+              request.text,
+              request.tabId,
+              settings,
+              request.previewId,
+              await policyVersion(stored),
+            )
+          : await host.replace(
+              request.text,
+              request.tabId,
+              settings,
+              request.previewId,
+              await policyVersion(stored),
+            );
       result = response;
+      if (!response.saved) break;
       const markers = [
         ...new Set([
           ...stored.markers,

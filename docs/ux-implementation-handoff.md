@@ -7,9 +7,15 @@
 - Implementation and validation completed before committing; the owner subsequently authorized a PR, with no merge. Unrelated `.devcontainer/` and original local work were preserved; the supplied revision patch intentionally updates `docs/ux/explicit-state-machines.md`.
 - The interface calls the store vault; FogVault published package names and persistent identifiers were retained. The proposed storage rename was explicitly deferred.
 
+## Approved mixed-popup revision validation
+
+The approved revision uses per-occurrence Replace/Redact choices and one Apply, neutral selected states, inline desktop rows with a narrow-screen fallback, a Close-only popup header and the native Chrome sidebar title. Refreshed local onboarding clips show this UI (6/3/3 seconds, silent VP9); storyboard captures use fictional values and zero sends.
+
+Validation passed **389 unit tests across 24 files**, formatting, lint, type checking and packaging. The complete controlled Chrome run exercised 83 tests: 81 passed initially, while two new contrast checks incorrectly treated translucent selected backgrounds as opaque. The test now composites their computed RGBA paint over the actual popup surface before measuring contrast; both corrected light/dark checks passed with the unchanged 4.5:1 threshold. All 83 controlled journeys therefore passed across the full run and focused correction, with no product changes between them. Evidence: `.playwright/exports/mixed-final-unit.log`, `mixed-final-controlled.log`, and `mixed-final-contrast-corrected.log`. The ordinary commit hook remains the final authenticated 17-test gate and preserves a separate receipt.
+
 ## Implemented behavior
 
-The circle previews the current draft's findings and markers. The displayed concrete marker comes from the exact retained Core preparation, identified by a preview token. Core supports one live preparation per workspace: another tab or a policy change can expire that token. Replace then preserves the draft, refreshes the preview and requires an intentional retry; it never silently inserts a different code. Replace commits encrypted originals before applying placeholders; progress, failures and valid Undo/Redo stay in the popup. Keep as is belongs to the unchanged draft. More contains Redact, lasting Always allow skipped and sidebar access. The floating page tab is removed.
+The circle previews the current draft's findings and markers. The displayed concrete marker comes from the exact retained Core preparation, identified by a preview token. Core supports one live preparation per workspace: another tab or a policy change can expire that token. Apply then preserves the draft, refreshes the preview and requires an intentional retry; it never silently inserts a different code. Each included row selects Replace or Redact. Apply saves only Replace originals before applying the exact combined plan, with one Undo/Redo entry; skipped occurrences remain as typed. Close dismisses without suppressing findings. Rules and saved-original menus own lasting allow exceptions; Chrome’s toolbar opens the sidebar. The floating page tab is removed.
 
 Answers independently toggle known originals in extension-owned display, including repeated and adjacent markers. Provider text stays unchanged. Unknown markers remain markers and receive a partial-result notice when mixed with known markers. The sidebar has exactly two tabs, Originals and Rules. Its gear opens settings, which owns checking preferences, appearance and vault deletion.
 
@@ -21,7 +27,7 @@ See [ADR 002](adr/002-automatic-fogvault-ux.md) for superseded decisions, matchi
 
 | Behavior                         | Owner                                                                                         |
 | -------------------------------- | --------------------------------------------------------------------------------------------- |
-| Circle, popup, More              | `CircleSurface` derives visibility from the owning DOM; `BadgeState` projects checking status |
+| Circle and popup                 | `CircleSurface` derives visibility from the owning DOM; `BadgeState` projects checking status |
 | Sidebar                          | `activeView` and access union in `panel.ts`                                                   |
 | Draft scanning                   | `ScanState`, sequence, draft revision and policy token in `content.ts`                        |
 | Draft transformation and history | `ActionState`, operation ID, revision and `Redaction` history in `content.ts`                 |
@@ -34,9 +40,9 @@ See [ADR 002](adr/002-automatic-fogvault-ux.md) for superseded decisions, matchi
 
 ## November 22: contextual actions and local-original clarity
 
-Held sends now offer Send as is or Replace & send. The latter releases exactly one native send only after durable saving and application of the current accepted preview. Repeated native button clicks keep the choice available; proactive Replace never sends. Keyboard activation distinguishes an already-open popup from the Enter that opened it, with repeated-key and IME guards.
+Held sends offer Apply & send, or Send as is when every finding is unchecked. Apply & send releases exactly one native send only after durable saving and application of the current accepted preview; Send as is explicitly releases the unchanged draft. Repeated native button clicks keep the choice available; proactive Apply never sends. Keyboard activation distinguishes an already-open popup from the Enter that opened it, with repeated-key and IME guards.
 
-Automatically replace on paste is off by default and stored with encrypted preferences. Opted-in pastes replace locally after saving and never send. Manual and pasted replacements expose quick Undo. Redact explicitly says “Not saved to vault.” Per-answer Show originals / Show tokens uses local highlighted values with token tooltips; Copy with originals is separate from native Copy and rejects stale answer reads. Preview tokens have quieter styling, long saved originals retain their suffix and full hover value, and the welcome CTA chooses the current supported tool. See [ADR 003](adr/003-contextual-actions-and-local-answer-cues.md).
+Automatically replace on paste is off by default and stored with encrypted preferences. Opted-in pastes replace locally after saving and never send. Manual and pasted replacements expose quick Undo. The mode tooltip explains that Redact removes details without saving originals, while Replace saves originals and inserts reversible tokens. Per-answer Show originals / Show tokens uses local highlighted values with token tooltips; Copy with originals is separate from native Copy and rejects stale answer reads. Preview tokens have quieter styling, long saved originals retain their suffix and full hover value, and the welcome CTA chooses the current supported tool. See [ADR 003](adr/003-contextual-actions-and-local-answer-cues.md).
 
 Browser validation uses genuine keyboard, mouse and OS clipboard input against all five controlled site profiles. Each controlled native send records the payload at the send event, so tests verify that replacements are applied before sending. Synthetic authenticated ChatGPT checks continue to use the existing signed-in browser with the original extension temporarily suspended and restored, without resetting its vault.
 
@@ -56,7 +62,7 @@ Review screenshots under `.playwright/exports/nov22-*` cover light/dark popups o
 
 ## Revision 7: choosing findings and saved-original actions
 
-The popup now starts with each occurrence chosen. Unchecking keeps that occurrence as typed, including when the same original appears more than once. Selection is identified by UTF-16 source ranges and guarded by draft, tab, preview and committed policy identity. Replace uses the exact newly prepared markers; Redact respects the same kept occurrences. With nothing chosen, neither operation is available. Same-draft rescans retain choices, edits reset them, and Always allow applies only to skipped values.
+The popup now starts with each occurrence chosen. Unchecking keeps that occurrence as typed, including when the same original appears more than once. Selection is identified by UTF-16 source ranges and guarded by draft, tab, preview and committed policy identity. Apply uses the exact prepared mixed plan: Replace saves reversible markers and Redact uses labels without saving those originals. With nothing chosen, proactive Apply is disabled; a held draft offers explicit Send as is. Same-draft rescans retain choices and row modes, while edits reset them. Lasting allow exceptions are managed separately in Rules and saved-original menus.
 
 Saved-original rows offer Copy original, Always allow this value and confirmed Forget. Typed allowances show an Allowed chip. Forget uses Core's existing token-retirement API and durable commit/reconciliation boundary, removes the row and hides already-shown originals without changing provider messages. Cancellation and confirmed failures preserve mappings; uncertain writes are reconciled. No cryptography, database format or detector policy was changed.
 

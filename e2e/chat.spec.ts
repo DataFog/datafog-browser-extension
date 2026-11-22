@@ -1,3 +1,4 @@
+import { redactAll } from "./fixtures";
 import type { Page } from "@playwright/test";
 
 import { expect, expectBadgeFitsBox, SAMPLE, test } from "./fixtures";
@@ -65,8 +66,7 @@ test("checking and Redact still work after Chrome stops the idle service worker"
     await extension.worker.evaluate(() => "stoppedByTest" in globalThis),
   ).toBe(false);
   await openBadge(badge);
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(composer).toHaveText(
     "my email is [EMAIL] and card [CREDIT_CARD] typed later",
   );
@@ -84,8 +84,7 @@ test("the badge keeps one round size in every state, as the box grows and as the
   await found(badge, 2);
   await expectBadgeFitsBox(badge, box, 56, "50%");
   await openBadge(badge);
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
     .toBe("Checked · nothing found");
@@ -185,8 +184,7 @@ test("Redact, Undo and Redo preserve the prompt and edits invalidate history", a
   await composer.fill(SAMPLE);
   await found(badge, 2);
   await openBadge(badge);
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(composer).toHaveText(redacted);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
@@ -234,14 +232,13 @@ test("Redact replaces a link chip, so its target is redacted too", async ({
     .poll(() => badge.state(".dot").then((state) => state.title))
     .toContain("found");
   await openBadge(badge);
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
 
   await expect(composer).toContainText("[EMAIL]");
   expect(await composer.innerHTML()).not.toContain("jane@example.com");
 });
 
-test("Keep as is leaves text intact and an edit restores the warning", async ({
+test("Close leaves text intact and keeps findings available for review", async ({
   chat,
   badge,
 }) => {
@@ -249,11 +246,11 @@ test("Keep as is leaves text intact and an edit restores the warning", async ({
   await composer.fill(SAMPLE);
   await found(badge, 2);
   await openBadge(badge);
-  await badge.click(".dismiss");
+  await badge.click(".close");
   await expect(composer).toHaveText(SAMPLE);
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
-    .toBe("datafog");
+    .toBe("2 found · click to review");
   await expect(chat.locator("#sent-count")).toHaveText("0");
 
   await composer.fill(`${SAMPLE} and jane@example.com`);
@@ -313,12 +310,10 @@ for (const sendMethod of ["button", "Enter"] as const) {
     await expect
       .poll(() => badge.state(".paused").then((state) => state.text))
       .toContain("Choose how to send this message.");
-    await expect
-      .poll(() => badge.state(".send").then((state) => state.visible))
-      .toBe(true);
+    expect((await badge.state(".send")).visible).toBe(false);
     await expect
       .poll(async () => (await badge.state(".pseudonymize")).text)
-      .toBe("Replace & send");
+      .toBe("Apply & send");
     await send();
     if (sendMethod === "button") {
       await expect(chat.locator("#sent-count")).toHaveText("0");
@@ -345,11 +340,19 @@ test("send blocking: Send as is bypasses the warning exactly once", async ({
   await found(badge, 2);
   await chat.locator('[data-testid="send-button"]').click();
   await expect(chat.locator("#sent-count")).toHaveText("0");
+  await badge.click(".preview li:first-child .choose");
   await expect
-    .poll(() => badge.state(".send").then((state) => state.visible))
-    .toBe(true);
-  expect((await badge.state(".send")).text).toBe("Send as is");
-  await badge.click(".send");
+    .poll(
+      async () =>
+        (await badge.state(".preview li:nth-child(2) .choose")).disabled,
+    )
+    .toBe(false);
+  await badge.click(".preview li:nth-child(2) .choose");
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).text)
+    .toBe("Send as is");
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  await badge.click(".pseudonymize");
   await expect(chat.locator("#sent-count")).toHaveText("1");
   await expect(chat.locator("#sent-text")).toHaveText(SAMPLE);
 });
@@ -473,8 +476,7 @@ test("settings: disabling a detector persists and leaves that type untouched", a
   await openBadge(badge);
   expect((await badge.state("ul")).text).toContain("Card number: 1");
   expect((await badge.state("ul")).text).not.toContain("Email address");
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(chat.locator("#prompt-textarea")).toHaveText(
     "my email is jane@example.com and card [CREDIT_CARD]",
   );
@@ -498,8 +500,7 @@ test("settings: exact allowlist survives reopening and Redact preserves allowed 
   await found(badge, 1);
   await openBadge(badge);
   expect((await badge.state("ul")).text).toContain("Card number: 1");
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(chat.locator("#prompt-textarea")).toHaveText(
     "my email is jane@example.com and card [CREDIT_CARD]",
   );
@@ -546,8 +547,7 @@ test("non-English text and emoji survive detection, redaction and Undo", async (
   await composer.fill(text);
   await found(badge, 1);
   await openBadge(badge);
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(composer).toHaveText("こんにちは 👩🏽‍💻 café — correo [EMAIL] 🙂");
   await expect
     .poll(() => badge.state(".dot").then((state) => state.title))
@@ -557,7 +557,7 @@ test("non-English text and emoji survive detection, redaction and Undo", async (
   await expect(composer).toHaveText(text);
 });
 
-test("held Replace & send commits exactly the chosen preview and sends once", async ({
+test("held mixed Apply & send commits exactly the chosen preview and sends once", async ({
   chat,
   badge,
   extension,
@@ -571,13 +571,13 @@ test("held Replace & send commits exactly the chosen preview and sends once", as
   await chat.locator('[data-testid="send-button"]').click();
   await expect
     .poll(async () => (await badge.state(".pseudonymize")).text)
-    .toBe("Replace & send");
-  expect((await badge.state(".dismiss")).visible).toBe(false);
+    .toBe("Apply & send");
+  expect((await badge.state(".send")).visible).toBe(false);
   await expect(chat.locator("#sent-count")).toHaveText("0");
-  await badge.click('.choose[aria-label="Replace 4111 1111 1111 1111"]');
+  await badge.click('.preview li:nth-child(2) .mode[data-mode="redact"]');
   await expect
     .poll(async () => (await badge.state(".pseudonymize")).text)
-    .toBe("Replace 1 & send");
+    .toBe("Apply & send");
   await expect
     .poll(async () => (await badge.state(".pseudonymize")).disabled)
     .toBe(false);
@@ -587,7 +587,7 @@ test("held Replace & send commits exactly the chosen preview and sends once", as
   await badge.click(".pseudonymize");
   await expect(chat.locator("#sent-count")).toHaveText("1");
   await expect(chat.locator("#sent-text")).toHaveText(
-    `my email is ${marker} and card 4111 1111 1111 1111`,
+    `my email is ${marker} and card [CREDIT_CARD]`,
   );
   const panel = await extension.panel();
   await expect(panel.locator("#originals")).toContainText("jane@example.com");
@@ -604,8 +604,8 @@ test("proactive Enter replaces without sending and quick Undo restores the draft
   await composer.fill(SAMPLE);
   await found(badge, 2);
   await badge.click(".dot");
-  expect((await badge.state(".pseudonymize")).text).toBe("Replace");
-  expect((await badge.state(".dismiss")).text).toBe("Keep as is");
+  expect((await badge.state(".pseudonymize")).text).toBe("Apply");
+  expect((await badge.state(".close")).visible).toBe(true);
   await chat.keyboard.press("Escape");
   await expect
     .poll(async () => (await badge.state(".panel")).visible)

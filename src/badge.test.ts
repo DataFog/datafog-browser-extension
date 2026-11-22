@@ -46,9 +46,7 @@ function mount(site?: Site): {
   const box = document.querySelector<HTMLElement>("[contenteditable]")!;
   const badge = new Badge(
     {
-      redact: () => {},
       pseudonymize: () => {},
-      dismiss: () => {},
       undo: () => {},
       redo: () => {},
       send: () => {},
@@ -157,7 +155,7 @@ test("hides when the chat box is off screen", async () => {
   expect(wrap.style.visibility).toBe("hidden");
 });
 
-test("keeps sidebar access available and shows Replace for findings", () => {
+test("keeps only Close in the popup header and shows Apply for findings", () => {
   const { badge, wrap } = mount();
   const actions = wrap.querySelector<HTMLElement>(".actions")!;
 
@@ -166,11 +164,13 @@ test("keeps sidebar access available and shows Replace for findings", () => {
 
   badge.show({ kind: "found", counts: { EMAIL: 1 } });
   expect(actions.hidden).toBe(false);
-  const resolve = actions.querySelector(".resolve")!;
-  expect(Array.from(resolve.children, (button) => button.textContent)).toEqual([
-    "Replace",
-    "More",
-  ]);
+  expect(actions.querySelector(".pseudonymize")!.textContent).toBe("Apply");
+  expect(wrap.querySelector(".more")).toBeNull();
+  expect(wrap.querySelector(".dismiss")).toBeNull();
+  expect(wrap.querySelector(".sidebar")).toBeNull();
+  expect(
+    wrap.querySelector(".head")!.lastElementChild!.classList.contains("close"),
+  ).toBe(true);
 });
 
 test.each([
@@ -211,7 +211,7 @@ test.each([
   expect(wrap.style.right).toBe(badgeRight);
 });
 
-test("greys out while checking is off and allows sidebar access", () => {
+test("greys out while checking is off without an extra sidebar shortcut", () => {
   const { badge, wrap } = mount();
   const dot = wrap.querySelector<HTMLButtonElement>(".dot")!;
   const panel = wrap.querySelector<HTMLElement>(".panel")!;
@@ -223,9 +223,7 @@ test("greys out while checking is off and allows sidebar access", () => {
 
   dot.click();
   expect(panel.hidden).toBe(false);
-  expect(wrap.querySelector<HTMLButtonElement>(".more-toggle")!.hidden).toBe(
-    false,
-  );
+  expect(wrap.querySelector(".sidebar")).toBeNull();
   expect(dot.className).toBe("dot off");
 });
 
@@ -244,14 +242,8 @@ test("hover and keyboard focus explain status without opening actions; Escape re
   dot.click();
   expect(panel.hidden).toBe(false);
   expect(tooltip.hidden).toBe(true);
-  const more = wrap.querySelector<HTMLButtonElement>(".more-toggle")!;
-  more.click();
-  more.dispatchEvent(
-    new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
-  );
-  expect(wrap.querySelector<HTMLElement>(".more")!.hidden).toBe(true);
-  expect(panel.hidden).toBe(false);
-  more.dispatchEvent(
+  const close = wrap.querySelector<HTMLButtonElement>(".close")!;
+  close.dispatchEvent(
     new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
   );
   expect(panel.hidden).toBe(true);

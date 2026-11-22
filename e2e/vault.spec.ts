@@ -1,3 +1,4 @@
+import { redactAll } from "./fixtures";
 import { test, expect } from "./fixtures";
 
 const EMAIL = "jane@example.com";
@@ -76,9 +77,13 @@ test("Always allow is committed and rechecks the unchanged draft across restart"
   await chat.locator("#prompt-textarea").fill(EMAIL);
   await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
   await badge.click(".dot");
-  await badge.click('.choose[aria-label="Replace jane@example.com"]');
-  await badge.click(".more-toggle");
-  await badge.click(".allow");
+  await badge.click(".pseudonymize");
+  await expect(chat.locator("#prompt-textarea")).toContainText("[[EMAIL_");
+  await badge.click(".undo");
+  const panel = await extension.panel();
+  const row = panel.locator("#originals li").filter({ hasText: EMAIL });
+  await row.locator(".original-menu-toggle").click();
+  await row.locator('[data-action="allow"]').click();
   await expect
     .poll(async () => (await badge.state(".dot")).title)
     .toContain("nothing found");
@@ -269,9 +274,6 @@ test("finding choices independently control repeated values for Replace and Reda
   await expect
     .poll(async () => (await badge.state(".pseudonymize")).disabled)
     .toBe(true);
-  await badge.click(".more-toggle");
-  expect((await badge.state(".redact")).disabled).toBe(true);
-  await badge.click(".more-toggle");
   await expect
     .poll(
       async () =>
@@ -281,7 +283,7 @@ test("finding choices independently control repeated values for Replace and Reda
   await badge.click(".preview li:nth-child(2) .choose");
   await expect
     .poll(async () => (await badge.state(".pseudonymize")).text)
-    .toBe("Replace 1");
+    .toBe("Apply");
   await expect
     .poll(async () => (await badge.state(".pseudonymize")).disabled)
     .toBe(false);
@@ -297,7 +299,7 @@ test("finding choices independently control repeated values for Replace and Reda
   if (!(await badge.state(".panel")).visible) await badge.click(".dot");
   await expect
     .poll(async () => (await badge.state(".pseudonymize")).text)
-    .toBe("Replace");
+    .toBe("Apply");
   // Rechecks intentionally retain the old count; wait for actionable fresh results.
   await expect
     .poll(async () => (await badge.state(".pseudonymize")).disabled)
@@ -306,8 +308,7 @@ test("finding choices independently control repeated values for Replace and Reda
   await expect
     .poll(async () => (await badge.state(".pseudonymize")).disabled)
     .toBe(false);
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(editor).toHaveText(`Edited ${EMAIL} / [EMAIL]`);
   await expect(chat.locator("#sent-count")).toHaveText("0");
 });
@@ -375,5 +376,48 @@ test("saved-original menu allows a value and confirmed Forget retires it across 
   await reopened.locator("#lookup button").click();
   await expect(reopened.locator("#lookup-result")).toContainText(
     "No original saved",
+  );
+});
+
+test("one mixed Apply replaces, redacts and skips independently with one Undo and only replaced originals saved", async ({
+  chat,
+  badge,
+  extension,
+}) => {
+  const kept = "4111 1111 1111 1111";
+  const redacted = "private@example.net";
+  const source = `Email ${EMAIL}; redact ${redacted}; keep ${kept}`;
+  const composer = chat.locator("#prompt-textarea");
+  await composer.fill(source);
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("3");
+  await badge.click(".dot");
+  await badge.click('.preview li:nth-child(2) .mode[data-mode="redact"]');
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).disabled)
+    .toBe(false);
+  await badge.click('.choose[aria-label="Include 4111 1111 1111 1111"]');
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).disabled)
+    .toBe(false);
+  const marker = (await badge.state(".preview li:first-child")).text.match(
+    /\[\[EMAIL_[A-Z0-9]+\]\]/,
+  )![0];
+  await badge.click(".pseudonymize");
+  await expect(composer).toHaveText(
+    `Email ${marker}; redact [EMAIL]; keep ${kept}`,
+  );
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  const panel = await extension.panel();
+  await expect(panel.locator("#originals li")).toHaveCount(1);
+  await expect(panel.locator("#originals li")).toContainText(EMAIL);
+  await expect(panel.locator("#originals")).not.toContainText(redacted);
+  await expect(panel.locator("#originals")).not.toContainText(kept);
+  await chat.bringToFront();
+  if (!(await badge.state(".panel")).visible) await badge.click(".dot");
+  await badge.click(".undo");
+  await expect(composer).toHaveText(source);
+  await badge.click(".redo");
+  await expect(composer).toHaveText(
+    `Email ${marker}; redact [EMAIL]; keep ${kept}`,
   );
 });

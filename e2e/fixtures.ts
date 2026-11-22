@@ -34,6 +34,9 @@ type NodeInfo = {
 
 export interface ShadowState {
   text: string;
+  matches: number;
+  pressed: string | null;
+  checked: string | null;
   title: string;
   visible: boolean;
   disabled: boolean;
@@ -41,6 +44,11 @@ export interface ShadowState {
   /** The top right corner's radius, as computed. */
   radius: string;
   color: string;
+  backgroundColor: string;
+  focused: boolean;
+  textOverflow: string;
+  scrollWidth: number;
+  clientWidth: number;
   animationName: string;
   animationDuration: string;
   transitionDuration: string;
@@ -85,11 +93,15 @@ export class ClosedShadow {
           if (!el) throw new Error('Missing shadow element: ' + selector);
           const r = el.getBoundingClientRect();
           return {
-            text: el.textContent || '', title: el.getAttribute('title') || '',
+            text: el.textContent || '', matches: this.querySelectorAll(selector).length, pressed: el.getAttribute('aria-pressed'), checked: el.getAttribute('aria-checked'), title: el.getAttribute('title') || '',
             visible: el.checkVisibility(), disabled: Boolean(el.disabled),
             rect: {x:r.x,y:r.y,width:r.width,height:r.height},
             radius: getComputedStyle(el).borderTopRightRadius,
             color: getComputedStyle(el).color,
+            backgroundColor: getComputedStyle(el).backgroundColor,
+            focused: this.activeElement === el,
+            textOverflow: getComputedStyle(el).textOverflow,
+            scrollWidth: el.scrollWidth, clientWidth: el.clientWidth,
             animationName: getComputedStyle(el).animationName,
             animationDuration: getComputedStyle(el).animationDuration,
             transitionDuration: getComputedStyle(el).transitionDuration
@@ -119,6 +131,28 @@ export class ClosedShadow {
       rect.y + rect.height / 2,
     );
   }
+}
+
+/** Set each included finding to Redact, then commit the exact refreshed plan. */
+export async function redactAll(badge: ClosedShadow): Promise<void> {
+  const rows = ".preview li";
+  const count = (await badge.state(rows)).matches;
+  for (let index = 0; index < count; index++) {
+    const row = `${rows}:nth-child(${index + 1})`;
+    if ((await badge.state(`${row} .choose`)).checked !== "true") continue;
+    const selector = `${row} .mode[data-mode="redact"]`;
+    await expect
+      .poll(async () => (await badge.state(selector)).disabled)
+      .toBe(false);
+    await badge.click(selector);
+    await expect
+      .poll(async () => (await badge.state(selector)).pressed)
+      .toBe("true");
+    await expect
+      .poll(async () => (await badge.state(".pseudonymize")).disabled)
+      .toBe(false);
+  }
+  await badge.click(".pseudonymize");
 }
 
 /**
@@ -698,11 +732,73 @@ export class Extension {
     }
     chat ??= await this.newChat();
     await chat.bringToFront();
-    const badge = this.badge(chat);
-    if (!(await badge.state(".panel")).visible) await badge.click(".dot");
-    if (!(await badge.state(".more")).visible)
-      await badge.click(".more-toggle");
-    await badge.click(".sidebar");
+    await this.verifyPage(chat);
+    const tabSession = await chat.context().newCDPSession(chat);
+    const { targetInfo } = await tabSession.send("Target.getTargetInfo");
+    await tabSession.detach();
+    const targetWindow =
+      windowId ??
+      (await this.worker.evaluate(async () => {
+        const [tab] = await chrome.tabs.query({
+          active: true,
+          lastFocusedWindow: true,
+        });
+        if (tab?.windowId === undefined)
+          throw new Error("No active extension window");
+        return tab.windowId;
+      }));
+    const alreadyOpen = await this.worker.evaluate(
+      async (id) =>
+        (
+          await chrome.runtime.getContexts({
+            contextTypes: [chrome.runtime.ContextType.SIDE_PANEL],
+          })
+        ).some((context) => context.windowId === id),
+      targetWindow,
+    );
+    if (!alreadyOpen) {
+      // Exercise Chrome's actual toolbar action; no popup-only sidebar shortcut.
+      const action = await this.context.browser()!.newBrowserCDPSession();
+      try {
+        await this.activateProfile();
+        await chat.bringToFront();
+        await this.verifyPage(chat);
+        const expectedWindow = await action.send("Browser.getWindowForTarget", {
+          targetId: targetInfo.targetId,
+        });
+        const targets = await action.send("Target.getTargets", {
+          filter: [{ type: "tab", exclude: false }, { exclude: true }],
+        });
+        const matching = [];
+        for (const target of targets.targetInfos) {
+          const metadata: unknown = target.embedderData;
+          if (
+            target.url !== chat.url() ||
+            target.browserContextId !== targetInfo.browserContextId ||
+            !metadata ||
+            typeof metadata !== "object" ||
+            !("tabActive" in metadata) ||
+            metadata.tabActive !== true
+          )
+            continue;
+          const nativeWindow = await action.send("Browser.getWindowForTarget", {
+            targetId: target.targetId,
+          });
+          if (nativeWindow.windowId === expectedWindow.windowId)
+            matching.push(target);
+        }
+        if (matching.length !== 1)
+          throw new Error(
+            "The toolbar action needs one verified active tab target",
+          );
+        await action.send("Extensions.triggerAction", {
+          id: this.id,
+          targetId: matching[0].targetId,
+        });
+      } finally {
+        await action.detach();
+      }
+    }
     // Chrome's side panel is a native extension view, not an extension tab.
     // Playwright does not auto-attach it when created. A second public CDP
     // connection attaches existing page targets without weakening sender checks.

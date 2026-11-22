@@ -1,3 +1,4 @@
+import { redactAll } from "./fixtures";
 import type { Page } from "@playwright/test";
 import { expect, test, type Extension } from "./fixtures";
 
@@ -46,8 +47,7 @@ test("deny list: a phrase is flagged and redacted even when allowed", async ({
   const badge = extension.badge(chat);
 
   await badge.click(".dot");
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
 
   await expect(chat.locator("#prompt-textarea")).toHaveText(
     "Ship [DENYLIST] Friday",

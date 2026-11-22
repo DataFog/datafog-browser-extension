@@ -144,7 +144,7 @@ async function forwardVault<T>(
     }
   } catch (error) {
     if (
-      request.type === "pseudonymize" &&
+      (request.type === "pseudonymize" || request.type === "apply") &&
       typeof result === "object" &&
       result !== null &&
       "saved" in result &&
@@ -428,6 +428,10 @@ async function handle(
   host?: string,
 ): Promise<unknown> {
   const tabId = tab?.id;
+  if (request.type === "apply") {
+    if (!tab || tabId === undefined) throw coded("no_tab");
+    return forwardVault({ ...request, tabId }, host);
+  }
   if (request.type === "pseudonymize") {
     if (!tab || tabId === undefined) throw coded("no_tab");
     return forwardVault(

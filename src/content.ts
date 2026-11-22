@@ -68,7 +68,6 @@ type ScanState =
   | { kind: "checked"; text: string; found: boolean }
   | { kind: "unavailable"; text: string; code: string };
 let scanState: ScanState = { kind: "idle" };
-let dismissedText: string | null = null;
 let redaction: Redaction | null = null;
 let blockSends = false;
 type SendState =
@@ -89,6 +88,7 @@ let actionState: ActionState = { kind: "idle" };
 let applying = false;
 let findings: ReviewItem[] = [];
 let kept: KeepPlace[] = [];
+let redacted: KeepPlace[] = [];
 let choicesText = "";
 let previewId: string | undefined;
 /** Whether checking is on. Assumed on if the setting can't be read, so a scan reports why. */
@@ -136,15 +136,12 @@ const settingsLoaded = loadSettings(location.hostname).then(applySettings, () =>
 );
 
 const badge = new Badge({
-  redact: redactComposer,
-  pseudonymize: pseudonymizeComposer,
-  dismiss,
+  pseudonymize: applyComposer,
   undo: undoRedaction,
   redo: redoRedaction,
   send: sendAnyway,
-  sidebar: () => void togglePanel(),
-  allow: () => void alwaysAllow(),
   choose: (index) => void chooseFinding(index),
+  mode: (index, mode) => void chooseFinding(index, mode),
   retry: () => void refreshPolicy(),
 });
 
@@ -263,6 +260,7 @@ async function scanNow(force = false): Promise<void> {
   lastScanned = text;
   if (choicesText !== text) {
     kept = [];
+    redacted = [];
     choicesText = text;
   }
   // Anything typed since means the redaction no longer lines up with the text
@@ -286,6 +284,16 @@ async function scanNow(force = false): Promise<void> {
     seq: mine,
     text,
     ...(kept.length ? { keep: kept } : {}),
+    ...(redacted.length
+      ? {
+          redact: redacted.filter(
+            (place) =>
+              !kept.some(
+                (skip) => skip.start === place.start && skip.end === place.end,
+              ),
+          ),
+        }
+      : {}),
   });
   if (mine !== seq || composer === null || readText(composer) !== text) return;
   if ("error" in response) {
@@ -310,8 +318,6 @@ async function scanNow(force = false): Promise<void> {
   const found = Object.keys(response.counts).length > 0;
   scanState = { kind: "checked", text, found };
   if (!response.enabled) badge.show({ kind: "off" });
-  // A dismissed warning falls back to the plain logo until the text changes
-  else if (text === dismissedText) badge.show({ kind: "idle" });
   else
     badge.show(
       found ? { kind: "found", counts: response.counts } : { kind: "clean" },
@@ -341,10 +347,7 @@ async function scanNow(force = false): Promise<void> {
  */
 function unresolved(text: string): boolean {
   return (
-    scanState.kind === "checked" &&
-    scanState.found &&
-    text === scanState.text &&
-    text !== dismissedText
+    scanState.kind === "checked" && scanState.found && text === scanState.text
   );
 }
 
@@ -484,7 +487,6 @@ function schedule(delay: number): void {
       : undefined;
   operationId++;
   redaction = null;
-  dismissedText = null;
   findings = [];
   previewId = undefined;
   badge.preview([]);
@@ -698,7 +700,10 @@ function updateAction(state: ActionState): void {
 }
 
 /** Transform a captured draft, applying only after a confirmed response. */
-async function chooseFinding(index: number): Promise<void> {
+async function chooseFinding(
+  index: number,
+  mode?: "replace" | "redact",
+): Promise<void> {
   if (
     !composer ||
     actionState.kind === "working" ||
@@ -712,13 +717,25 @@ async function chooseFinding(index: number): Promise<void> {
   const capturedRevision = revision;
   const mine = ++operationId;
   const scan = ++seq;
-  const next = kept.some(
-    (place) => place.start === finding.start && place.end === finding.end,
-  )
-    ? kept.filter(
-        (place) => place.start !== finding.start || place.end !== finding.end,
-      )
-    : [...kept, { start: finding.start, end: finding.end }];
+  const next = mode
+    ? kept
+    : kept.some(
+          (place) => place.start === finding.start && place.end === finding.end,
+        )
+      ? kept.filter(
+          (place) => place.start !== finding.start || place.end !== finding.end,
+        )
+      : [...kept, { start: finding.start, end: finding.end }];
+  const nextRedacted = mode
+    ? [
+        ...redacted.filter(
+          (place) => place.start !== finding.start || place.end !== finding.end,
+        ),
+        ...(mode === "redact"
+          ? [{ start: finding.start, end: finding.end }]
+          : []),
+      ]
+    : redacted;
   const reservation = previewId;
   previewId = undefined;
   updateAction({
@@ -733,6 +750,12 @@ async function chooseFinding(index: number): Promise<void> {
     seq: scan,
     previewId: reservation,
     keep: next,
+    redact: nextRedacted.filter(
+      (place) =>
+        !next.some(
+          (skip) => skip.start === place.start && skip.end === place.end,
+        ),
+    ),
   });
   if (
     mine !== operationId ||
@@ -748,16 +771,18 @@ async function chooseFinding(index: number): Promise<void> {
   ) {
     // Keep the user's intent, but never permit Replace with an unseen token.
     kept = next;
+    redacted = nextRedacted;
     await scanNow(true);
     if (mine === operationId && revision === capturedRevision)
       updateAction({
         kind: "failed",
         message:
-          "Selection preview was refreshed. Check the selected values before replacing.",
+          "Selection preview was refreshed. Check the selected values before applying.",
       });
     return;
   }
   kept = next;
+  redacted = nextRedacted;
   findings = response.findings ?? [];
   previewId = response.previewId;
   badge.preview(findings);
@@ -765,36 +790,36 @@ async function chooseFinding(index: number): Promise<void> {
 }
 
 async function transform(
-  kind: "redact" | "pseudonymize",
+  kind: "pseudonymize" | "apply",
   pasted = false,
 ): Promise<void> {
   if (!composer || actionState.kind === "working") return;
   if (findings.length > 0 && findings.every((item) => item.kept)) return;
   const element = composer;
   const text = readText(element);
+  const mixed = kind === "apply";
   const sendAfter =
-    !pasted &&
-    kind === "pseudonymize" &&
-    sendState.kind === "warned" &&
-    sendState.text === text;
+    !pasted && mixed && sendState.kind === "warned" && sendState.text === text;
   const capturedRevision = revision;
   const mine = ++operationId;
   updateAction({
     kind: "working",
-    message: kind === "pseudonymize" ? "Saving originals…" : "Redacting…",
+    message: mixed ? "Applying choices…" : "Saving originals…",
     operationId: mine,
     revision: capturedRevision,
   });
   const response = await ask<
-    RedactResponse & { saved?: boolean; warning?: string }
+    RedactResponse & {
+      saved?: boolean;
+      warning?: string;
+      applied?: boolean;
+      replaced?: number;
+      redacted?: number;
+    }
   >(
-    kind === "pseudonymize" && previewId
-      ? { type: kind, text, previewId }
-      : {
-          type: kind,
-          text,
-          ...(kind === "redact" && kept.length ? { keep: kept } : {}),
-        },
+    mixed
+      ? { type: "apply", text, previewId: previewId ?? "" }
+      : { type: "pseudonymize", text, ...(previewId ? { previewId } : {}) },
   );
   if (
     mine !== operationId ||
@@ -835,7 +860,7 @@ async function transform(
       updateAction({
         kind: "failed",
         message:
-          "The preview expired and was refreshed. Your draft is unchanged. Check it, then Replace again.",
+          "The preview expired and was refreshed. Your draft is unchanged. Check it, then Apply again.",
       });
     }
     return;
@@ -843,15 +868,20 @@ async function transform(
   if ("error" in response) {
     updateAction({
       kind: "failed",
-      message: `Couldn’t ${kind === "redact" ? "redact" : "confirm the encrypted save"}. Your draft is unchanged. Retry the action to reconcile storage. (${response.error})`,
+      message: `Couldn’t ${mixed ? "apply the choices" : "confirm the encrypted save"}. Your draft is unchanged. Retry the action to reconcile storage. (${response.error})`,
     });
     return;
   }
-  if (kind === "pseudonymize" && response.saved !== true) {
+  if (
+    (kind === "pseudonymize" && response.saved !== true) ||
+    (mixed &&
+      (response.applied !== true ||
+        ((response.replaced ?? 0) > 0 && response.saved !== true)))
+  ) {
     updateAction({
       kind: "failed",
       message:
-        "The save could not be confirmed. Your draft is unchanged. Replace again to retry.",
+        "The result could not be confirmed. Your draft is unchanged. Retry the action.",
     });
     return;
   }
@@ -866,62 +896,41 @@ async function transform(
   updateAction({
     kind: applied ? "complete" : "failed",
     message: applied
-      ? kind === "pseudonymize"
-        ? response.warning
+      ? mixed
+        ? `Applied. ${response.replaced ?? 0} replaced; ${response.redacted ?? 0} redacted.${response.saved ? " Originals saved in your vault." : " Nothing was saved."}`
+        : response.warning
           ? "Replaced. Originals saved; storage will retry a detail. Tokens still restore."
           : "Replaced. Originals saved in your vault."
-        : "Redacted. Nothing was saved."
-      : kind === "pseudonymize"
+      : response.saved === true
         ? "Originals saved, but the editor did not accept the change. Nothing was sent."
         : "The editor didn't take the full change. Check your draft before sending.",
   });
-  if (applied && kind === "pseudonymize" && !sendAfter)
-    badge.replaced(response.edits.length);
+  if (applied && !sendAfter)
+    badge.replaced(
+      response.edits.length,
+      mixed && (response.redacted ?? 0) > 0 ? "Applied" : "Replaced",
+    );
   if (applied && sendAfter) {
     badge.close();
     sendAnyway();
   }
 }
 
-async function redactComposer(): Promise<void> {
-  await transform("redact");
-}
-async function pseudonymizeComposer(): Promise<void> {
-  await transform("pseudonymize");
-}
-
-async function alwaysAllow(): Promise<void> {
-  if (actionState.kind === "working" || !findings.length) return;
-  const captured = findings.filter((item) => item.kept);
-  if (!captured.length) return;
-  const mine = ++operationId;
-  updateAction({
-    kind: "working",
-    message: "Saving Always allow…",
-    operationId: mine,
-    revision,
-  });
-  for (const item of captured) {
-    const response = await ask<object>({
-      type: "always-allow",
-      entityType: item.entityType,
-      value: item.original,
-    });
-    if ("error" in response) {
-      updateAction({
-        kind: "failed",
-        message: `Couldn’t confirm every rule. Retry to check the committed policy. (${response.error})`,
-      });
-      await refreshPolicy();
-      return;
+async function applyComposer(): Promise<void> {
+  if (
+    !composer ||
+    actionState.kind === "working" ||
+    scanState.kind !== "checked"
+  )
+    return;
+  if (findings.length > 0 && findings.every((item) => item.kept)) {
+    if (sendState.kind === "warned" && sendState.text === readText(composer)) {
+      badge.close();
+      sendAnyway();
     }
+    return;
   }
-  if (mine === operationId)
-    updateAction({
-      kind: "complete",
-      message: "Always allowed. Always flag still wins.",
-    });
-  await refreshPolicy();
+  await transform("apply");
 }
 
 async function replaceFound(
@@ -940,7 +949,6 @@ async function replaceFound(
         restore: restoring(text, response),
       }
     : null;
-  dismissedText = null;
   await scanNow(true);
   return applied;
 }
@@ -965,7 +973,6 @@ async function refreshPolicy(): Promise<void> {
   previewId = undefined;
   badge.preview([]);
   badge.show({ kind: "checking" });
-  dismissedText = null;
   sendState =
     intercepted === null
       ? { kind: "ready" }
@@ -1141,21 +1148,6 @@ function redoRedaction(): void {
   if (!sameText(readText(composer), redaction.before)) return;
   applyEdits(composer, redaction.before, redaction.redact);
   void scanNow(true);
-}
-
-/** Open or close the side panel; an orphaned script can only ask for a reload. */
-async function togglePanel(): Promise<void> {
-  const response = await ask<object>({ type: "open-panel" });
-  if ("error" in response && response.error === "extension_reloaded")
-    badge.show({ kind: "failed", code: response.error });
-}
-
-/** Clear the warning until the text changes. */
-function dismiss(): void {
-  if (!composer) return;
-  dismissedText = readText(composer);
-  badge.holdSend(null);
-  badge.show({ kind: "idle" });
 }
 
 /**

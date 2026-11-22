@@ -12,6 +12,14 @@ const state = vi.hoisted(() => ({
   access: vi.fn<() => Promise<void>>(),
   create: vi.fn(),
   replace: vi.fn(async () => ({ text: "[[EMAIL_A]]", edits: [], saved: true })),
+  apply: vi.fn(async () => ({
+    text: "[EMAIL]",
+    edits: [],
+    applied: true,
+    saved: false,
+    replaced: 0,
+    redacted: 1,
+  })),
   select: vi.fn(async () => ({ findings: [], previewId: "selected" })),
   forget: vi.fn(async () => {}),
   preview: vi.fn(async () => ({
@@ -49,6 +57,7 @@ vi.mock("./vault", () => ({
     automaticAccess = state.access;
     create = state.create;
     replace = state.replace;
+    apply = state.apply;
     preview = state.preview;
     select = state.select;
     forget = state.forget;
@@ -290,6 +299,7 @@ test("selection uses the committed policy and keeps occurrence redaction local",
     "old",
     expect.any(String),
     keep,
+    undefined,
   );
   await forward({ type: "redact", text: "a@b.co", keep });
   expect(redact).toHaveBeenCalledWith(
@@ -373,4 +383,26 @@ test("paste opt-in is committed with encrypted policy and malformed saved values
   expect(await forward({ type: "settings-get" })).toMatchObject({
     result: { autoReplaceOnPaste: true },
   });
+});
+
+test("all-redact apply forwards reserved identity without persisting a mapping index", async () => {
+  await forward({ type: "scan", text: "a@b.co", seq: 1, tabId: 7 });
+  state.write.mockClear();
+  const result = await forward({
+    type: "apply",
+    text: "a@b.co",
+    tabId: 7,
+    previewId: "reserved",
+  });
+  expect(state.apply).toHaveBeenCalledWith(
+    "a@b.co",
+    7,
+    expect.any(Object),
+    "reserved",
+    expect.any(String),
+  );
+  expect(result).toMatchObject({
+    result: { applied: true, saved: false, redacted: 1, replaced: 0 },
+  });
+  expect(state.write).not.toHaveBeenCalled();
 });

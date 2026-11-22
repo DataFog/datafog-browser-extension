@@ -1,3 +1,4 @@
+import { redactAll } from "../fixtures";
 import {
   test,
   expect,
@@ -38,8 +39,7 @@ test("live: Redact, Undo, Redo and an actual editor change", async ({
   await composer.fill(SAMPLE);
   await found(badge, 2);
   await openBadge(badge);
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(composer).toHaveText(
     "my email is [EMAIL] and card [CREDIT_CARD]",
   );
@@ -59,17 +59,17 @@ test("live: Redact, Undo, Redo and an actual editor change", async ({
     .toBe(true);
 });
 
-test("live: Dismiss returns after editing the real composer", async ({
+test("live: Close preserves findings and editing still rechecks the real composer", async ({
   composer,
   badge,
 }) => {
   await composer.fill(EMAIL);
   await found(badge, 1);
   await openBadge(badge);
-  await badge.click(".dismiss");
+  await badge.click(".close");
   await expect
     .poll(async () => (await badge.state(".dot")).title)
-    .toBe("datafog");
+    .toBe("1 found · click to review");
   await composer.fill(`Please contact ${EMAIL}`);
   await found(badge, 1);
 });
@@ -143,13 +143,16 @@ test("live: Always allow persists and rechecks an unchanged draft", async ({
   await composer.fill(EMAIL);
   await found(badge, 1);
   await openBadge(badge);
-  await badge.click('.choose[aria-label="Replace jane@example.com"]');
-  await badge.click(".more-toggle");
-  await badge.click(".allow");
+  await badge.click(".pseudonymize");
+  await expect(composer).toContainText("[[EMAIL_");
+  await badge.click(".undo");
+  const panel = await extension.panel();
+  const row = panel.locator("#originals li").filter({ hasText: EMAIL });
+  await row.locator(".original-menu-toggle").click();
+  await row.locator('[data-action="allow"]').click();
   await expect
     .poll(async () => (await badge.state(".dot")).title)
     .toBe("Checked · nothing found");
-  const panel = await extension.panel();
   await panel.locator('[data-view="rules"]').click();
   await expect(panel.locator("#not-sensitive")).toContainText(EMAIL);
   await panel.reload();
@@ -189,10 +192,13 @@ for (const method of ["button", "Enter"] as const) {
       /\[\[EMAIL_[A-Z0-9]+\]\]/,
     )![0];
     if (method === "button") {
-      expect((await badge.state(".send")).text).toBe("Send as is");
-      await badge.click(".send");
+      await badge.click(".choose");
+      await expect
+        .poll(async () => (await badge.state(".pseudonymize")).text)
+        .toBe("Send as is");
+      await badge.click(".pseudonymize");
     } else {
-      expect((await badge.state(".pseudonymize")).text).toBe("Replace & send");
+      expect((await badge.state(".pseudonymize")).text).toBe("Apply & send");
       await badge.click(".pseudonymize");
     }
     await expect(userMessages).toHaveCount(before + 1, {
@@ -298,8 +304,7 @@ test("live: temporary chat supports detection and Redact", async ({
   await composer.fill(SAMPLE);
   await found(badge, 2);
   await openBadge(badge);
-  await badge.click(".more-toggle");
-  await badge.click(".redact");
+  await redactAll(badge);
   await expect(composer).toContainText("[EMAIL]");
 });
 
@@ -327,8 +332,7 @@ for (const [surface, variable] of [
     await composer.fill(SAMPLE);
     await found(badge, 2);
     await openBadge(badge);
-    await badge.click(".more-toggle");
-    await badge.click(".redact");
+    await redactAll(badge);
     await expect(composer).toContainText("[EMAIL]");
     await composer.fill("");
   });
@@ -342,10 +346,10 @@ test("live: choosing findings preserves the skipped value and commits the displa
   await composer.fill(`Contact ${EMAIL} / ${card}`);
   await found(badge, 2);
   await openBadge(badge);
-  await badge.click(`.choose[aria-label="Replace ${card}"]`);
+  await badge.click(`.choose[aria-label="Include ${card}"]`);
   await expect
     .poll(async () => (await badge.state(".pseudonymize")).text)
-    .toBe("Replace 1");
+    .toBe("Apply");
   await expect
     .poll(async () => (await badge.state(".pseudonymize")).disabled)
     .toBe(false);

@@ -25,29 +25,13 @@
         display: none !important;
       }
 
-      /* Header: wordmark and the vault status chip */
+      /* Chrome provides the sidebar title; keep only local controls here. */
       .top {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
         margin-bottom: 12px;
-      }
-      .top .chip {
-        margin-left: auto;
-      }
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin: 0;
-        font-size: 18px;
-        font-weight: 300;
-        letter-spacing: -0.03em;
-      }
-      .brand svg {
-        width: 22px;
-        height: auto;
       }
       .chip {
         display: inline-flex;
@@ -456,7 +440,6 @@
   </head>
   <body>
     <header class="top">
-      <h1 class="brand" id="brand">datafog</h1>
       <button
         id="vault-chip"
         class="chip"
