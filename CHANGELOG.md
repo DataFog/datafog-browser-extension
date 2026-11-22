@@ -4,6 +4,8 @@ Notable changes to the datafog browser extension. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+- Add three short, locally bundled onboarding demos for replacing a fictional email, revealing its original, and copying it. Each clip has playback controls and a still poster; reduced motion prevents automatic playback.
+
 - Fade restored answer values in over 140 ms when Show originals is chosen, without moving text; reduced motion disables the fade and theme updates do not replay it.
 
 - Make held-send choices explicit with Send as is and save-before-send Replace & send, add opt-in local replacement on paste and quick Undo, and make restored answers visibly local with Show tokens and a separate Copy with originals action. Refine token/value hierarchy, dark contrast, saved-value truncation the welcome link to the current supported chat tool, and restrained transitions that respect reduced motion.

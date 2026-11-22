@@ -29,3 +29,5 @@ Original values carry the primary visual emphasis; preview tokens and arrows are
 These changes introduce no background sending, additional host permissions or new storage format. Chrome profile access remains the trust boundary.
 
 Popup entrance and quick Undo use restrained 140 ms motion; the circle transitions color and halo without moving its click target. Reduced-motion preferences disable these animations and transitions. Closing remains immediate.
+
+The final welcome step includes three short, silent walkthrough clips using a fictional email address. Videos and still posters ship inside the extension, with no external media requests. Only the selected clip can play; controls allow pausing or replaying it. Reduced motion keeps the poster visible until the user explicitly plays a clip. The pin step, conditional reload fallback, and current-tool CTA remain available.

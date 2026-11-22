@@ -317,12 +317,77 @@ test("a chat tab open before install is checked without a reload", async ({
 
 test("the welcome page walks a new install through pinning to done", async ({
   extension,
-}) => {
+}, testInfo) => {
   const welcome = await extension.welcome();
+  await welcome.emulateMedia({ reducedMotion: "no-preference" });
   await expect(welcome.locator("#step-label")).toHaveText("Welcome");
   await expect(welcome.locator('[data-step="pin"]')).toBeVisible();
   await welcome.locator("#pin-next").click();
   await expect(welcome.locator('[data-step="done"]')).toBeVisible();
+  await expect(welcome.getByRole("tab")).toHaveCount(3);
+  for (const name of ["replace", "originals", "copy"]) {
+    await welcome.locator(`[data-demo-tab="${name}"]`).click();
+    const panel = welcome.locator(`[data-demo-panel="${name}"]`);
+    const video = panel.locator("video");
+    await expect(panel).toBeVisible();
+    await expect(welcome.locator(`[data-demo-tab="${name}"]`)).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect
+      .poll(() =>
+        video.evaluate((element: HTMLVideoElement) => element.readyState),
+      )
+      .toBeGreaterThanOrEqual(2);
+    const media = await video.evaluate((element: HTMLVideoElement) => ({
+      source: element.currentSrc,
+      poster: element.poster,
+      duration: element.duration,
+      muted: element.muted,
+      loop: element.loop,
+    }));
+    expect(media.source).toBe(
+      new URL(`assets/onboarding/${name}.webm`, welcome.url()).href,
+    );
+    expect(media.poster).toBe(
+      new URL(`assets/onboarding/${name}.png`, welcome.url()).href,
+    );
+    expect(media.duration).toBeGreaterThanOrEqual(2);
+    expect(media.duration).toBeLessThanOrEqual(3.1);
+    expect(media.muted).toBe(true);
+    expect(media.loop).toBe(false);
+    await expect
+      .poll(() => video.evaluate((element: HTMLVideoElement) => element.paused))
+      .toBe(false);
+    await welcome.locator("#demo-playback").click();
+    await expect
+      .poll(() => video.evaluate((element: HTMLVideoElement) => element.paused))
+      .toBe(true);
+    for (const other of ["replace", "originals", "copy"].filter(
+      (value) => value !== name,
+    )) {
+      expect(
+        await welcome
+          .locator(`[data-demo-panel="${other}"] video`)
+          .evaluate((element: HTMLVideoElement) => element.paused),
+      ).toBe(true);
+    }
+  }
+
+  await welcome.screenshot({
+    path: testInfo.outputPath("welcome-desktop.png"),
+    fullPage: true,
+  });
+  await welcome.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await welcome.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await welcome.screenshot({
+    path: testInfo.outputPath("welcome-mobile.png"),
+    fullPage: true,
+  });
   // The vault may still be opening when a fresh profile starts
   await expect(welcome.locator("#vault-line")).toContainText(
     "Your vault is ready",
@@ -345,6 +410,48 @@ test("the welcome page walks a new install through pinning to done", async ({
       ),
     )
     .toBe(true);
+});
+
+test("welcome clips respect reduced motion and still support explicit keyboard playback", async ({
+  extension,
+}) => {
+  await extension.newChat({ site: "claude" });
+  const welcome = await extension.welcome();
+  await welcome.emulateMedia({ reducedMotion: "reduce" });
+  await welcome.reload();
+  await welcome.locator("#pin-next").click();
+  await expect(welcome.locator("#done-try")).toHaveAttribute(
+    "href",
+    "https://claude.ai/",
+  );
+  for (const name of ["replace", "originals", "copy"]) {
+    const tab = welcome.locator(`[data-demo-tab="${name}"]`);
+    await tab.focus();
+    await welcome.keyboard.press("Enter");
+    await expect(tab).toHaveAttribute("aria-selected", "true");
+    const video = welcome.locator(`[data-demo-panel="${name}"] video`);
+    expect(
+      await video.evaluate((element: HTMLVideoElement) => ({
+        paused: element.paused,
+        time: element.currentTime,
+      })),
+    ).toEqual({ paused: true, time: 0 });
+  }
+  const video = welcome.locator('[data-demo-panel="copy"] video');
+  const playback = welcome.locator("#demo-playback");
+  await playback.focus();
+  await welcome.keyboard.press("Enter");
+  await expect
+    .poll(() =>
+      video.evaluate((element: HTMLVideoElement) => element.currentTime),
+    )
+    .toBeGreaterThan(0);
+  await expect(playback).toHaveText("Pause demo");
+  await welcome.keyboard.press("Enter");
+  await expect
+    .poll(() => video.evaluate((element: HTMLVideoElement) => element.paused))
+    .toBe(true);
+  await expect(playback).toHaveText("Play demo");
 });
 
 test("circle hover explains status, click opens actions, Escape and outside click dismiss", async ({

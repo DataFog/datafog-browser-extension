@@ -10,6 +10,7 @@ import { LOGO } from "./logo";
 import type { ErrorResponse, VaultStatus } from "./messages";
 import { followTheme } from "./theme";
 import { HOSTS } from "./site";
+import { welcomeMedia } from "./welcome-media";
 import {
   ONBOARDED,
   UNREACHED_TABS,
@@ -47,6 +48,8 @@ async function ask<T>(request: object): Promise<T | ErrorResponse> {
   }
 }
 
+const walkthrough = welcomeMedia(element("walkthrough"));
+
 let steps: WelcomeStep[] = ["pin", "done"];
 let index = 0;
 let pinTimer = 0;
@@ -58,6 +61,15 @@ function show(next: number): void {
   const step = steps[index];
   for (const section of document.querySelectorAll<HTMLElement>("[data-step]"))
     section.hidden = section.dataset.step !== step;
+  const heading = document.querySelector<HTMLElement>(
+    `[data-step="${step}"] h1`,
+  );
+  if (heading) {
+    heading.id = `welcome-${step}-title`;
+    document
+      .querySelector(".dialog")!
+      .setAttribute("aria-labelledby", heading.id);
+  }
   // The last screen is a summary, not a numbered step
   const numbered = steps.length - 1;
   // One step needs no counting
@@ -77,6 +89,7 @@ function show(next: number): void {
   window.clearInterval(pinTimer);
   if (step === "pin") watchPin();
   if (step === "done") renderVaultLine();
+  walkthrough.setVisible(step === "done");
   (
     document.querySelector<HTMLElement>(`[data-step="${step}"] .primary`) ??
     document.querySelector<HTMLElement>(`[data-step="${step}"] button`)

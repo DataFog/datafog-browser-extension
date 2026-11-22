@@ -40,6 +40,7 @@ prepare(output("dist"), [
   "THIRD_PARTY_NOTICES.md",
   "licenses",
   "fonts",
+  "assets",
   "icons",
   "manifest.json",
   "offscreen.html",
