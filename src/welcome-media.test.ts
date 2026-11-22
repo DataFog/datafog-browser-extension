@@ -55,17 +55,17 @@ function setup(reduced = false) {
     motionChange: () => motionChange(),
     button: root.querySelector<HTMLButtonElement>("#demo-playback")!,
     tabs: Array.from(
-      root.querySelectorAll<HTMLButtonElement>("[data-demo-tab]"),
+      root.querySelectorAll<HTMLButtonElement>("[data-demo-slide]"),
     ),
   };
 }
 
-test("welcome clips are local silent demonstrations with captions and no looping or autoplay markup", () => {
+test("welcome clips are local silent demonstrations with captions and looping and no autoplay markup", () => {
   const { videos, root } = setup();
   expect(videos).toHaveLength(3);
   videos.forEach((video) => {
     expect(video.muted).toBe(true);
-    expect(video.loop).toBe(false);
+    expect(video.loop).toBe(true);
     expect(video.autoplay).toBe(false);
     expect(video.getAttribute("poster")).toMatch(
       /^assets\/onboarding\/.+\.png$/,
@@ -87,10 +87,10 @@ test("only the selected visible clip starts once and explicit pause is respected
   state.controller.setVisible(true);
   await Promise.resolve();
   expect(state.plays[0]).toHaveBeenCalledOnce();
-  expect(state.button.textContent).toBe("Pause demo");
+  expect(state.button.textContent).toBe("Pause demonstration");
   state.button.click();
   expect(state.paused[0]).toBe(true);
-  expect(state.button.textContent).toBe("Play demo");
+  expect(state.button.textContent).toBe("Play demonstration");
   state.controller.setVisible(true);
   expect(state.plays[0]).toHaveBeenCalledOnce();
   state.tabs[1].click();
@@ -112,7 +112,7 @@ test("reduced motion starts with posters and allows only explicit playback", asy
   state.button.click();
   await Promise.resolve();
   expect(state.plays[1]).toHaveBeenCalledOnce();
-  expect(state.button.textContent).toBe("Pause demo");
+  expect(state.button.textContent).toBe("Pause demonstration");
   state.button.click();
   expect(state.paused[1]).toBe(true);
 });
@@ -128,7 +128,7 @@ test("turning reduced motion on pauses playback and restores poster state", asyn
   state.motionChange();
   expect(state.plays[0]).toHaveBeenCalledOnce();
 });
-test("keyboard tabs select one clip and hidden pages stop playback", async () => {
+test("keyboard slide dots select one clip and hidden pages stop playback", async () => {
   const state = setup();
   state.controller.setVisible(true);
   state.tabs[0].focus();
@@ -141,7 +141,7 @@ test("keyboard tabs select one clip and hidden pages stop playback", async () =>
   );
   await Promise.resolve();
   expect(document.activeElement).toBe(state.tabs[1]);
-  expect(state.tabs[1].getAttribute("aria-selected")).toBe("true");
+  expect(state.tabs[1].getAttribute("aria-current")).toBe("true");
   expect(state.tabs[0].tabIndex).toBe(-1);
   expect(
     state.root.querySelector<HTMLElement>('[data-demo-panel="replace"]')!
@@ -196,5 +196,26 @@ test("a late earlier play does not cancel a newer explicit play of the same clip
   finish();
   await Promise.resolve();
   expect(state.paused[0]).toBe(false);
-  expect(state.button.textContent).toBe("Pause demo");
+  expect(state.button.textContent).toBe("Pause demonstration");
+});
+
+test("arrows wrap manually while looping never advances the slide", async () => {
+  const state = setup();
+  state.controller.setVisible(true);
+  state.root.querySelector<HTMLButtonElement>("#demo-prev")!.click();
+  await Promise.resolve();
+  expect(state.tabs[2].getAttribute("aria-current")).toBe("true");
+  expect(state.root.querySelector("#demo-position")!.textContent).toBe("3 / 3");
+  expect(state.paused[0]).toBe(true);
+  state.videos[2].dispatchEvent(new Event("ended"));
+  expect(state.tabs[2].getAttribute("aria-current")).toBe("true");
+  state.root.querySelector<HTMLButtonElement>("#demo-next")!.click();
+  expect(state.tabs[0].getAttribute("aria-current")).toBe("true");
+  expect(state.root.querySelector("#demo-position")!.textContent).toBe("1 / 3");
+  expect(state.root.querySelectorAll("figcaption.sr")).toHaveLength(3);
+  expect(state.root.querySelector('[role="tab"]')).toBeNull();
+  expect(state.button.querySelector("svg")).not.toBeNull();
+  expect(state.button.querySelector(".sr")!.textContent).toBe(
+    "Pause demonstration",
+  );
 });

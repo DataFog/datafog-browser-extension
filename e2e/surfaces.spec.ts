@@ -324,16 +324,26 @@ test("the welcome page walks a new install through pinning to done", async ({
   await expect(welcome.locator('[data-step="pin"]')).toBeVisible();
   await welcome.locator("#pin-next").click();
   await expect(welcome.locator('[data-step="done"]')).toBeVisible();
-  await expect(welcome.getByRole("tab")).toHaveCount(3);
+  await expect(welcome.locator('[data-step="done"] h1')).toHaveText(
+    "Getting started",
+  );
+  await expect(welcome.getByRole("tab")).toHaveCount(0);
+  await expect(welcome.locator("[data-demo-slide]")).toHaveCount(3);
+  await expect(
+    welcome.getByText("Silent demo · Fictional details", { exact: true }),
+  ).toHaveCount(0);
+  await expect(welcome.locator('[data-step="done"] > p:not(.sr)')).toHaveCount(
+    0,
+  );
   for (const name of ["replace", "originals", "copy"]) {
-    await welcome.locator(`[data-demo-tab="${name}"]`).click();
+    const index = ["replace", "originals", "copy"].indexOf(name);
+    if (index > 0) await welcome.locator("#demo-next").click();
     const panel = welcome.locator(`[data-demo-panel="${name}"]`);
     const video = panel.locator("video");
     await expect(panel).toBeVisible();
-    await expect(welcome.locator(`[data-demo-tab="${name}"]`)).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    await expect(
+      welcome.locator(`[data-demo-slide="${index}"]`),
+    ).toHaveAttribute("aria-current", "true");
     await expect
       .poll(() =>
         video.evaluate((element: HTMLVideoElement) => element.readyState),
@@ -352,13 +362,26 @@ test("the welcome page walks a new install through pinning to done", async ({
     expect(media.poster).toBe(
       new URL(`assets/onboarding/${name}.png`, welcome.url()).href,
     );
-    expect(media.duration).toBeGreaterThanOrEqual(2);
-    expect(media.duration).toBeLessThanOrEqual(3.1);
+    expect(media.duration).toBeCloseTo(name === "replace" ? 6 : 3, 1);
     expect(media.muted).toBe(true);
-    expect(media.loop).toBe(false);
+    expect(media.loop).toBe(true);
     await expect
       .poll(() => video.evaluate((element: HTMLVideoElement) => element.paused))
       .toBe(false);
+    if (name === "copy") {
+      await video.evaluate((element: HTMLVideoElement) => {
+        element.currentTime = element.duration - 0.1;
+      });
+      await expect
+        .poll(() =>
+          video.evaluate((element: HTMLVideoElement) => element.currentTime),
+        )
+        .toBeLessThan(1);
+      await expect(welcome.locator('[data-demo-slide="2"]')).toHaveAttribute(
+        "aria-current",
+        "true",
+      );
+    }
     await welcome.locator("#demo-playback").click();
     await expect
       .poll(() => video.evaluate((element: HTMLVideoElement) => element.paused))
@@ -374,6 +397,17 @@ test("the welcome page walks a new install through pinning to done", async ({
     }
   }
 
+  await welcome.locator("#demo-prev").click();
+  await expect(welcome.locator('[data-demo-slide="1"]')).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await welcome.locator("#demo-next").click();
+  await expect(welcome.locator('[data-demo-slide="2"]')).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await welcome.locator("#demo-playback").click();
   await welcome.screenshot({
     path: testInfo.outputPath("welcome-desktop.png"),
     fullPage: true,
@@ -388,11 +422,6 @@ test("the welcome page walks a new install through pinning to done", async ({
     path: testInfo.outputPath("welcome-mobile.png"),
     fullPage: true,
   });
-  // The vault may still be opening when a fresh profile starts
-  await expect(welcome.locator("#vault-line")).toContainText(
-    "Your vault is ready",
-    { timeout: 15_000 },
-  );
   await expect(welcome.locator("#done-try")).toHaveAttribute(
     "href",
     "https://chatgpt.com/",
@@ -425,10 +454,12 @@ test("welcome clips respect reduced motion and still support explicit keyboard p
     "https://claude.ai/",
   );
   for (const name of ["replace", "originals", "copy"]) {
-    const tab = welcome.locator(`[data-demo-tab="${name}"]`);
+    const tab = welcome.locator(
+      `[data-demo-slide="${["replace", "originals", "copy"].indexOf(name)}"]`,
+    );
     await tab.focus();
     await welcome.keyboard.press("Enter");
-    await expect(tab).toHaveAttribute("aria-selected", "true");
+    await expect(tab).toHaveAttribute("aria-current", "true");
     const video = welcome.locator(`[data-demo-panel="${name}"] video`);
     expect(
       await video.evaluate((element: HTMLVideoElement) => ({
@@ -446,12 +477,12 @@ test("welcome clips respect reduced motion and still support explicit keyboard p
       video.evaluate((element: HTMLVideoElement) => element.currentTime),
     )
     .toBeGreaterThan(0);
-  await expect(playback).toHaveText("Pause demo");
+  await expect(playback).toHaveAttribute("aria-label", "Pause demonstration");
   await welcome.keyboard.press("Enter");
   await expect
     .poll(() => video.evaluate((element: HTMLVideoElement) => element.paused))
     .toBe(true);
-  await expect(playback).toHaveText("Play demo");
+  await expect(playback).toHaveAttribute("aria-label", "Play demonstration");
 });
 
 test("circle hover explains status, click opens actions, Escape and outside click dismiss", async ({

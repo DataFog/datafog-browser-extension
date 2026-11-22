@@ -26,6 +26,8 @@ import {
   LoaderCircle,
   Lock,
   PanelRight,
+  Play,
+  Pause,
   Paperclip,
   Plus,
   Puzzle,
@@ -45,6 +47,8 @@ import {
 
 export const ICONS = {
   arrow: ArrowRight,
+  play: Play,
+  pause: Pause,
   check: Check,
   copy: Copy,
   alert: CircleAlert,

@@ -229,23 +229,42 @@
         flex-direction: column;
         gap: 10px;
       }
-      .demo-tabs {
+      .demo-navigation {
         display: flex;
-        gap: 4px;
-        border-bottom: 1px solid var(--line);
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
       }
-      .demo-tabs button {
-        flex: 1;
-        min-width: 0;
-        padding: 6px 2px;
+      .demo-dots {
+        display: flex;
+        gap: 2px;
+      }
+      .demo-dots button {
+        width: 28px;
+        min-height: 32px;
+        padding: 0;
         border: 0;
-        border-bottom: 2px solid transparent;
-        border-radius: 0;
-        font-size: 11px;
+        background: transparent;
       }
-      .demo-tabs button[aria-selected="true"] {
-        border-bottom-color: var(--accent);
-        color: var(--text);
+      .demo-dots button::after {
+        content: "";
+        display: block;
+        width: 6px;
+        height: 6px;
+        margin: auto;
+        border-radius: 50%;
+        background: var(--muted);
+        opacity: 0.35;
+      }
+      .demo-dots button[aria-current="true"]::after {
+        opacity: 1;
+        background: var(--text);
+      }
+      #demo-position {
+        color: var(--muted);
+        font-size: 11px;
+        min-width: 30px;
+        text-align: center;
       }
       .walkthrough figure {
         margin: 0;
@@ -259,25 +278,19 @@
         background: var(--background);
         box-sizing: border-box;
       }
-      .walkthrough figcaption {
-        margin-top: 10px;
-        font-weight: 500;
-        min-height: 3em;
-      }
       .demo-controls {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
       }
-      .demo-controls span {
-        color: var(--muted);
-        font-size: 10px;
-      }
       .demo-controls button {
-        min-height: 28px;
-        padding: 0 10px;
-        font-size: 11px;
+        min-height: 32px;
+        width: 32px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
       }
       #demo-status:empty {
         display: none;
@@ -353,59 +366,17 @@
         </section>
 
         <section data-step="done" hidden>
-          <h1><span data-icon="allow"></span>You're set</h1>
-          <p>
-            Look for the circle next to the chat box. Click it when it turns
-            orange.
-          </p>
+          <h1><span data-icon="allow"></span>Getting started</h1>
           <div
             class="walkthrough"
             id="walkthrough"
             aria-label="See how datafog works"
           >
-            <div
-              class="demo-tabs"
-              role="tablist"
-              aria-label="datafog walkthrough"
-            >
-              <button
-                type="button"
-                role="tab"
-                id="demo-replace-tab"
-                data-demo-tab="replace"
-                aria-controls="demo-replace-panel"
-                aria-selected="true"
-              >
-                1 · Replace
-              </button>
-              <button
-                type="button"
-                role="tab"
-                id="demo-originals-tab"
-                data-demo-tab="originals"
-                aria-controls="demo-originals-panel"
-                aria-selected="false"
-                tabindex="-1"
-              >
-                2 · Read originals
-              </button>
-              <button
-                type="button"
-                role="tab"
-                id="demo-copy-tab"
-                data-demo-tab="copy"
-                aria-controls="demo-copy-panel"
-                aria-selected="false"
-                tabindex="-1"
-              >
-                3 · Copy
-              </button>
-            </div>
             <figure
               id="demo-replace-panel"
               data-demo-panel="replace"
-              role="tabpanel"
-              aria-labelledby="demo-replace-tab"
+              role="group"
+              aria-labelledby="demo-replace-caption"
             >
               <video
                 id="demo-replace-video"
@@ -421,7 +392,7 @@
                   type="video/webm"
                 />
               </video>
-              <figcaption id="demo-replace-caption">
+              <figcaption class="sr" id="demo-replace-caption">
                 Replace sensitive details before you send.
               </figcaption>
               <p class="sr" id="demo-replace-description">
@@ -433,8 +404,8 @@
             <figure
               id="demo-originals-panel"
               data-demo-panel="originals"
-              role="tabpanel"
-              aria-labelledby="demo-originals-tab"
+              role="group"
+              aria-labelledby="demo-originals-caption"
               hidden
             >
               <video
@@ -451,7 +422,7 @@
                   type="video/webm"
                 />
               </video>
-              <figcaption id="demo-originals-caption">
+              <figcaption class="sr" id="demo-originals-caption">
                 Read original details. The AI keeps the tokens.
               </figcaption>
               <p class="sr" id="demo-originals-description">
@@ -463,8 +434,8 @@
             <figure
               id="demo-copy-panel"
               data-demo-panel="copy"
-              role="tabpanel"
-              aria-labelledby="demo-copy-tab"
+              role="group"
+              aria-labelledby="demo-copy-caption"
               hidden
             >
               <video
@@ -478,7 +449,7 @@
               >
                 <source src="assets/onboarding/copy.webm" type="video/webm" />
               </video>
-              <figcaption id="demo-copy-caption">
+              <figcaption class="sr" id="demo-copy-caption">
                 Copy your answer with details restored.
               </figcaption>
               <p class="sr" id="demo-copy-description">
@@ -488,12 +459,57 @@
               </p>
             </figure>
             <div class="demo-controls">
-              <span>Silent demo · Fictional details</span
-              ><button type="button" id="demo-playback">Play demo</button>
+              <div class="demo-navigation" aria-label="Demonstrations">
+                <button
+                  type="button"
+                  id="demo-prev"
+                  aria-label="Previous demonstration"
+                >
+                  <span aria-hidden="true">←</span>
+                </button>
+                <div class="demo-dots">
+                  <button
+                    type="button"
+                    data-demo-slide="0"
+                    aria-label="Show demonstration 1"
+                    aria-current="true"
+                    aria-controls="demo-replace-panel"
+                  ></button>
+                  <button
+                    type="button"
+                    data-demo-slide="1"
+                    aria-label="Show demonstration 2"
+                    aria-current="false"
+                    aria-controls="demo-originals-panel"
+                    tabindex="-1"
+                  ></button>
+                  <button
+                    type="button"
+                    data-demo-slide="2"
+                    aria-label="Show demonstration 3"
+                    aria-current="false"
+                    aria-controls="demo-copy-panel"
+                    tabindex="-1"
+                  ></button>
+                </div>
+                <span id="demo-position" aria-live="polite">1 / 3</span>
+                <button
+                  type="button"
+                  id="demo-next"
+                  aria-label="Next demonstration"
+                >
+                  <span aria-hidden="true">→</span>
+                </button>
+              </div>
+              <button
+                type="button"
+                id="demo-playback"
+                aria-label="Play demonstration"
+              ></button>
             </div>
             <p id="demo-status" class="status" role="status"></p>
           </div>
-          <p class="status" id="vault-line"></p>
+          <p class="sr" id="vault-line"></p>
           <div class="actions">
             <button type="button" id="done-close">Close</button
             ><a

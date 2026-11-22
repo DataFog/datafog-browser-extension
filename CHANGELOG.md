@@ -4,6 +4,8 @@ Notable changes to the datafog browser extension. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+- Simplify Getting started to a manual slideshow with previous/next controls and dots, looping clips, and an accessible pause button. Slow the replacement demonstration to six seconds; reduced motion still shows posters until explicit playback.
+
 - Add three short, locally bundled onboarding demos for replacing a fictional email, revealing its original, and copying it. Each clip has playback controls and a still poster; reduced motion prevents automatic playback.
 
 - Fade restored answer values in over 140 ms when Show originals is chosen, without moving text; reduced motion disables the fade and theme updates do not replay it.

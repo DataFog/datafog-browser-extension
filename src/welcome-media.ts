@@ -1,3 +1,5 @@
+import { iconLabel } from "./icons";
+
 /** One local, silent walkthrough clip at a time; motion is always optional. */
 export function welcomeMedia(
   root: HTMLElement,
@@ -7,7 +9,7 @@ export function welcomeMedia(
   > = window.matchMedia("(prefers-reduced-motion: reduce)"),
 ): { setVisible: (visible: boolean) => void; dispose: () => void } {
   const tabs = Array.from(
-    root.querySelectorAll<HTMLButtonElement>("[data-demo-tab]"),
+    root.querySelectorAll<HTMLButtonElement>("[data-demo-slide]"),
   );
   const panels = Array.from(
     root.querySelectorAll<HTMLElement>("[data-demo-panel]"),
@@ -22,12 +24,10 @@ export function welcomeMedia(
 
   function syncPlayback(): void {
     const playing = !videos[selected].paused && !videos[selected].ended;
-    playback.textContent = playing ? "Pause demo" : "Play demo";
+    const label = playing ? "Pause demonstration" : "Play demonstration";
+    playback.innerHTML = iconLabel(playing ? "pause" : "play", label);
     playback.setAttribute("aria-controls", videos[selected].id);
-    playback.setAttribute(
-      "aria-label",
-      `${playing ? "Pause" : "Play"} ${tabs[selected].textContent.trim()} demo`,
-    );
+    playback.setAttribute("aria-label", label);
   }
   function pauseAll(): void {
     request++;
@@ -63,14 +63,24 @@ export function welcomeMedia(
     pauseAll();
     selected = next;
     tabs.forEach((tab, index) => {
-      tab.setAttribute("aria-selected", String(index === selected));
+      tab.setAttribute("aria-current", String(index === selected));
       tab.tabIndex = index === selected ? 0 : -1;
       panels[index].hidden = index !== selected;
     });
+    root.querySelector("#demo-position")!.textContent =
+      `${selected + 1} / ${tabs.length}`;
     status.textContent = "";
     syncPlayback();
     if (!reducedMotion.matches) void play();
   }
+  root
+    .querySelector("#demo-prev")!
+    .addEventListener("click", () =>
+      select((selected + tabs.length - 1) % tabs.length),
+    );
+  root
+    .querySelector("#demo-next")!
+    .addEventListener("click", () => select((selected + 1) % tabs.length));
   tabs.forEach((tab, index) => {
     tab.addEventListener("click", () => select(index));
     tab.addEventListener("keydown", (event) => {
@@ -88,7 +98,7 @@ export function welcomeMedia(
   });
   for (const video of videos) {
     video.muted = true;
-    video.loop = false;
+    video.loop = true;
     video.addEventListener("play", syncPlayback);
     video.addEventListener("pause", syncPlayback);
     video.addEventListener("ended", syncPlayback);

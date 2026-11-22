@@ -70,6 +70,7 @@ function show(next: number): void {
       .querySelector(".dialog")!
       .setAttribute("aria-labelledby", heading.id);
   }
+  element("step-label").parentElement!.hidden = step === "done";
   // The last screen is a summary, not a numbered step
   const numbered = steps.length - 1;
   // One step needs no counting
