@@ -1,8 +1,8 @@
 import { expect, it } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, stat, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { runNode } from "./run-live-tests.mjs";
+import { runNode, withIsolatedLiveBuild } from "./run-live-tests.mjs";
 
 it("services parent events while the live-test child is running", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "datafog-child-events-"));
@@ -37,4 +37,55 @@ it("services parent events while the live-test child is running", async () => {
     await event;
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+const installedManifest = () =>
+  readFile("dist/manifest.json").catch((error) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
+
+it("builds live fixtures in owned temporary output and preserves installed output", async () => {
+  const installed = await installedManifest();
+  let owned;
+  await withIsolatedLiveBuild(process.env, async (env) => {
+    owned = env.DATAFOG_TEST_BUILD_ROOT;
+    expect(path.isAbsolute(owned)).toBe(true);
+    expect(owned).not.toBe(process.cwd());
+    expect(
+      JSON.parse(await readFile(path.join(owned, "dist/manifest.json"), "utf8"))
+        .name,
+    ).toBe("datafog");
+    expect(await installedManifest()).toEqual(installed);
+    const inode = (await stat(path.join(owned, "dist"))).ino;
+    await runNode(["build.mjs", "--output-root", owned]);
+    expect((await stat(path.join(owned, "dist"))).ino).toBe(inode);
+  });
+  await expect(stat(owned)).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+it("removes only its temporary build after failed compilation or failed tests", async () => {
+  let owned;
+  await expect(
+    withIsolatedLiveBuild(
+      process.env,
+      async () => {},
+      async (args) => {
+        owned = args[2];
+        throw new Error("compile failed");
+      },
+    ),
+  ).rejects.toThrow("compile failed");
+  await expect(stat(owned)).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(
+    withIsolatedLiveBuild(
+      process.env,
+      async (env) => {
+        owned = env.DATAFOG_TEST_BUILD_ROOT;
+        throw new Error("test failed");
+      },
+      async () => {},
+    ),
+  ).rejects.toThrow("test failed");
+  await expect(stat(owned)).rejects.toMatchObject({ code: "ENOENT" });
 });

@@ -11,7 +11,7 @@ import { HOST_TOKENS } from "./tokens";
 
 const CONTROL_ICONS: Record<string, IconName> = {
   "Show originals": "show",
-  "Hide originals": "hide",
+  "Show tokens": "hide",
   "Reading originals…": "loading",
   "Retry originals": "retry",
 };
@@ -22,7 +22,7 @@ function label(button: HTMLButtonElement, text: keyof typeof CONTROL_ICONS) {
   if (text === "Reading originals…")
     button.firstElementChild?.classList.add("spin");
   button.title = text;
-  button.setAttribute("aria-pressed", String(text === "Hide originals"));
+  button.setAttribute("aria-pressed", String(text === "Show tokens"));
 }
 
 /** A partial or failed result: an alert icon, its words for screen readers. */
@@ -41,8 +41,23 @@ interface Reveal {
   minHeight: string;
   heightPriority: string;
   resize: ResizeObserver;
+  values: readonly RestoredValue[];
+  appearance: string;
 }
 const reveals = new Map<HTMLElement, Reveal>();
+
+function appearanceOf(answer: HTMLElement): string {
+  const style = getComputedStyle(answer);
+  return `${style.color}|${style.backgroundColor}|${style.colorScheme}`;
+}
+
+/** Refresh only the local presentation when the provider's palette changes. */
+function refreshAppearance(answer: HTMLElement, force = false): void {
+  const reveal = reveals.get(answer);
+  if (!reveal || !providerVisible(answer)) return;
+  if (force || appearanceOf(answer) !== reveal.appearance)
+    showOriginals(answer, reveal.values);
+}
 
 /** Copy presentation into an extension-owned closed shadow tree. */
 function displayClone(source: HTMLElement): HTMLElement {
@@ -91,17 +106,34 @@ export function showOriginals(
   const values = new Map(restored.map((item) => [item.marker, item.original]));
   const clone = displayClone(answer);
   const walker = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
+  const nodes: Node[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode())
+    nodes.push(node);
   let shown = 0;
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    node.nodeValue = (node.nodeValue ?? "").replace(
-      new RegExp(MARKER, "g"),
-      (marker) => {
-        const original = values.get(marker);
-        if (original === undefined) return marker;
-        shown++;
-        return original;
-      },
-    );
+  for (const node of nodes) {
+    const text = node.nodeValue ?? "";
+    const fragment = document.createDocumentFragment();
+    let last = 0;
+    for (const match of text.matchAll(new RegExp(MARKER, "g"))) {
+      const original = values.get(match[0]);
+      if (original === undefined) continue;
+      fragment.append(text.slice(last, match.index));
+      const value = document.createElement("span");
+      value.className = "restored-value";
+      value.textContent = original;
+      value.title = `Local original for ${match[0]}`;
+      value.setAttribute("aria-description", value.title);
+      value.tabIndex = 0;
+      value.style.cssText =
+        "pointer-events:auto;text-decoration:underline dotted;text-underline-offset:3px;background:color-mix(in srgb,#C0362C 7%,transparent);border-radius:2px;cursor:help;";
+      fragment.append(value);
+      last = match.index + match[0].length;
+      shown++;
+    }
+    if (last) {
+      fragment.append(text.slice(last));
+      node.parentNode?.replaceChild(fragment, node);
+    }
   }
   if (!shown) return 0;
   const host = document.createElement("datafog-original");
@@ -124,6 +156,8 @@ export function showOriginals(
     minHeight: answer.style.getPropertyValue("min-height"),
     heightPriority: answer.style.getPropertyPriority("min-height"),
     resize,
+    values: restored.map((value) => ({ ...value })),
+    appearance: appearanceOf(answer),
   });
   answer.style.setProperty("visibility", "hidden", "important");
   document.documentElement.append(host);
@@ -177,6 +211,12 @@ function reposition(): void {
 }
 window.addEventListener("scroll", reposition, true);
 window.addEventListener("resize", reposition);
+window
+  .matchMedia?.("(prefers-color-scheme: dark)")
+  .addEventListener("change", () => {
+    for (const answer of Array.from(reveals.keys()))
+      refreshAppearance(answer, true);
+  });
 
 /** Explicit per-answer read and visibility states. */
 type AnswerState = "probing" | "hidden" | "reading" | "shown" | "failed";
@@ -186,6 +226,8 @@ interface AnswerControl {
   state: AnswerState;
   host: HTMLElement;
   button: HTMLButtonElement;
+  copy: HTMLButtonElement;
+  copying: boolean;
   note: HTMLSpanElement;
 }
 
@@ -282,12 +324,51 @@ export function watchAnswers(
     }
     const shown = showOriginals(answer, response.values);
     control.state = shown ? "shown" : "hidden";
-    label(control.button, shown ? "Hide originals" : "Show originals");
+    label(control.button, shown ? "Show tokens" : "Show originals");
     control.host.hidden = shown === 0;
     notice(
       control.note,
       response.unrestored ? " Some placeholders could not be restored." : "",
     );
+  }
+
+  async function copyOriginals(
+    answer: HTMLElement,
+    control: AnswerControl,
+  ): Promise<void> {
+    if (control.copying) return;
+    control.copying = true;
+    control.copy.disabled = true;
+    const version = control.version;
+    notice(control.note, "Reading originals for copy…");
+    try {
+      const response = await read(control.text);
+      if (!valid(answer, control, version)) return;
+      if ("error" in response) {
+        notice(
+          control.note,
+          "Originals unavailable. Nothing was copied. Try again.",
+        );
+        return;
+      }
+      // Validate immediately before the clipboard write, never after a stale read.
+      await navigator.clipboard.writeText(response.text);
+      if (valid(answer, control, version))
+        notice(
+          control.note,
+          response.unrestored
+            ? "Copied with originals. Unavailable placeholders remain as tokens."
+            : "Copied with originals.",
+        );
+    } catch {
+      if (valid(answer, control, version))
+        notice(control.note, "Couldn't copy originals. Try again.");
+    } finally {
+      if (controls.get(answer) === control && version === control.version) {
+        control.copying = false;
+        control.copy.disabled = false;
+      }
+    }
   }
 
   function update(): void {
@@ -336,6 +417,7 @@ export function watchAnswers(
           button:focus-visible { outline:2px solid var(--df-focus); outline-offset:1px; }
           button[aria-pressed="true"] { opacity:1; color:var(--df-accent-text); }
           button:disabled { cursor:default; }
+          .copy-originals { display:inline-flex; gap:5px; width:auto; padding:0 6px; font:12px var(--df-sans); }
           span[role="status"] { display:inline-grid; place-items:center; color:var(--df-accent-text); }
           .spin { animation: spin 1s linear infinite; }
           @keyframes spin { to { transform: rotate(360deg); } }
@@ -345,19 +427,43 @@ export function watchAnswers(
         label(button, "Show originals");
         const note = document.createElement("span");
         note.setAttribute("role", "status");
-        root.append(style, button, note);
-        control = { text, version: 1, state: "probing", host, button, note };
+        const copy = document.createElement("button");
+        copy.type = "button";
+        copy.className = "copy-originals";
+        copy.innerHTML = `${icon("copy", 14)}Copy with originals`;
+        copy.title =
+          "Copy this answer with available originals. The site's Copy keeps tokens.";
+        root.append(style, button, copy, note);
+        control = {
+          text,
+          version: 1,
+          state: "probing",
+          host,
+          button,
+          copy,
+          copying: false,
+          note,
+        };
         controls.set(answer, control);
         const current = control;
         button.addEventListener("click", () => void toggle(answer, current));
+        copy.addEventListener(
+          "click",
+          () => void copyOriginals(answer, current),
+        );
         row.append(host);
         void probe(answer, control);
       } else {
         if (control.host.parentElement !== row) row.append(control.host);
-        if (control.text === text) continue;
+        if (control.text === text) {
+          refreshAppearance(answer);
+          continue;
+        }
         hideOriginals(answer);
         control.text = text;
         control.version++;
+        control.copying = false;
+        control.copy.disabled = false;
         control.state = "probing";
         control.host.hidden = true;
         control.button.disabled = false;
@@ -392,6 +498,8 @@ export function watchAnswers(
       for (const [answer, control] of controls) {
         hideOriginals(answer);
         control.version++;
+        control.copying = false;
+        control.copy.disabled = false;
         control.state = "probing";
         control.host.hidden = true;
         control.button.disabled = false;

@@ -42,8 +42,10 @@
   --accent: var(--orange);
   --accent-hover: var(--orange-hover);
   --accent-text: var(--orange-hover);
-  --token-bg: var(--orange);
-  --token-text: #fff;
+  --token-bg: rgb(192 54 44 / 0.08);
+  --token-text: var(--orange-hover);
+  --primary: var(--text);
+  --primary-text: var(--surface);
   --focus: var(--orange);
   --error: #b3261e;
   --ok: #1e7b34;
@@ -67,6 +69,8 @@
     --field: var(--night);
     --hover: rgb(167 178 177 / 0.1);
     --accent-text: var(--signal);
+    --token-bg: rgb(255 122 26 / 0.1);
+    --token-text: var(--signal);
     --focus: var(--signal);
     --error: #f28b82;
     --ok: #81c995;
@@ -83,6 +87,8 @@
   --field: var(--night);
   --hover: rgb(167 178 177 / 0.1);
   --accent-text: var(--signal);
+  --token-bg: rgb(255 122 26 / 0.1);
+  --token-text: var(--signal);
   --focus: var(--signal);
   --error: #f28b82;
   --ok: #81c995;

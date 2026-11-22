@@ -239,7 +239,9 @@ function isPreferences(value: unknown): value is Preferences {
     Array.isArray(settings.denylist) &&
     settings.denylist.every((item) => typeof item === "string") &&
     "blockSends" in settings &&
-    typeof settings.blockSends === "boolean"
+    typeof settings.blockSends === "boolean" &&
+    (!("autoReplaceOnPaste" in settings) ||
+      typeof settings.autoReplaceOnPaste === "boolean")
   );
 }
 
@@ -338,7 +340,7 @@ async function handle(message: OffscreenRequest): Promise<unknown> {
     await devices.writeRouting(routing);
     accessState = { phase: "ready", routing };
   }
-  const settings = forSite(stored.settings, message.host);
+  const settings = forSite(normalizeSettings(stored.settings), message.host);
   let result: unknown;
   switch (request.type) {
     case "scan":

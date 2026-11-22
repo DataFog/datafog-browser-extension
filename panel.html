@@ -243,12 +243,12 @@
         background: var(--hover);
       }
       button.primary {
-        background: var(--accent);
-        border-color: var(--accent);
-        color: #fff;
+        background: var(--primary);
+        border-color: var(--primary);
+        color: var(--primary-text);
       }
       button.primary:hover:not(:disabled) {
-        background: var(--accent-hover);
+        opacity: 0.88;
       }
       button.danger {
         background: var(--error);
@@ -356,6 +356,34 @@
       }
       #lookup-result {
         margin: 0 0 8px;
+      }
+      .original-row .kicker {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .original-row .allowed {
+        font-size: 9px;
+        line-height: 14px;
+        letter-spacing: 0;
+        text-transform: none;
+      }
+      .original-value {
+        font-weight: 500;
+      }
+      .middle-truncated {
+        display: flex;
+        max-width: 100%;
+        white-space: nowrap;
+      }
+      .original-head {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .original-tail {
+        flex: none;
       }
       .original-row {
         position: relative;

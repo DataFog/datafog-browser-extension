@@ -61,6 +61,10 @@ for (const site of sites) {
           actions.dataset.actions = "";
           const copy = document.createElement("button");
           copy.textContent = "Copy";
+          copy.addEventListener(
+            "click",
+            () => void navigator.clipboard.writeText(value),
+          );
           actions.append(copy);
           (fixtureSite === "gemini"
             ? article.querySelector("model-response")!
@@ -80,13 +84,43 @@ for (const site of sites) {
     await first.click("button");
     await expect
       .poll(async () => (await first.state("button")).text)
-      .toContain("Hide originals");
+      .toContain("Show tokens");
     await expect(chat.locator("datafog-original")).toHaveCount(1);
     expect(
       (await extension.shadow(chat, "datafog-original").state("*")).text,
     ).toBe(`${EMAIL}${EMAIL} / [[EMAIL_UNKNOWN]]`);
     expect((await first.state('[role="status"]')).text).toContain(
       "could not be restored",
+    );
+    const restored = extension.shadow(chat, "datafog-original");
+    expect((await restored.state(".restored-value")).title).toContain(marker);
+    expect((await restored.state(".restored-value")).text).toBe(EMAIL);
+    for (const colorScheme of ["dark", "light"] as const) {
+      await chat.emulateMedia({ colorScheme });
+      const providerColor = await chat
+        .locator("#answer-one .provider-text")
+        .evaluate((element) => getComputedStyle(element).color);
+      await expect
+        .poll(async () => (await restored.state(".restored-value")).color)
+        .toBe(providerColor);
+      await expect(chat.locator("datafog-original")).toHaveCount(1);
+      await expect(chat.locator("#answer-one .provider-text")).toHaveText(text);
+    }
+    await extension.context.grantPermissions(
+      ["clipboard-read", "clipboard-write"],
+      { origin: new URL(chat.url()).origin },
+    );
+    await chat.bringToFront();
+    await chat.locator("#answer-one [data-actions] > button").click();
+    await expect
+      .poll(() => chat.evaluate(() => navigator.clipboard.readText()))
+      .toBe(text);
+    await first.click(".copy-originals");
+    await expect
+      .poll(() => chat.evaluate(() => navigator.clipboard.readText()))
+      .toBe(`${EMAIL}${EMAIL} / [[EMAIL_UNKNOWN]]`);
+    expect((await first.state('[role="status"]')).text).toContain(
+      "Unavailable placeholders remain as tokens.",
     );
     await expect(chat.locator("#answer-one .provider-text")).toHaveText(text);
     await expect(chat.locator("#answer-two .provider-text")).toHaveText(marker);
@@ -96,14 +130,14 @@ for (const site of sites) {
     await second.click("button");
     await expect
       .poll(async () => (await second.state("button")).text)
-      .toContain("Hide originals");
+      .toContain("Show tokens");
     await expect(chat.locator("datafog-original")).toHaveCount(2);
     await first.click("button");
     await expect
       .poll(async () => (await first.state("button")).text)
       .toContain("Show originals");
     await expect(chat.locator("datafog-original")).toHaveCount(1);
-    expect((await second.state("button")).text).toContain("Hide originals");
+    expect((await second.state("button")).text).toContain("Show tokens");
     await chat
       .locator("#answer-one .provider-text")
       .evaluate((element, currentMarker) => {
@@ -115,7 +149,7 @@ for (const site of sites) {
     await first.click("button");
     await expect
       .poll(async () => (await first.state("button")).text)
-      .toContain("Hide originals");
+      .toContain("Show tokens");
     await expect(chat.locator("#answer-one .provider-text")).toHaveText(
       `Streaming ${marker} completed`,
     );

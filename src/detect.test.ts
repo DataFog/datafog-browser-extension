@@ -24,6 +24,7 @@ const settings: Settings = {
   allowlist: [],
   denylist: [],
   blockSends: false,
+  autoReplaceOnPaste: false,
 };
 const countFindings = (text: string, chosen: Settings) =>
   countWith(text, chosen, scanRules);

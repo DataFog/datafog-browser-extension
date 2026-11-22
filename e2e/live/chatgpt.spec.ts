@@ -158,7 +158,7 @@ test("live: Always allow persists and rechecks an unchanged draft", async ({
 });
 
 for (const method of ["button", "Enter"] as const) {
-  test(`live: ${method} is held, then Send anyway reaches ChatGPT`, async ({
+  test(`live: ${method} is held, then its explicit popup choice reaches ChatGPT`, async ({
     extension,
   }) => {
     test.slow();
@@ -183,15 +183,29 @@ for (const method of ["button", "Enter"] as const) {
     else await composer.press("Enter");
     await expect
       .poll(async () => (await badge.state(".paused")).text)
-      .toContain("Sending is paused");
+      .toContain("Choose how to send this message.");
     await expect(userMessages).toHaveCount(before);
-    await badge.click(".send");
+    const marker = (await badge.state(".preview")).text.match(
+      /\[\[EMAIL_[A-Z0-9]+\]\]/,
+    )![0];
+    if (method === "button") {
+      expect((await badge.state(".send")).text).toBe("Send as is");
+      await badge.click(".send");
+    } else {
+      expect((await badge.state(".pseudonymize")).text).toBe("Replace & send");
+      await badge.click(".pseudonymize");
+    }
     await expect(userMessages).toHaveCount(before + 1, {
       timeout: test.info().timeout,
     });
-    await expect(userMessages.last()).toContainText(EMAIL, {
-      timeout: test.info().timeout,
-    });
+    await expect(userMessages.last()).toContainText(
+      method === "button" ? EMAIL : marker,
+      {
+        timeout: test.info().timeout,
+      },
+    );
+    if (method === "Enter")
+      await expect(userMessages.last()).not.toContainText(EMAIL);
   });
 }
 
@@ -229,11 +243,28 @@ test("live: placeholders survive a real response and answer-scoped Show/Hide", a
   await control.click("button");
   await expect
     .poll(async () => (await control.state("button")).text)
-    .toContain("Hide originals");
+    .toContain("Show tokens");
   await expect(chat.locator("datafog-original")).toHaveCount(1);
   expect(
     (await extension.shadow(chat, "datafog-original").state("*")).text,
   ).toContain(EMAIL);
+  await extension.context.grantPermissions(
+    ["clipboard-read", "clipboard-write"],
+    { origin: "https://chatgpt.com" },
+  );
+  await chat.bringToFront();
+  await chat
+    .getByRole("main")
+    .getByRole("button", { name: "Copy", exact: true })
+    .last()
+    .click();
+  await expect
+    .poll(() => chat.evaluate(() => navigator.clipboard.readText()))
+    .toContain(marker);
+  await control.click(".copy-originals");
+  await expect
+    .poll(() => chat.evaluate(() => navigator.clipboard.readText()))
+    .toContain(EMAIL);
   await expect(answer).not.toContainText(EMAIL);
   await control.click("button");
   await expect(chat.locator("datafog-original")).toHaveCount(0);
@@ -323,4 +354,40 @@ test("live: choosing findings preserves the skipped value and commits the displa
   )![0];
   await badge.click(".pseudonymize");
   await expect(composer).toHaveText(`Contact ${marker} / ${card}`);
+});
+
+test("live: opt-in paste replaces locally with quick Undo and never sends", async ({
+  chat,
+  composer,
+  badge,
+  extension,
+}) => {
+  const options = await extension.options();
+  await expect(options.locator("#auto-replace-on-paste")).not.toBeChecked();
+  await options.locator("#auto-replace-on-paste").check();
+  await saveOptions(options);
+  const before = await userMessagesIn(chat).count();
+  await extension.context.grantPermissions(
+    ["clipboard-read", "clipboard-write"],
+    { origin: "https://chatgpt.com" },
+  );
+  await chat.bringToFront();
+  // ChatGPT restores its draft in new tabs; start this owned test with an empty editor.
+  await composer.press("ControlOrMeta+A");
+  await composer.press("Backspace");
+  await expect(composer).toHaveText("");
+  await chat.evaluate((text) => navigator.clipboard.writeText(text), SAMPLE);
+  await composer.focus();
+  await chat.keyboard.press("ControlOrMeta+V");
+  await expect(composer).toHaveText(
+    /^my email is \[\[EMAIL_[A-Z0-9]+\]\] and card \[\[CREDIT_CARD_[A-Z0-9]+\]\]$/,
+  );
+
+  await expect
+    .poll(async () => (await badge.state(".paste-toast")).text)
+    .toContain("Replaced 2 items");
+  await expect(userMessagesIn(chat)).toHaveCount(before);
+  await badge.click(".toast-undo");
+  await expect(composer).toHaveText(SAMPLE);
+  await expect(userMessagesIn(chat)).toHaveCount(before);
 });

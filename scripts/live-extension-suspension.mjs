@@ -1,4 +1,5 @@
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { chromium } from "@playwright/test";
 
 /** Suspend only this checkout's unpacked build; never uninstall it or read its vault. */
@@ -14,8 +15,72 @@ export async function withSuspendedLocalExtension(
   let page;
   let original;
   let restore = false;
+  let targetId;
+  const contextId = inherited.contextId ?? process.env.LIVE_BROWSER_CONTEXT_ID;
+  if (!contextId) {
+    await browser.close();
+    throw new Error(
+      "Set LIVE_BROWSER_CONTEXT_ID to the verified signed-in Chrome profile context before running live tests.",
+    );
+  }
+  const foreground = async () => {
+    const { targetInfo } = await session.send("Target.getTargetInfo", {
+      targetId,
+    });
+    if (targetInfo.browserContextId !== contextId)
+      throw new Error(
+        "The live extension page changed browser profile; refusing extension operations.",
+      );
+    await session.send("Target.activateTarget", { targetId });
+  };
   try {
     session = await browser.newBrowserCDPSession();
+    const url = `chrome://extensions/?datafog-live=${randomUUID()}`;
+    const context = browser.contexts()[0];
+    let anchor;
+    for (const candidate of context.pages()) {
+      const connection = await context.newCDPSession(candidate);
+      try {
+        const { targetInfo } = await connection.send("Target.getTargetInfo");
+        if (targetInfo.browserContextId === contextId) {
+          anchor = candidate;
+          break;
+        }
+      } finally {
+        await connection.detach();
+      }
+    }
+    if (!anchor)
+      throw new Error(
+        "Open a tab in the verified Chrome profile before running live tests.",
+      );
+    // Normal Chrome profiles advertise context IDs but cannot reliably use
+    // Target.createTarget with them. An opener stays in its verified profile.
+    const ownedUrl = `about:blank#datafog-live-${randomUUID()}`;
+    await anchor.evaluate((value) => {
+      window.open(value, "_blank");
+    }, ownedUrl);
+    for (let attempt = 0; attempt < 100 && !page; attempt++) {
+      page = context.pages().find((candidate) => candidate.url() === ownedUrl);
+      if (!page) await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (!page)
+      throw new Error(
+        "The profile-bound popup did not attach; refusing extension operations.",
+      );
+    const connection = await context.newCDPSession(page);
+    try {
+      const { targetInfo } = await connection.send("Target.getTargetInfo");
+      if (targetInfo.browserContextId !== contextId)
+        throw new Error(
+          "The live popup opened in another browser profile; refusing extension operations.",
+        );
+      targetId = targetInfo.targetId;
+    } finally {
+      await connection.detach();
+    }
+    await page.goto(url);
+    await foreground();
     const { extensions } = await session.send("Extensions.getExtensions");
     if (inherited.id || inherited.path) {
       if (!inherited.id || !inherited.path || !path.isAbsolute(inherited.path))
@@ -31,14 +96,27 @@ export async function withSuspendedLocalExtension(
         throw new Error(
           "The inherited original extension is not the exact disabled installation.",
         );
-      return await run(existing.id, existing.path);
+      return await run(existing.id, existing.path, contextId);
     }
+    if (
+      (inherited.originalId || inherited.originalPath) &&
+      (!inherited.originalId ||
+        !inherited.originalPath ||
+        !path.isAbsolute(inherited.originalPath))
+    )
+      throw new Error(
+        "An external original requires its exact ID and absolute unpacked path together.",
+      );
+    const originalPath =
+      inherited.originalPath ?? path.resolve(checkout, "dist");
     const active = extensions.filter(
       (item) => item.enabled && item.name.toLowerCase().startsWith("datafog"),
     );
     if (
       active.some(
-        (item) => path.resolve(item.path) !== path.resolve(checkout, "dist"),
+        (item) =>
+          path.resolve(item.path) !== path.resolve(originalPath) ||
+          (inherited.originalId && item.id !== inherited.originalId),
       )
     ) {
       throw new Error(
@@ -46,9 +124,14 @@ export async function withSuspendedLocalExtension(
       );
     }
     original = active[0];
+    console.log(
+      "Live original installation:",
+      original
+        ? JSON.stringify({ id: original.id, path: original.path })
+        : "none",
+    );
     if (original) {
-      page = await browser.contexts()[0].newPage();
-      await page.goto("chrome://extensions/");
+      await foreground();
       const toggle = page.locator(
         `extensions-item#${original.id} #enableToggle`,
       );
@@ -60,14 +143,18 @@ export async function withSuspendedLocalExtension(
       await toggle.click();
       await waitForEnabled(session, original.id, false);
     }
-    return await run(original?.id, original?.path);
+    return await run(original?.id, original?.path, contextId);
   } finally {
     try {
       if (restore) {
+        await foreground();
         await restoreOriginal(session, page, original);
+        console.log("Live original restored:", original.id);
       }
     } finally {
-      await page?.close();
+      if (page) await page.close();
+      else if (targetId)
+        await session?.send("Target.closeTarget", { targetId }).catch(() => {});
       await session?.detach();
       await browser.close();
     }

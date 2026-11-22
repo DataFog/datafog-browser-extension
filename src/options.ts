@@ -26,6 +26,9 @@ import {
 } from "./theme";
 
 const sites = document.querySelector<HTMLFieldSetElement>("#sites")!;
+const autoReplaceOnPaste = document.querySelector<HTMLInputElement>(
+  "#auto-replace-on-paste",
+)!;
 const blockSends = document.querySelector<HTMLInputElement>("#block-sends")!;
 const status = document.querySelector<HTMLSpanElement>("#status")!;
 
@@ -110,6 +113,7 @@ async function render(): Promise<void> {
   const settings = await loadSettings();
   renderSites(settings.off);
   blockSends.checked = settings.blockSends;
+  autoReplaceOnPaste.checked = settings.autoReplaceOnPaste;
   for (const radio of document.querySelectorAll<HTMLInputElement>(
     'input[name="theme"]',
   ))
@@ -175,6 +179,8 @@ function save(change: Partial<Settings>): Promise<void> {
  * @returns The changed setting, or null for anything else.
  */
 function changeFrom(control: EventTarget | null): Partial<Settings> | null {
+  if (control === autoReplaceOnPaste)
+    return { autoReplaceOnPaste: autoReplaceOnPaste.checked };
   if (control === blockSends) return { blockSends: blockSends.checked };
   if (!(control instanceof HTMLInputElement)) return null;
   if (sites.contains(control))
@@ -219,13 +225,19 @@ async function restoreDefaults(): Promise<void> {
     )
   )
     return;
-  const { off, entities, blockSends: hold } = DEFAULT_SETTINGS;
-  await save({ off, entities, blockSends: hold });
+  const {
+    off,
+    entities,
+    blockSends: hold,
+    autoReplaceOnPaste: paste,
+  } = DEFAULT_SETTINGS;
+  await save({ off, entities, blockSends: hold, autoReplaceOnPaste: paste });
   for (const box of document.querySelectorAll<HTMLInputElement>("#sites input"))
     box.checked = !off.includes(box.value);
   for (const box of document.querySelectorAll<HTMLInputElement>("#types input"))
     box.checked = entities.includes(box.value);
   blockSends.checked = hold;
+  autoReplaceOnPaste.checked = paste;
 }
 
 document

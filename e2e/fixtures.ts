@@ -18,6 +18,8 @@ import {
   type ExtensionInstaller,
 } from "./extension-installation";
 
+import { createPinnedPage, requireContext } from "./browser-context";
+
 export { expect };
 export const SAMPLE =
   "my email is jane@example.com and card 4111 1111 1111 1111";
@@ -38,6 +40,10 @@ export interface ShadowState {
   rect: { x: number; y: number; width: number; height: number };
   /** The top right corner's radius, as computed. */
   radius: string;
+  color: string;
+  animationName: string;
+  animationDuration: string;
+  transitionDuration: string;
 }
 
 /** Inspect closed roots through DevTools, preserving production isolation. */
@@ -82,7 +88,11 @@ export class ClosedShadow {
             text: el.textContent || '', title: el.getAttribute('title') || '',
             visible: el.checkVisibility(), disabled: Boolean(el.disabled),
             rect: {x:r.x,y:r.y,width:r.width,height:r.height},
-            radius: getComputedStyle(el).borderTopRightRadius
+            radius: getComputedStyle(el).borderTopRightRadius,
+            color: getComputedStyle(el).color,
+            animationName: getComputedStyle(el).animationName,
+            animationDuration: getComputedStyle(el).animationDuration,
+            transitionDuration: getComputedStyle(el).transitionDuration
           };
         }`,
         arguments: [{ value: selector }],
@@ -164,10 +174,11 @@ function claudeHTML(): string {
     <main><section id="answers"></section><fieldset><div data-cds-part="composer-card">
     <div data-testid="chat-input" role="textbox" contenteditable="true" aria-label="Write your prompt to Claude"></div>
     <div class="row"><button type="button" data-testid="chat-input-send" aria-label="Send message">↑</button></div>
-    </div></fieldset><output id="sent-count">0</output></main>
+    </div></fieldset><output id="sent-count">0</output><output id="sent-text"></output></main>
     <script>
       const sent=document.querySelector('#sent-count');
-      const send=()=>{sent.textContent=String(Number(sent.textContent)+1)};
+      const capture=()=>{const editor=document.querySelector('[contenteditable],textarea');document.querySelector('#sent-text').textContent=editor?.value??editor?.innerText??''};
+      const send=()=>{capture();sent.textContent=String(Number(sent.textContent)+1)};
       document.querySelector('[data-testid=chat-input-send]').addEventListener('click', send);
       document.querySelector('[data-testid=chat-input]').addEventListener('keydown', e=>{
         if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();send()}
@@ -187,10 +198,11 @@ function geminiHTML(): string {
     <main><section id="answers"></section><input-area-v2>
     <rich-textarea><div class="ql-editor" role="textbox" contenteditable="true" aria-label="Enter a prompt for Gemini"></div></rich-textarea>
     <div class="send-button"><button type="submit" aria-label="Send message">↑</button></div>
-    </input-area-v2><output id="sent-count">0</output></main>
+    </input-area-v2><output id="sent-count">0</output><output id="sent-text"></output></main>
     <script>
       const sent=document.querySelector('#sent-count');
-      const send=()=>{sent.textContent=String(Number(sent.textContent)+1)};
+      const capture=()=>{const editor=document.querySelector('[contenteditable],textarea');document.querySelector('#sent-text').textContent=editor?.value??editor?.innerText??''};
+      const send=()=>{capture();sent.textContent=String(Number(sent.textContent)+1)};
       document.querySelector('[aria-label="Send message"]').addEventListener('click', send);
       document.querySelector('.ql-editor').addEventListener('keydown', e=>{
         if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();send()}
@@ -211,11 +223,12 @@ function grokHTML(): string {
     <form data-composer data-composer-surface="true">
     <div class="tiptap ProseMirror" role="textbox" contenteditable="true" aria-label="Message Grok"></div>
     <button type="submit" data-testid="chat-submit" aria-label="Send">↑</button>
-    </form><output id="sent-count">0</output></main>
+    </form><output id="sent-count">0</output><output id="sent-text"></output></main>
     <script>
       const form=document.querySelector('form');
       const sent=document.querySelector('#sent-count');
-      form.addEventListener('submit', e=>{e.preventDefault(); sent.textContent=String(Number(sent.textContent)+1)});
+      const capture=()=>{const editor=document.querySelector('[contenteditable],textarea');document.querySelector('#sent-text').textContent=editor?.value??editor?.innerText??''};
+      form.addEventListener('submit', e=>{e.preventDefault(); capture();sent.textContent=String(Number(sent.textContent)+1)});
       form.addEventListener('keydown', e=>{
         if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();form.requestSubmit()}
       });
@@ -235,10 +248,11 @@ function deepseekHTML(): string {
     <main><section id="answers"></section>
     <div id="card"><div><div><textarea name="search" placeholder="Message DeepSeek"></textarea></div></div>
     <div class="row"><div role="button" class="ds-button ds-button--primary ds-button--circle"></div></div>
-    </div><output id="sent-count">0</output></main>
+    </div><output id="sent-count">0</output><output id="sent-text"></output></main>
     <script>
       const sent=document.querySelector('#sent-count');
-      const send=()=>{sent.textContent=String(Number(sent.textContent)+1)};
+      const capture=()=>{const editor=document.querySelector('[contenteditable],textarea');document.querySelector('#sent-text').textContent=editor?.value??editor?.innerText??''};
+      const send=()=>{capture();sent.textContent=String(Number(sent.textContent)+1)};
       document.querySelector('[role=button]').addEventListener('click', send);
       document.querySelector('textarea').addEventListener('keydown', e=>{
         if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();send()}
@@ -269,11 +283,12 @@ function chatHTML(options: ChatOptions): string {
     <main><header>Editor integration fixture</header>
     <section id="answers"></section><form>${editor}
     <input type="file" aria-label="Attach file"><button type="submit" data-testid="send-button">Send</button>
-    </form><output id="sent-count">0</output></main>
+    </form><output id="sent-count">0</output><output id="sent-text"></output></main>
     <script>
       const form=document.querySelector('form');
       const sent=document.querySelector('#sent-count');
-      form.addEventListener('submit', e=>{e.preventDefault(); sent.textContent=String(Number(sent.textContent)+1)});
+      const capture=()=>{const editor=document.querySelector('[contenteditable],textarea');document.querySelector('#sent-text').textContent=editor?.value??editor?.innerText??''};
+      form.addEventListener('submit', e=>{e.preventDefault(); capture();sent.textContent=String(Number(sent.textContent)+1)});
       form.addEventListener('keydown', e=>{
         if(e.key==='Enter' && !e.shiftKey && !e.isComposing){e.preventDefault();form.requestSubmit()}
       });
@@ -293,14 +308,23 @@ function browserChannel(): "chrome" | "msedge" {
   return browser;
 }
 
-function extensionInstaller(session: CDPSession): ExtensionInstaller {
+function extensionInstaller(
+  session: CDPSession,
+  activate: () => Promise<void> = async () => {},
+): ExtensionInstaller {
   return {
-    list: async () =>
-      (await session.send("Extensions.getExtensions")).extensions,
-    load: async (extensionPath) =>
-      (await session.send("Extensions.loadUnpacked", { path: extensionPath }))
-        .id,
+    list: async () => {
+      await activate();
+      return (await session.send("Extensions.getExtensions")).extensions;
+    },
+    load: async (extensionPath) => {
+      await activate();
+      return (
+        await session.send("Extensions.loadUnpacked", { path: extensionPath })
+      ).id;
+    },
     uninstall: async (id) => {
+      await activate();
       await session.send("Extensions.uninstall", { id });
     },
   };
@@ -318,6 +342,7 @@ export class Extension {
   private borrowedBrowser?: Browser;
   private ownedPages = new Set<Page>();
   private currentChat?: Page;
+  private profileControl?: Page;
   private readonly installation: TestExtensionInstallation;
   private readonly suspendedOriginal?: { id: string; path: string };
 
@@ -328,10 +353,15 @@ export class Extension {
       live?: boolean;
       storageState?: string;
       cdpEndpoint?: string;
+      browserContextId?: string;
       suspendedExtensionId?: string;
       suspendedExtensionPath?: string;
     } = {},
   ) {
+    if (config.cdpEndpoint && !config.browserContextId)
+      throw new Error(
+        "Borrowed Chrome requires an explicit LIVE_BROWSER_CONTEXT_ID",
+      );
     this.installation = new TestExtensionInstallation(
       path.join(profile, "unpacked-extension"),
     );
@@ -353,14 +383,163 @@ export class Extension {
     }
   }
 
+  private async verifyPage(page: Page): Promise<void> {
+    if (!this.borrowedBrowser) return;
+    const session = await page.context().newCDPSession(page);
+    try {
+      requireContext(
+        (await session.send("Target.getTargetInfo")).targetInfo,
+        this.config.browserContextId!,
+      );
+    } finally {
+      await session.detach();
+    }
+  }
+
+  private async newOwnedPage(): Promise<Page> {
+    if (!this.borrowedBrowser) {
+      const page = await this.context.newPage();
+      this.ownedPages.add(page);
+      return page;
+    }
+    const browser = this.borrowedBrowser;
+    const session = await browser.newBrowserCDPSession();
+    try {
+      const page = await createPinnedPage(this.config.browserContextId!, {
+        create: async (url, browserContextId) => {
+          // Normal Chrome profiles expose target context IDs that are not
+          // accepted by Target.createTarget. A verified opener binds the new
+          // tab to that existing profile instead of Chrome's last-used profile.
+          const pages = browser
+            .contexts()
+            .flatMap((context) => context.pages());
+          const candidates = [
+            ...pages.filter((candidate) =>
+              candidate.url().startsWith("https://chatgpt.com/"),
+            ),
+            ...pages.filter(
+              (candidate) =>
+                !candidate.url().startsWith("https://chatgpt.com/"),
+            ),
+          ];
+          let anchor: Page | undefined;
+          for (const candidate of candidates) {
+            if (candidate.isClosed()) continue;
+            const targetSession = await candidate
+              .context()
+              .newCDPSession(candidate);
+            try {
+              if (
+                (await targetSession.send("Target.getTargetInfo")).targetInfo
+                  .browserContextId === browserContextId
+              ) {
+                anchor = candidate;
+                break;
+              }
+            } finally {
+              await targetSession.detach();
+            }
+          }
+          if (!anchor)
+            throw new Error(
+              "No existing page belongs to the selected Chrome profile",
+            );
+          await this.verifyPage(anchor);
+          await anchor.evaluate((ownedUrl) => {
+            window.open(ownedUrl, "_blank");
+          }, url);
+          for (let attempt = 0; attempt < 100; attempt++) {
+            const targets = (
+              await session.send("Target.getTargets")
+            ).targetInfos.filter(
+              (target) => target.type === "page" && target.url === url,
+            );
+            if (targets.length === 1) return targets[0].targetId;
+            if (targets.length > 1)
+              throw new Error("The owned page target is ambiguous");
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error("The selected profile did not open the owned page");
+        },
+        resolve: async (url) => {
+          for (let attempt = 0; attempt < 100; attempt++) {
+            const candidatePage = browser
+              .contexts()
+              .flatMap((context) => context.pages())
+              .find((candidate) => candidate.url() === url);
+            if (candidatePage) {
+              const targetSession = await candidatePage
+                .context()
+                .newCDPSession(candidatePage);
+              try {
+                return {
+                  page: candidatePage,
+                  target: (await targetSession.send("Target.getTargetInfo"))
+                    .targetInfo,
+                };
+              } finally {
+                await targetSession.detach();
+              }
+            }
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          throw new Error(
+            "The explicitly created browser target did not attach",
+          );
+        },
+        close: async (targetId) => {
+          await session.send("Target.closeTarget", { targetId });
+        },
+      });
+      this.ownedPages.add(page);
+      return page;
+    } finally {
+      await session.detach();
+    }
+  }
+
+  private async activateProfile(): Promise<void> {
+    if (!this.borrowedBrowser) return;
+    if (!this.profileControl || this.profileControl.isClosed())
+      throw new Error("The pinned profile control page is unavailable");
+    await this.verifyPage(this.profileControl);
+    await this.profileControl.bringToFront();
+    await this.verifyPage(this.profileControl);
+  }
+
+  private async verifyWorker(): Promise<void> {
+    if (!this.borrowedBrowser) return;
+    const session = await this.borrowedBrowser.newBrowserCDPSession();
+    try {
+      const targets = (
+        await session.send("Target.getTargets")
+      ).targetInfos.filter(
+        (target) =>
+          target.type === "service_worker" &&
+          target.url.startsWith(`chrome-extension://${this.id}/`),
+      );
+      if (targets.length !== 1)
+        throw new Error(
+          "The test extension worker target is ambiguous or missing",
+        );
+      requireContext(targets[0], this.config.browserContextId!);
+    } finally {
+      await session.detach();
+    }
+  }
+
   async start(): Promise<void> {
     const extensionPath = path.join(this.profile, "unpacked-extension");
     if (!this.installed) {
       await base.step("Copy the unpacked extension", () =>
-        cp(path.resolve("dist"), extensionPath, {
-          recursive: true,
-          mode: constants.COPYFILE_FICLONE,
-        }),
+        cp(
+          path.resolve(process.env.DATAFOG_TEST_BUILD_ROOT ?? ".", "dist"),
+          extensionPath,
+          {
+            recursive: true,
+            mode: constants.COPYFILE_FICLONE,
+          },
+        ),
       );
       this.installed = true;
     }
@@ -376,7 +555,10 @@ export class Extension {
       this.borrowedBrowser = await chromium.connectOverCDP(
         this.config.cdpEndpoint,
       );
-      this.context = this.borrowedBrowser.contexts()[0];
+      this.profileControl = await this.newOwnedPage();
+      this.context = this.profileControl.context();
+      await this.profileControl.goto("chrome://extensions/");
+      await this.activateProfile();
       this.debugPort = endpoint.port;
     } else {
       this.context = await chromium.launchPersistentContext(this.profile, {
@@ -415,7 +597,7 @@ export class Extension {
     await base.step("Install the unpacked extension", async () => {
       const installer = await this.context.browser()!.newBrowserCDPSession();
       try {
-        const api = extensionInstaller(installer);
+        const api = extensionInstaller(installer, () => this.activateProfile());
         this.id = await this.installation.load(
           api,
           Boolean(this.borrowedBrowser),
@@ -432,6 +614,7 @@ export class Extension {
       (await this.context.waitForEvent("serviceworker", {
         predicate: isExtensionWorker,
       }));
+    await this.verifyWorker();
     if (!this.borrowedBrowser) {
       this.debugPort = (
         await readFile(path.join(this.profile, "DevToolsActivePort"), "utf8")
@@ -451,6 +634,7 @@ export class Extension {
     for (let tries = 0; tries < 30; tries++) {
       const welcome = this.context.pages().find((page) => page.url() === url);
       if (welcome) {
+        await this.verifyPage(welcome);
         await welcome.close();
         return;
       }
@@ -464,8 +648,7 @@ export class Extension {
    * @returns The page.
    */
   async welcome(): Promise<Page> {
-    const page = await this.context.newPage();
-    this.ownedPages.add(page);
+    const page = await this.newOwnedPage();
     await page.goto(`chrome-extension://${this.id}/welcome.html`);
     return page;
   }
@@ -474,8 +657,7 @@ export class Extension {
     const origin = ORIGINS[options.site ?? "chatgpt"];
     const url = new URL(options.path ?? "/", origin).href;
     this.pages.set(url, options);
-    const page = await this.context.newPage();
-    this.ownedPages.add(page);
+    const page = await this.newOwnedPage();
     this.currentChat = page;
     await page.goto(url, {
       waitUntil: this.config.live ? "domcontentloaded" : "load",
@@ -494,8 +676,7 @@ export class Extension {
   }
 
   async options(): Promise<Page> {
-    const page = await this.context.newPage();
-    this.ownedPages.add(page);
+    const page = await this.newOwnedPage();
     await page.goto(`chrome-extension://${this.id}/options.html`);
     await expect(page.locator('input[value="EMAIL"]')).toBeAttached();
     return page;
@@ -547,11 +728,13 @@ export class Extension {
         sources: true,
       });
     }
-    const candidates = context
-      .pages()
+    const candidates = browser
+      .contexts()
+      .flatMap((candidate) => candidate.pages())
       .filter((p) => p.url() === `chrome-extension://${this.id}/panel.html`);
     let panel: Page | undefined;
     for (const candidate of candidates) {
+      await this.verifyPage(candidate);
       const nativeWindow = await candidate.evaluate(
         async () => (await chrome.windows.getCurrent()).id,
       );
@@ -571,6 +754,8 @@ export class Extension {
   }
 
   async restart(): Promise<void> {
+    if (this.borrowedBrowser)
+      throw new Error("Cannot restart a borrowed browser context");
     await this.context.close();
     this.attached = [];
     await this.start();
@@ -594,9 +779,9 @@ export class Extension {
     );
     const previousWorker = this.worker;
     const installer = await this.context.browser()!.newBrowserCDPSession();
-    const { id } = await installer.send("Extensions.loadUnpacked", {
-      path: path.dirname(manifestPath),
-    });
+    const id = await extensionInstaller(installer, () =>
+      this.activateProfile(),
+    ).load(path.dirname(manifestPath));
     await installer.detach();
     expect(id).toBe(this.id);
     await expect
@@ -604,7 +789,7 @@ export class Extension {
       .toBe(false);
     // A reloaded MV3 worker may wait for its next event before starting.
     // Wake it from a new extension view while keeping the old chat open.
-    const probe = await this.context.newPage();
+    const probe = await this.newOwnedPage();
     await expect
       .poll(async () => {
         try {
@@ -651,11 +836,13 @@ export class Extension {
    * for a while. The next event starts a fresh one.
    */
   async stopWorker(): Promise<void> {
+    if (this.borrowedBrowser)
+      throw new Error("Cannot stop all workers in a borrowed browser context");
     // Mark the running worker, so a fresh one is told apart from it
     await this.worker.evaluate(() =>
       Object.assign(globalThis, { stoppedByTest: true }),
     );
-    const page = await this.context.newPage();
+    const page = await this.newOwnedPage();
     await page.goto(`chrome-extension://${this.id}/options.html`);
     const session = await this.context.newCDPSession(page);
     await session.send("ServiceWorker.enable");
@@ -726,7 +913,9 @@ export class Extension {
       await attempt(async () => {
         const installer = await browser.newBrowserCDPSession();
         try {
-          await this.installation.remove(extensionInstaller(installer));
+          await this.installation.remove(
+            extensionInstaller(installer, () => this.activateProfile()),
+          );
         } finally {
           await installer.detach();
         }

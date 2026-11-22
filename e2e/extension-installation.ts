@@ -102,6 +102,10 @@ export class TestExtensionInstallation {
       this.owns(candidate),
     )) {
       try {
+        console.log(
+          "Removing owned test extension:",
+          JSON.stringify({ id: extension.id, path: extension.path }),
+        );
         await installer.uninstall(extension.id);
       } catch (error) {
         failures.push(error);

@@ -290,7 +290,7 @@ test("sending is unrestricted by default even when findings are present", async 
 });
 
 for (const sendMethod of ["button", "Enter"] as const) {
-  test(`send blocking: ${sendMethod} pauses once and a second press sends`, async ({
+  test(`send blocking: ${sendMethod} holds native retries until an explicit popup choice`, async ({
     chat,
     badge,
     extension,
@@ -312,16 +312,27 @@ for (const sendMethod of ["button", "Enter"] as const) {
     await expect(chat.locator("#sent-count")).toHaveText("0");
     await expect
       .poll(() => badge.state(".paused").then((state) => state.text))
-      .toContain("Sending is paused");
+      .toContain("Choose how to send this message.");
     await expect
       .poll(() => badge.state(".send").then((state) => state.visible))
       .toBe(true);
+    await expect
+      .poll(async () => (await badge.state(".pseudonymize")).text)
+      .toBe("Replace & send");
     await send();
+    if (sendMethod === "button") {
+      await expect(chat.locator("#sent-count")).toHaveText("0");
+      await badge.click(".pseudonymize");
+    }
+    // A distinct Enter activates the popup primary; the opening Enter did not.
     await expect(chat.locator("#sent-count")).toHaveText("1");
+    await expect(chat.locator("#sent-text")).toHaveText(
+      /my email is \[\[EMAIL_[A-Z0-9]+\]\] and card \[\[CREDIT_CARD_[A-Z0-9]+\]\]/,
+    );
   });
 }
 
-test("send blocking: Send anyway bypasses the warning exactly once", async ({
+test("send blocking: Send as is bypasses the warning exactly once", async ({
   chat,
   badge,
   extension,
@@ -337,8 +348,10 @@ test("send blocking: Send anyway bypasses the warning exactly once", async ({
   await expect
     .poll(() => badge.state(".send").then((state) => state.visible))
     .toBe(true);
+  expect((await badge.state(".send")).text).toBe("Send as is");
   await badge.click(".send");
   await expect(chat.locator("#sent-count")).toHaveText("1");
+  await expect(chat.locator("#sent-text")).toHaveText(SAMPLE);
 });
 
 test("send blocking waits for an immediate send to be checked", async ({
@@ -355,7 +368,7 @@ test("send blocking waits for an immediate send to be checked", async ({
   await chat.locator('[data-testid="send-button"]').click();
   await expect
     .poll(() => badge.state(".paused").then((state) => state.text))
-    .toContain("Sending is paused");
+    .toContain("Choose how to send this message.");
   await expect(chat.locator("#sent-count")).toHaveText("0");
 });
 
@@ -542,4 +555,157 @@ test("non-English text and emoji survive detection, redaction and Undo", async (
   await openBadge(badge);
   await badge.click(".undo");
   await expect(composer).toHaveText(text);
+});
+
+test("held Replace & send commits exactly the chosen preview and sends once", async ({
+  chat,
+  badge,
+  extension,
+}) => {
+  const settings = await extension.options();
+  await settings.locator("#block-sends").check();
+  await saveOptions(settings);
+  const composer = chat.locator("#prompt-textarea");
+  await composer.fill(SAMPLE);
+  await found(badge, 2);
+  await chat.locator('[data-testid="send-button"]').click();
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).text)
+    .toBe("Replace & send");
+  expect((await badge.state(".dismiss")).visible).toBe(false);
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  await badge.click('.choose[aria-label="Replace 4111 1111 1111 1111"]');
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).text)
+    .toBe("Replace 1 & send");
+  await expect
+    .poll(async () => (await badge.state(".pseudonymize")).disabled)
+    .toBe(false);
+  const marker = (await badge.state(".preview")).text.match(
+    /\[\[EMAIL_[A-Z0-9]+\]\]/,
+  )![0];
+  await badge.click(".pseudonymize");
+  await expect(chat.locator("#sent-count")).toHaveText("1");
+  await expect(chat.locator("#sent-text")).toHaveText(
+    `my email is ${marker} and card 4111 1111 1111 1111`,
+  );
+  const panel = await extension.panel();
+  await expect(panel.locator("#originals")).toContainText("jane@example.com");
+  await expect(panel.locator("#originals")).not.toContainText(
+    "4111 1111 1111 1111",
+  );
+});
+
+test("proactive Enter replaces without sending and quick Undo restores the draft", async ({
+  chat,
+  badge,
+}) => {
+  const composer = chat.locator("#prompt-textarea");
+  await composer.fill(SAMPLE);
+  await found(badge, 2);
+  await badge.click(".dot");
+  expect((await badge.state(".pseudonymize")).text).toBe("Replace");
+  expect((await badge.state(".dismiss")).text).toBe("Keep as is");
+  await chat.keyboard.press("Escape");
+  await expect
+    .poll(async () => (await badge.state(".panel")).visible)
+    .toBe(false);
+  await expect(composer).toHaveText(SAMPLE);
+  await badge.click(".dot");
+  await chat.keyboard.press("Enter");
+  await expect(composer).toContainText("[[EMAIL_");
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  await expect
+    .poll(async () => (await badge.state(".paste-toast")).visible)
+    .toBe(true);
+  await badge.click(".toast-undo");
+  await expect(composer).toHaveText(SAMPLE);
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+});
+
+test("paste auto-replacement is opt-in, saves first, never sends, and offers Undo", async ({
+  chat,
+  badge,
+  extension,
+}) => {
+  const settings = await extension.options();
+  await expect(settings.locator("#auto-replace-on-paste")).not.toBeChecked();
+  await settings.locator("#auto-replace-on-paste").check();
+  await saveOptions(settings);
+  await extension.context.grantPermissions(
+    ["clipboard-read", "clipboard-write"],
+    { origin: "https://chatgpt.com" },
+  );
+  await chat.bringToFront();
+  await chat.evaluate((text) => navigator.clipboard.writeText(text), SAMPLE);
+  const composer = chat.locator("#prompt-textarea");
+  await composer.focus();
+  await chat.keyboard.press("ControlOrMeta+V");
+  await expect(composer).toHaveText(
+    /my email is \[\[EMAIL_[A-Z0-9]+\]\] and card \[\[CREDIT_CARD_[A-Z0-9]+\]\]/,
+  );
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  await expect
+    .poll(async () => (await badge.state(".paste-toast")).text)
+    .toContain("Replaced 2 items");
+  await badge.click(".toast-undo");
+  await expect(composer).toHaveText(SAMPLE);
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  const panel = await extension.panel();
+  await expect(panel.locator("#originals")).toContainText("jane@example.com");
+  const reopened = await extension.options();
+  await expect(reopened.locator("#auto-replace-on-paste")).toBeChecked();
+});
+
+test("manual Undo toast leaves the nearby native Send hit target unobstructed", async ({
+  chat,
+  badge,
+}) => {
+  const composer = chat.locator("#prompt-textarea");
+  await composer.fill(SAMPLE);
+  await found(badge, 2);
+  await badge.click(".dot");
+  await badge.click(".pseudonymize");
+  await expect(composer).toContainText("[[EMAIL_");
+  await expect
+    .poll(async () => (await badge.state(".paste-toast")).visible)
+    .toBe(true);
+  const dot = (await badge.state(".dot")).rect;
+  const send = chat.locator('[data-testid="send-button"]');
+  // Real ChatGPT puts Send just left of the circle, within the toast wrapper's
+  // rectangular bounds but outside every painted extension control.
+  await send.evaluate((element, circle) => {
+    if (!(element instanceof HTMLElement))
+      throw new Error("Send is not an HTML control");
+    Object.assign(element.style, {
+      position: "fixed",
+      left: `${circle.x - 53}px`,
+      top: `${circle.y + 12}px`,
+      right: "auto",
+      bottom: "auto",
+      width: "36px",
+      height: "36px",
+      boxSizing: "border-box",
+      margin: "0",
+      padding: "0",
+    });
+  }, dot);
+  await expect
+    .poll(() =>
+      send.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return (
+          document.elementFromPoint(
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2,
+          ) === element
+        );
+      }),
+    )
+    .toBe(true);
+  await expect(chat.locator("#sent-count")).toHaveText("0");
+  const replaced = await composer.innerText();
+  await send.click();
+  await expect(chat.locator("#sent-count")).toHaveText("1");
+  await expect(chat.locator("#sent-text")).toHaveText(replaced);
 });

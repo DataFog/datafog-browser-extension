@@ -264,3 +264,125 @@ test("deep ChatGPT Dil responses use their own assistant action row and never a 
   expect(first.textContent).toContain("[[EMAIL_A]]");
   expect(document.querySelectorAll("datafog-original")).toHaveLength(1);
 });
+
+test("revealed values carry a focusable token cue while provider text and nodes remain unchanged", () => {
+  const content = answer("before [[EMAIL_A]] after");
+  const originalNode = content.firstChild;
+  showOriginals(content, VALUES);
+  const cue = document
+    .querySelector("datafog-original")!
+    .shadowRoot!.querySelector<HTMLElement>(".restored-value")!;
+  expect(cue.textContent).toBe(VALUES[0].original);
+  expect(cue.title).toContain("[[EMAIL_A]]");
+  expect(cue.tabIndex).toBe(0);
+  expect(cue.style.pointerEvents).toBe("auto");
+  expect(cue.style.textDecoration).toContain("dotted");
+  expect(content.firstChild).toBe(originalNode);
+  expect(content.textContent).toBe("before [[EMAIL_A]] after");
+});
+function copyButton(): HTMLButtonElement {
+  return document
+    .querySelector("datafog-answer-control")!
+    .shadowRoot!.querySelector<HTMLButtonElement>(".copy-originals")!;
+}
+test("explicit copy restores only its answer and explains unknown markers; native copy stays untouched", async () => {
+  const content = answer("[[EMAIL_A]] [[UNKNOWN_X]]");
+  const native = document.createElement("button");
+  native.textContent = "Copy";
+  content.parentElement!.querySelector("[data-actions]")!.append(native);
+  const write = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  const watcher = watchAnswers(siteFor("chatgpt.com"), async () => ({
+    ...RESULT,
+    text: "jane@example.com [[UNKNOWN_X]]",
+    unrestored: 1,
+  }));
+  stop = watcher.dispose;
+  await tick();
+  native.click();
+  expect(write).not.toHaveBeenCalled();
+  copyButton().click();
+  await tick();
+  expect(write).toHaveBeenCalledWith("jane@example.com [[UNKNOWN_X]]");
+  expect(
+    document.querySelector("datafog-answer-control")!.shadowRoot!.textContent,
+  ).toContain("Unavailable placeholders remain as tokens");
+  expect(content.textContent).toBe("[[EMAIL_A]] [[UNKNOWN_X]]");
+});
+test.each(["streaming", "forgotten", "removed"])(
+  "pending original copy does not write clipboard after answer is %s",
+  async (invalidation) => {
+    const content = answer("[[EMAIL_A]]");
+    let finish!: (value: RestoredWithValues) => void;
+    let count = 0;
+    const write = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue();
+    const watcher = watchAnswers(siteFor("chatgpt.com"), async () =>
+      ++count === 2
+        ? new Promise((done) => {
+            finish = done;
+          })
+        : RESULT,
+    );
+    stop = watcher.dispose;
+    await tick();
+    copyButton().click();
+    if (invalidation === "streaming") content.textContent = "new [[EMAIL_A]]";
+    if (invalidation === "forgotten") watcher.refresh();
+    if (invalidation === "removed") content.parentElement!.remove();
+    await tick();
+    finish({ ...RESULT, text: "jane@example.com" });
+    await tick();
+    expect(write).not.toHaveBeenCalled();
+  },
+);
+
+test("copy failure is visible and retry reads current originals again", async () => {
+  answer("[[EMAIL_A]]");
+  const write = vi
+    .spyOn(navigator.clipboard, "writeText")
+    .mockRejectedValueOnce(new Error("denied"))
+    .mockResolvedValue(undefined);
+  const read = vi.fn(async () => ({ ...RESULT, text: "jane@example.com" }));
+  const watcher = watchAnswers(siteFor("chatgpt.com"), read);
+  stop = watcher.dispose;
+  await tick();
+  copyButton().click();
+  await tick();
+  expect(
+    document.querySelector("datafog-answer-control")!.shadowRoot!.textContent,
+  ).toContain("Couldn't copy originals");
+  expect(copyButton().disabled).toBe(false);
+  copyButton().click();
+  await tick();
+  expect(write).toHaveBeenCalledTimes(2);
+  expect(read).toHaveBeenCalledTimes(3);
+  expect(
+    document.querySelector("datafog-answer-control")!.shadowRoot!.textContent,
+  ).toContain("Copied with originals");
+});
+
+test("shown originals track provider palette changes in both directions without editing provider text", async () => {
+  const content = answer("[[EMAIL_A]]");
+  const node = content.firstChild;
+  content.style.color = "rgb(14, 19, 22)";
+  const watcher = watchAnswers(siteFor("chatgpt.com"), async () => RESULT);
+  stop = watcher.dispose;
+  await tick();
+  toggle().click();
+  await tick();
+  const color = () =>
+    content.ownerDocument
+      .querySelector("datafog-original")!
+      .shadowRoot!.firstElementChild!.getAttribute("style");
+  expect(color()).toContain("color: rgb(14, 19, 22)");
+  content.style.color = "rgb(238, 240, 239)";
+  await tick();
+  expect(color()).toContain("color: rgb(238, 240, 239)");
+  expect(toggle().textContent).toBe("Show tokens");
+  content.style.color = "rgb(14, 19, 22)";
+  await tick();
+  expect(color()).toContain("color: rgb(14, 19, 22)");
+  expect(content.firstChild).toBe(node);
+  expect(content.textContent).toBe("[[EMAIL_A]]");
+});

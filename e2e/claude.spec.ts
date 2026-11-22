@@ -25,7 +25,7 @@ test("Claude: checks the chat box, matches its size and redacts", async ({
 });
 
 for (const sendMethod of ["button", "Enter"] as const) {
-  test(`Claude: ${sendMethod} is held once, and a second press sends`, async ({
+  test(`Claude: ${sendMethod} is held until an explicit popup choice`, async ({
     extension,
   }) => {
     const options = await extension.options();
@@ -49,9 +49,20 @@ for (const sendMethod of ["button", "Enter"] as const) {
     await expect(chat.locator("#sent-count")).toHaveText("0");
     await expect
       .poll(() => badge.state(".paused").then((state) => state.text))
-      .toContain("Sending is paused");
+      .toContain("Choose how to send this message.");
+    await expect
+      .poll(async () => (await badge.state(".pseudonymize")).text)
+      .toBe("Replace & send");
     await send();
+    if (sendMethod === "button") {
+      await expect(chat.locator("#sent-count")).toHaveText("0");
+      await badge.click(".pseudonymize");
+    }
+    // A distinct Enter activates the popup primary; the opening Enter did not.
     await expect(chat.locator("#sent-count")).toHaveText("1");
+    await expect(chat.locator("#sent-text")).toHaveText(
+      /my email is \[\[EMAIL_[A-Z0-9]+\]\] and card \[\[CREDIT_CARD_[A-Z0-9]+\]\]/,
+    );
   });
 }
 

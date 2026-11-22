@@ -8,8 +8,18 @@ function setup(extensionPath = "/repo/dist") {
     path: extensionPath,
     enabled: true,
   };
+
+  let ownedUrl;
   const session = {
     send: vi.fn(async (command) => {
+      if (command === "Target.getTargetInfo")
+        return {
+          targetInfo: {
+            browserContextId: "verified-profile",
+            targetId: "owned-page",
+          },
+        };
+      if (command === "Target.activateTarget") return {};
       if (command !== "Extensions.getExtensions")
         throw new Error("Unexpected mutation of extension data");
       return { extensions: [{ ...original }] };
@@ -22,22 +32,38 @@ function setup(extensionPath = "/repo/dist") {
       original.enabled = !original.enabled;
     }),
   };
-  const page = { goto: vi.fn(), locator: vi.fn(() => toggle), close: vi.fn() };
+  const page = {
+    evaluate: vi.fn(async (_, url) => {
+      ownedUrl = url;
+    }),
+    url: () => ownedUrl,
+    goto: vi.fn(),
+    locator: vi.fn(() => toggle),
+    close: vi.fn(),
+  };
   const browser = {
     newBrowserCDPSession: vi.fn(async () => session),
-    contexts: () => [{ newPage: async () => page }],
+    contexts: () => [
+      {
+        pages: () => [page],
+        newCDPSession: async () => session,
+        waitForEvent: async () => page,
+      },
+    ],
     close: vi.fn(),
   };
   return {
     original,
     session,
     toggle,
+    page,
     browser,
     connect: vi.fn(async () => browser),
   };
 }
 
 describe("existing browser extension isolation", () => {
+  vi.stubEnv("LIVE_BROWSER_CONTEXT_ID", "verified-profile");
   for (const fails of [false, true])
     it(`restores original enabled state after ${fails ? "failure" : "success"} without uninstalling`, async () => {
       const fixture = setup();
@@ -103,7 +129,11 @@ describe("existing browser extension isolation", () => {
         { id: "original", path: "/outer/dist" },
       ),
     ).resolves.toBe("nested passed");
-    expect(run).toHaveBeenCalledWith("original", "/outer/dist");
+    expect(run).toHaveBeenCalledWith(
+      "original",
+      "/outer/dist",
+      "verified-profile",
+    );
     expect(fixture.toggle.click).not.toHaveBeenCalled();
     expect(fixture.original.enabled).toBe(false);
   });
@@ -130,4 +160,62 @@ describe("existing browser extension isolation", () => {
       expect(fixture.toggle.click).not.toHaveBeenCalled();
     },
   );
+});
+
+it("creates the extension manager in the verified profile and refuses context drift before cleanup", async () => {
+  const fixture = setup();
+  await expect(
+    withSuspendedLocalExtension(
+      "http://localhost:9333",
+      "/repo",
+      async () => {
+        fixture.session.send.mockImplementation(async (command) => {
+          if (command === "Target.getTargetInfo")
+            return { targetInfo: { browserContextId: "different-profile" } };
+          throw new Error("Must not read or mutate another profile");
+        });
+      },
+      fixture.connect,
+      { contextId: "verified-profile" },
+    ),
+  ).rejects.toThrow("changed browser profile");
+  expect(fixture.page.evaluate).toHaveBeenCalledOnce();
+  expect(fixture.toggle.click).toHaveBeenCalledTimes(1);
+});
+
+it("suspends an explicitly identified external original for isolated-checkout hooks without nested ownership", async () => {
+  const fixture = setup("/original/dist");
+  await withSuspendedLocalExtension(
+    "http://localhost:9333",
+    "/isolated",
+    async () => {
+      expect(fixture.original.enabled).toBe(false);
+    },
+    fixture.connect,
+    {
+      contextId: "verified-profile",
+      originalId: "original",
+      originalPath: "/original/dist",
+    },
+  );
+  expect(fixture.original.enabled).toBe(true);
+  expect(fixture.toggle.click).toHaveBeenCalledTimes(2);
+});
+
+it("refuses a different external original ID even when its unpacked path matches", async () => {
+  const fixture = setup("/original/dist");
+  await expect(
+    withSuspendedLocalExtension(
+      "http://localhost:9333",
+      "/isolated",
+      vi.fn(),
+      fixture.connect,
+      {
+        contextId: "verified-profile",
+        originalId: "different",
+        originalPath: "/original/dist",
+      },
+    ),
+  ).rejects.toThrow("different datafog installation");
+  expect(fixture.toggle.click).not.toHaveBeenCalled();
 });

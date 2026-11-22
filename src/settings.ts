@@ -154,6 +154,8 @@ export interface Settings {
   denylist: string[];
   /** Hold a send until the user has chosen what to do about found values. */
   blockSends: boolean;
+  /** Replace findings in pasted text automatically, only when explicitly enabled. */
+  autoReplaceOnPaste: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -163,6 +165,7 @@ export const DEFAULT_SETTINGS: Settings = {
   allowlist: [],
   denylist: [],
   blockSends: false,
+  autoReplaceOnPaste: false,
 };
 
 /**
@@ -289,5 +292,10 @@ export async function removeFromList(
 /** Keep legacy global-off and exact allowlist semantics during migration. */
 export function normalizeSettings(saved: Partial<Settings>): Settings {
   const off = saved.off ?? (saved.enabled === false ? [...HOSTS] : []);
-  return { ...DEFAULT_SETTINGS, ...saved, off };
+  return {
+    ...DEFAULT_SETTINGS,
+    ...saved,
+    off,
+    autoReplaceOnPaste: saved.autoReplaceOnPaste === true,
+  };
 }

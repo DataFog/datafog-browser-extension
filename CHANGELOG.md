@@ -4,6 +4,8 @@ Notable changes to the datafog browser extension. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+- Make held-send choices explicit with Send as is and save-before-send Replace & send, add opt-in local replacement on paste and quick Undo, and make restored answers visibly local with Show tokens and a separate Copy with originals action. Refine token/value hierarchy, dark contrast, saved-value truncation the welcome link to the current supported chat tool, and restrained transitions that respect reduced motion.
+
 - Choose which findings Replace or Redact affects, with exact refreshed placeholder previews and Always allow limited to skipped values. Manage each saved original with Copy, a lasting allow exception, and confirmed Forget that retires its token and hides open restored displays.
 
 - Replace sensitive draft text directly from the circle popup after saving originals in the vault, with preview, Undo and Redo. Keep as is applies only to the current draft; More contains Redact, Always allow and sidebar access.

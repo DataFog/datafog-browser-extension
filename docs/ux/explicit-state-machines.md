@@ -2,7 +2,7 @@
 
 Status: historical design proposal, followed by revision additions. This describes the datafog browser extension UX. The implementation calls its embedded encrypted store the vault and retains FogVault dependency and storage identifiers; the proposed storage rename was deferred.
 
-This document records the supplied design proposal and its later welcome/content-copy additions. References below to existing behavior or unresolved decisions describe the proposal’s original context, not the final implementation. The first ten groups are the original recommended explicit models; sections 11 and 12 extend them. See [ADR 002](../adr/002-automatic-fogvault-ux.md) for implemented decisions, including automatic encrypted access, matching semantics and the appearance bootstrap exception.
+This document records the supplied design proposal and its later welcome/content-copy additions. References below to existing behavior or unresolved decisions describe the proposal’s original context, not the final implementation. The first ten groups are the original recommended explicit models; sections 11 onward extend them. See [ADR 002](../adr/002-automatic-fogvault-ux.md) for implemented decisions, including automatic encrypted access, matching semantics and the appearance bootstrap exception.
 
 ## Modeling rules
 
@@ -61,9 +61,9 @@ Never apply an old operation to a newer draft. A save can succeed even if editor
 
 **States:** allowed; awaiting a current check; held for review or checking failure; explicitly overridden. A short programmatic-send phase can prevent the extension from blocking its own release action.
 
-**Events:** send attempt; scan result; explicit Send anyway; draft edit; committed preference change. Findings and checking failures carry different hold reasons. Editing invalidates a queued send and any override tied to the previous revision.
+**Events:** send attempt; scan result; explicit Send as is or Replace & send; draft edit; committed preference change. Findings and checking failures carry different hold reasons. Editing invalidates a queued send and any override tied to the previous revision.
 
-This remains optional behavior. No transformation, reveal, or storage operation sends a chat automatically. Timeout and repeated-key handling need explicit implementation rules rather than being inferred from popup visibility.
+This remains optional behavior. Proactive transformations, reveal and storage operations never authorize a send. Explicit Replace & send captures current draft intent and releases exactly one native send only after durable save and successful current-revision application. Native retry clicks stay held; a distinct popup Enter activates the primary choice, while the opening Enter, repeated keydowns and IME composition cannot double-activate it. See ADR 003 for the implemented boundary.
 
 ## 6. Original visibility per answer
 
@@ -71,7 +71,7 @@ This remains optional behavior. No transformation, reveal, or storage operation 
 
 **Independent axes:** markers/originals visible; read idle/pending/failed; restoration result complete/partial/none. A read failure leaves markers visible. Partial restoration reveals known originals and leaves unknown markers unchanged, with a notice.
 
-**Events:** Show originals; read result; Hide originals; answer content changed or removed. One control in the answer's action row covers all known occurrences in that answer. Showing one answer does not hide another. No restorable markers means no Show originals control.
+**Events:** Show originals; read result; Show tokens; Copy with originals; answer content changed or removed. One control in the answer's action row covers all known occurrences in that answer. Showing one answer does not hide another. No restorable markers means no Show originals control.
 
 Reveals change local display only. The provider's stored answer remains placeholders. Hide clears the local reveal without requiring a storage write. Ignore reads for an outdated answer version.
 
@@ -146,6 +146,14 @@ The exact deletion scope, confirmation wording, and partial-failure recovery pol
 **States:** menu closed; menu open; copying; allowing; awaiting Forget confirmation; forgetting; confirmed forgotten; failed or uncertain operation. An allowed value is marked with an Allowed chip and no longer offers the same allow action.
 
 **Events:** open/close menu; Copy original; Always allow this value; Forget; confirm/cancel; commit acknowledgement; reconciliation; refresh open views. Copy is an explicit clipboard action. Always allow commits the typed exception before reporting success. Forget requires confirmation and retires the original's token through Core; it does not edit provider messages. Successful retirement removes the saved row and invalidates any shown original in open answers. Cancelling or a confirmed failed write preserves the original; uncertain outcomes require reconciliation, never an invented success. Saved original/token pairs are not editable.
+
+## 15. Opt-in paste replacement and quick Undo
+
+**Owner:** the current draft operation and history, governed by the encrypted `autoReplaceOnPaste` preference (default false).
+
+**States:** disabled; pasted draft awaiting check; preparing; saving; applying; confirmation with valid Undo; superseded or failed. A paste is not a send intent.
+
+**Events:** paste; current scan; accepted exact preview; save result; editor application; Undo; draft/policy change; toast expiry. The same durable-save and freshness requirements as manual Replace apply. The transient confirmation is a projection of the operation/history, not an independent permission to restore stale text. Manual replacement uses the same quick Undo feedback.
 
 ## What disappears or gets simpler
 

@@ -57,6 +57,7 @@ async function start(
   reply: Reply,
   page = PAGE,
   enabled = true,
+  beforeLoad?: () => void,
 ): Promise<HTMLTextAreaElement> {
   document.body.innerHTML = page;
   settingsFailure = false;
@@ -92,6 +93,7 @@ async function start(
       },
     },
   });
+  beforeLoad?.();
   await import("./content");
   return Array.from(document.querySelectorAll("textarea")).at(-1)!;
 }
@@ -1049,18 +1051,28 @@ test("lets a send through when blocking is off", async () => {
   expect(pressEnter(box)).toBe(true);
 });
 
-test("holds the first Enter, and a second sends anyway", async () => {
+test("holds repeated native sends until an explicit popup choice", async () => {
   const { box } = await startBlocking(() => FOUND);
   await type(box, "jane@example.com");
 
   expect(pressEnter(box)).toBe(false);
   expect(panelButton("send").hidden).toBe(false);
 
-  expect(pressEnter(box)).toBe(true);
-  expect(panelButton("send").hidden).toBe(true);
+  const native = document.querySelector<HTMLButtonElement>("#go")!;
+  native.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+  const panel = document
+    .querySelector("datafog-badge")!
+    .shadowRoot!.querySelector<HTMLElement>(".panel")!;
+  expect(panel.hidden).toBe(true);
+  const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+  expect(native.dispatchEvent(event)).toBe(false);
+  expect(panel.hidden).toBe(false);
+  expect(panelButton("pseudonymize").hidden).toBe(false);
+  expect(panelButton("pseudonymize").textContent).toBe("Replace & send");
+  expect(panelButton("send").hidden).toBe(false);
 });
 
-test("sends anyway on a quick double Enter, before the scan answers", async () => {
+test("quick double Enter does not send raw text before the scan answers", async () => {
   const { box, sent } = await startBlocking(() => FOUND);
   box.value = "jane@example.com";
   box.dispatchEvent(new Event("input"));
@@ -1069,7 +1081,8 @@ test("sends anyway on a quick double Enter, before the scan answers", async () =
   expect(pressEnter(box)).toBe(false);
   await vi.advanceTimersByTimeAsync(0);
 
-  expect(sent).toHaveBeenCalledOnce();
+  expect(sent).not.toHaveBeenCalled();
+  expect(panelButton("send").textContent).toBe("Send as is");
 });
 
 test("doesn't treat a held-down Enter as a second press", async () => {
@@ -1555,4 +1568,334 @@ test("failed selection refreshes intended skips and disables both transforms whe
   await vi.advanceTimersByTimeAsync(0);
   expect(panelButton("pseudonymize").disabled).toBe(false);
   expect(panelButton("pseudonymize").textContent).toBe("Replace 1");
+});
+
+function replacementReply(request: Request): unknown {
+  if (request.type === "block-sends") return { blockSends: true };
+  if (request.type === "scan")
+    return {
+      seq: request.seq,
+      enabled: true,
+      blockSends: true,
+      counts: request.text.includes("jane@example.com") ? { EMAIL: 1 } : {},
+      previewId: "exact",
+      findings: request.text.includes("jane@example.com")
+        ? [
+            {
+              entityType: "EMAIL",
+              original: "jane@example.com",
+              marker: "[[EMAIL_A]]",
+              start: 0,
+              end: 16,
+            },
+          ]
+        : [],
+    };
+  if (request.type === "pseudonymize")
+    return {
+      saved: true,
+      text: "[[EMAIL_A]]",
+      edits: [{ start: 0, end: 16, replacement: "[[EMAIL_A]]" }],
+    };
+  return {};
+}
+function watchSent(): ReturnType<typeof vi.fn> {
+  const sent = vi.fn((event: Event) => event.preventDefault());
+  document.querySelector("#go")!.addEventListener("click", sent);
+  return sent;
+}
+test("intercepted primary waits for durable save and sends the applied current draft exactly once", async () => {
+  let finish!: (value: unknown) => void;
+  const box = await start(
+    async (request) =>
+      request.type === "pseudonymize"
+        ? new Promise((done) => {
+            finish = done;
+          })
+        : replacementReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  await type(box, "jane@example.com");
+  expect(pressEnter(box)).toBe(false);
+  expect(panelButton("pseudonymize").textContent).toBe("Replace & send");
+  expect(pressEnter(box)).toBe(false);
+  expect(sent).not.toHaveBeenCalled();
+  expect(pressEnter(box, true)).toBe(false);
+  panelButton("pseudonymize").click();
+  finish(
+    replacementReply({
+      type: "pseudonymize",
+      text: box.value,
+      previewId: "exact",
+    }),
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("[[EMAIL_A]]");
+  expect(sent).toHaveBeenCalledOnce();
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector<HTMLElement>(".paste-toast")!.hidden,
+  ).toBe(true);
+});
+test.each(["failed", "edited", "policy"])(
+  "intercepted Replace never sends after a %s save outcome",
+  async (outcome) => {
+    let finish!: (value: unknown) => void;
+    const box = await start(
+      async (request) =>
+        request.type === "pseudonymize"
+          ? new Promise((done) => {
+              finish = done;
+            })
+          : replacementReply(request),
+      SEND_PAGE,
+    );
+    const sent = watchSent();
+    await type(box, "jane@example.com");
+    pressEnter(box);
+    panelButton("pseudonymize").click();
+    if (outcome === "edited") await type(box, "new draft");
+    if (outcome === "policy") await fromWorker({ type: "recheck" });
+    finish(
+      outcome === "failed"
+        ? { error: "write_failed" }
+        : replacementReply({ type: "pseudonymize", text: "jane@example.com" }),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent).not.toHaveBeenCalled();
+    expect(box.value).toBe(
+      outcome === "edited" ? "new draft" : "jane@example.com",
+    );
+  },
+);
+test("proactive review Enter replaces without sending; IME and repeat do not activate primary", async () => {
+  const box = await start(
+    async (request) => replacementReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  await type(box, "jane@example.com");
+  badge().dot.click();
+  box.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      isComposing: true,
+      cancelable: true,
+    }),
+  );
+  pressEnter(box, true);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("jane@example.com");
+  pressEnter(box);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("[[EMAIL_A]]");
+  expect(sent).not.toHaveBeenCalled();
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  expect(root.querySelector<HTMLElement>(".paste-toast")!.hidden).toBe(false);
+  root.querySelector<HTMLButtonElement>(".toast-undo")!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("jane@example.com");
+  expect(root.querySelector<HTMLElement>(".paste-toast")!.hidden).toBe(true);
+  expect(sent).not.toHaveBeenCalled();
+});
+test("Escape closes interception without allowing raw send or replacing", async () => {
+  const box = await start(
+    async (request) => replacementReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  await type(box, "jane@example.com");
+  pressEnter(box);
+  box.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector<HTMLElement>(".panel")!.hidden,
+  ).toBe(true);
+  document.querySelector<HTMLButtonElement>("#go")!.click();
+  expect(sent).not.toHaveBeenCalled();
+  expect(box.value).toBe("jane@example.com");
+});
+async function pasteText(
+  box: HTMLTextAreaElement,
+  text: string,
+): Promise<void> {
+  box.dispatchEvent(new Event("paste", { bubbles: true, cancelable: true }));
+  box.value = text;
+  box.dispatchEvent(new Event("input", { bubbles: true }));
+  await vi.advanceTimersByTimeAsync(10);
+}
+test("paste replacement is opt-in, uses the exact preview, offers Undo and never sends", async () => {
+  const seen: Request[] = [];
+  const box = await start(async (request) => {
+    seen.push(request);
+    return replacementReply(request);
+  }, SEND_PAGE);
+  const sent = watchSent();
+  await pasteText(box, "jane@example.com");
+  expect(seen.some((request) => request.type === "pseudonymize")).toBe(false);
+  await type(box, "");
+  savedSettings.autoReplaceOnPaste = true;
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  await pasteText(box, "jane@example.com");
+  expect(seen).toContainEqual({
+    type: "pseudonymize",
+    text: "jane@example.com",
+    previewId: "exact",
+  });
+  expect(box.value).toBe("[[EMAIL_A]]");
+  expect(sent).not.toHaveBeenCalled();
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  expect(root.querySelector<HTMLElement>(".paste-toast")!.hidden).toBe(false);
+  expect(root.querySelector(".paste-toast")!.textContent).toContain(
+    "Replaced 1 item · Undo",
+  );
+  root.querySelector<HTMLButtonElement>(".toast-undo")!.click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("jane@example.com");
+  expect(sent).not.toHaveBeenCalled();
+});
+test("an edit supersedes an in-flight paste replacement without a toast or send", async () => {
+  let finish!: (value: unknown) => void;
+  const box = await start(
+    async (request) =>
+      request.type === "pseudonymize"
+        ? new Promise((done) => {
+            finish = done;
+          })
+        : replacementReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  savedSettings.autoReplaceOnPaste = true;
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  await pasteText(box, "jane@example.com");
+  await type(box, "new draft");
+  finish(replacementReply({ type: "pseudonymize", text: "jane@example.com" }));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("new draft");
+  expect(sent).not.toHaveBeenCalled();
+  expect(
+    document
+      .querySelector("datafog-badge")!
+      .shadowRoot!.querySelector<HTMLElement>(".paste-toast")!.hidden,
+  ).toBe(true);
+});
+
+test("a provider paste handler registered before datafog cannot hide the pre-paste draft", async () => {
+  const box = await start(
+    async (request) => replacementReply(request),
+    SEND_PAGE,
+    true,
+    () => {
+      const editor = document.querySelector<HTMLTextAreaElement>("textarea")!;
+      editor.addEventListener("paste", (event) => {
+        event.preventDefault();
+        editor.value = "jane@example.com";
+        editor.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    },
+  );
+  const sent = watchSent();
+  savedSettings.autoReplaceOnPaste = true;
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  box.dispatchEvent(event);
+  expect(event.defaultPrevented).toBe(true);
+  await vi.advanceTimersByTimeAsync(10);
+  expect(box.value).toBe("[[EMAIL_A]]");
+  expect(sent).not.toHaveBeenCalled();
+});
+
+test("failed intercepted scan retains send intent through retry and confirmed replacement", async () => {
+  let fail = true;
+  const box = await start(
+    async (request) =>
+      request.type === "scan" && fail
+        ? { error: "scan_failed" }
+        : replacementReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  await type(box, "jane@example.com");
+  pressEnter(box);
+  expect(panelButton("send").hidden).toBe(false);
+  fail = false;
+  document
+    .querySelector("datafog-badge")!
+    .shadowRoot!.querySelector<HTMLButtonElement>(".retry")!
+    .click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(panelButton("pseudonymize").textContent).toBe("Replace & send");
+  panelButton("pseudonymize").click();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("[[EMAIL_A]]");
+  expect(sent).toHaveBeenCalledOnce();
+});
+
+test("popup checkbox Enter and composing primary Enter never dispatch replacement", async () => {
+  const box = await start(
+    async (request) => replacementReply(request),
+    SEND_PAGE,
+  );
+  await type(box, "jane@example.com");
+  badge().dot.click();
+  const check = choices()[0];
+  check.focus();
+  check.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Enter",
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  const primary = panelButton("pseudonymize");
+  primary.focus();
+  const ime = new KeyboardEvent("keydown", {
+    key: "Enter",
+    isComposing: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  primary.dispatchEvent(ime);
+  expect(ime.defaultPrevented).toBe(true);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(box.value).toBe("jane@example.com");
+  expect(chrome.runtime.sendMessage).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: "pseudonymize" }),
+  );
+});
+
+test("failed automatic paste save keeps original draft and offers no Undo toast", async () => {
+  const box = await start(
+    async (request) =>
+      request.type === "pseudonymize"
+        ? { error: "write_failed" }
+        : replacementReply(request),
+    SEND_PAGE,
+  );
+  const sent = watchSent();
+  savedSettings.autoReplaceOnPaste = true;
+  await fromWorker({ type: "recheck" });
+  await vi.advanceTimersByTimeAsync(0);
+  await pasteText(box, "jane@example.com");
+  expect(box.value).toBe("jane@example.com");
+  expect(sent).not.toHaveBeenCalled();
+  const root = document.querySelector("datafog-badge")!.shadowRoot!;
+  expect(root.querySelector<HTMLElement>(".paste-toast")!.hidden).toBe(true);
+  expect(root.querySelector(".progress")!.textContent).toContain(
+    "draft is unchanged",
+  );
 });

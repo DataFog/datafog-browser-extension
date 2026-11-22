@@ -261,3 +261,23 @@ test("reports a partial deletion as one", async () => {
   expect($("#delete-open").hidden).toBe(false);
   deleteReply = () => ({ state: "none" });
 });
+
+test("paste replacement is opt-in, saved with other encrypted preferences and reset with behavior", async () => {
+  await start();
+  const control = document.querySelector<HTMLInputElement>(
+    "#auto-replace-on-paste",
+  )!;
+  expect(control.checked).toBe(false);
+  saveElsewhere({ allowlist: ["keep@example.com"] });
+  control.click();
+  await vi.waitFor(() =>
+    expect(stored.settings?.autoReplaceOnPaste).toBe(true),
+  );
+  expect(stored.settings?.allowlist).toEqual(["keep@example.com"]);
+  vi.stubGlobal("confirm", () => true);
+  click("#restore");
+  await vi.waitFor(() =>
+    expect(stored.settings?.autoReplaceOnPaste).toBe(false),
+  );
+  expect(stored.settings?.allowlist).toEqual(["keep@example.com"]);
+});

@@ -35,8 +35,11 @@ export const HOST_TOKENS = `
     --df-accent: ${BRAND.orange};
     --df-accent-hover: ${BRAND.orangeHover};
     --df-accent-text: ${BRAND.orangeOnLight};
-    --df-token-bg: ${BRAND.orange};
-    --df-token-text: #fff;
+    --df-token-bg: rgb(192 54 44 / 0.08);
+    --df-token-text: ${BRAND.orangeOnLight};
+    --df-primary: var(--df-text);
+    --df-primary-text: var(--df-surface);
+    --df-circle-border: transparent;
     --df-focus: ${BRAND.orange};
     --df-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
     --df-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -54,6 +57,9 @@ export const HOST_TOKENS = `
       --df-line: rgb(167 178 177 / 0.22);
       --df-hover: rgb(167 178 177 / 0.12);
       --df-accent-text: ${BRAND.signal};
+      --df-token-bg: rgb(255 122 26 / 0.10);
+      --df-token-text: ${BRAND.signal};
+      --df-circle-border: rgb(238 240 239 / 0.32);
       --df-focus: ${BRAND.signal};
     }
   }
@@ -65,6 +71,9 @@ export const HOST_TOKENS = `
       --df-line: rgb(167 178 177 / 0.22);
       --df-hover: rgb(167 178 177 / 0.12);
       --df-accent-text: ${BRAND.signal};
+      --df-token-bg: rgb(255 122 26 / 0.10);
+      --df-token-text: ${BRAND.signal};
+      --df-circle-border: rgb(238 240 239 / 0.32);
       --df-focus: ${BRAND.signal};
   }
 `;

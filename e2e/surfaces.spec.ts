@@ -374,3 +374,49 @@ test("circle hover explains status, click opens actions, Escape and outside clic
   await chat.locator("#prompt-textarea").click();
   expect((await badge.state(".panel")).visible).toBe(false);
 });
+
+for (const reducedMotion of ["no-preference", "reduce"] as const) {
+  test(`popup and quick Undo motion respect ${reducedMotion}`, async ({
+    chat,
+    badge,
+  }) => {
+    await chat.emulateMedia({ reducedMotion });
+    const editor = chat.locator("#prompt-textarea");
+    await editor.fill(EMAIL);
+    await expect
+      .poll(async () => (await badge.state(".dot")).title)
+      .toContain("1 found");
+    await badge.click(".dot");
+    const popup = await badge.state(".panel");
+    expect(popup.animationName).toBe(
+      reducedMotion === "reduce" ? "none" : "popup-in",
+    );
+    expect(popup.animationDuration).toBe(
+      reducedMotion === "reduce" ? "0s" : "0.14s",
+    );
+    const dot = await badge.state(".dot");
+    expect(
+      dot.transitionDuration
+        .split(",")
+        .map((value) => value.trim())
+        .every(
+          (value) => value === (reducedMotion === "reduce" ? "0s" : "0.14s"),
+        ),
+    ).toBe(true);
+    await badge.click(".pseudonymize");
+    await expect(editor).toContainText("[[EMAIL_");
+    await expect
+      .poll(async () => (await badge.state(".paste-toast")).visible)
+      .toBe(true);
+    const toast = await badge.state(".paste-toast");
+    expect(toast.animationName).toBe(
+      reducedMotion === "reduce" ? "none" : "toast-in",
+    );
+    expect(toast.animationDuration).toBe(
+      reducedMotion === "reduce" ? "0s" : "0.14s",
+    );
+    await badge.click(".toast-undo");
+    await expect(editor).toHaveText(EMAIL);
+    await expect(chat.locator("#sent-count")).toHaveText("0");
+  });
+}

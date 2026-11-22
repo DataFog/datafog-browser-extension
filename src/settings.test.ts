@@ -12,6 +12,7 @@ import {
   GERMAN_ENTITIES,
   LABELS,
   loadSettings,
+  normalizeSettings,
   OPT_IN_ENTITIES,
   removeFromList,
   sameChecks,
@@ -116,4 +117,11 @@ test("adds a list value once, trimmed, and removes it", async () => {
     denylist: ["Project Atlas"],
   });
   vi.unstubAllGlobals();
+});
+
+test("paste replacement defaults safely off for older or malformed preferences", () => {
+  expect(normalizeSettings({}).autoReplaceOnPaste).toBe(false);
+  expect(
+    normalizeSettings({ autoReplaceOnPaste: true }).autoReplaceOnPaste,
+  ).toBe(true);
 });

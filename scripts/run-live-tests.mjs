@@ -2,6 +2,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync, spawn } from "node:child_process";
 import { lstatSync, readFileSync, readlinkSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -121,6 +123,20 @@ export function runNode(args, env = process.env) {
   });
 }
 
+/** Build only into a newly owned directory, never an installed unpacked path. */
+export async function withIsolatedLiveBuild(env, run, build = runNode) {
+  const directory = await mkdtemp(path.join(tmpdir(), "datafog-live-build-"));
+  try {
+    await build(
+      [path.join(root, "build.mjs"), "--output-root", directory],
+      env,
+    );
+    return await run({ ...env, DATAFOG_TEST_BUILD_ROOT: directory });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 export async function runLiveTests(args = []) {
   if (process.env.CI && process.env.CI !== "false")
     throw new Error(
@@ -153,26 +169,31 @@ export async function runLiveTests(args = []) {
   await withSuspendedLocalExtension(
     endpoint,
     root,
-    async (originalId, originalPath) => {
+    async (originalId, originalPath, browserContextId) => {
+      env.LIVE_BROWSER_CONTEXT_ID = browserContextId;
       if (originalId) {
         env.LIVE_SUSPENDED_EXTENSION_ID = originalId;
         env.LIVE_SUSPENDED_EXTENSION_PATH = originalPath;
       }
-      await runNode([path.join(root, "build.mjs")], env);
-      await runNode(
-        [
-          require.resolve("@playwright/test/cli"),
-          "test",
-          "--config=playwright.live.config.ts",
-          ...args,
-        ],
-        env,
+      await withIsolatedLiveBuild(env, async (buildEnv) =>
+        runNode(
+          [
+            require.resolve("@playwright/test/cli"),
+            "test",
+            "--config=playwright.live.config.ts",
+            ...args,
+          ],
+          buildEnv,
+        ),
       );
     },
     undefined,
     {
       id: process.env.LIVE_SUSPENDED_EXTENSION_ID,
       path: process.env.LIVE_SUSPENDED_EXTENSION_PATH,
+      contextId: process.env.LIVE_BROWSER_CONTEXT_ID,
+      originalId: process.env.LIVE_ORIGINAL_EXTENSION_ID,
+      originalPath: process.env.LIVE_ORIGINAL_EXTENSION_PATH,
     },
   );
 

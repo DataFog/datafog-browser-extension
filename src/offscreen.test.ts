@@ -327,3 +327,50 @@ test("forget responds only after durable host retirement and exposes failures", 
     await forward({ type: "forget-original", marker: "[[EMAIL_123456]]" }),
   ).toEqual({ error: "OutcomeUnknown" });
 });
+
+test("older encrypted preferences keep paste replacement off without rewriting storage", async () => {
+  const older: Partial<typeof DEFAULT_SETTINGS> = { ...DEFAULT_SETTINGS };
+  delete older.autoReplaceOnPaste;
+  state.preferences = {
+    version: 1,
+    policyVersion: "existing",
+    settings: older,
+    markers: [],
+  };
+  expect(await forward({ type: "settings-get" })).toMatchObject({
+    result: { autoReplaceOnPaste: false },
+  });
+  expect(state.write).not.toHaveBeenCalled();
+});
+
+test("paste opt-in is committed with encrypted policy and malformed saved values fail closed", async () => {
+  state.preferences = {
+    version: 1,
+    policyVersion: "existing",
+    settings: { ...DEFAULT_SETTINGS, autoReplaceOnPaste: "true" },
+    markers: [],
+  };
+  expect(await forward({ type: "settings-get" })).toEqual({
+    error: "preferences_invalid",
+  });
+  state.preferences = {
+    version: 1,
+    policyVersion: "existing",
+    settings: DEFAULT_SETTINGS,
+    markers: [],
+  };
+  expect(
+    await forward({
+      type: "settings-save",
+      settings: { ...DEFAULT_SETTINGS, autoReplaceOnPaste: true },
+    }),
+  ).toMatchObject({ result: { saved: true } });
+  expect(state.write).toHaveBeenCalledWith(
+    expect.objectContaining({
+      settings: expect.objectContaining({ autoReplaceOnPaste: true }),
+    }),
+  );
+  expect(await forward({ type: "settings-get" })).toMatchObject({
+    result: { autoReplaceOnPaste: true },
+  });
+});

@@ -9,10 +9,12 @@ import { icon, isIconName } from "./icons";
 import { LOGO } from "./logo";
 import type { ErrorResponse, VaultStatus } from "./messages";
 import { followTheme } from "./theme";
+import { HOSTS } from "./site";
 import {
   ONBOARDED,
   UNREACHED_TABS,
   welcomeSteps,
+  welcomeTarget,
   type WelcomeStep,
 } from "./welcome-state";
 
@@ -175,6 +177,14 @@ async function checkVault(attempt = 0): Promise<void> {
 }
 
 async function start(): Promise<void> {
+  const open = await chrome.tabs
+    .query({ url: HOSTS.map((host) => `https://${host}/*`) })
+    .catch(() => []);
+  const target = welcomeTarget(open);
+  const link = document.querySelector<HTMLAnchorElement>("#done-try")!;
+  link.href = target.url;
+  link.replaceChildren(`Try it on ${target.name}`);
+  link.insertAdjacentHTML("beforeend", icon("arrow", 14));
   const stored = await chrome.storage.local
     .get(UNREACHED_TABS)
     .catch((): Record<string, unknown> => ({}));

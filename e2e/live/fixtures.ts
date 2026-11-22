@@ -65,21 +65,38 @@ export async function requireSignedIn(page: Page): Promise<void> {
     throw new Error(
       "Live ChatGPT returned HTTP 403 before the editor loaded. Complete any browser verification in the dedicated Chrome test profile. A saved login may remain valid while ChatGPT denies this browser access; the live suite needs a browser session or runner the site accepts.",
     );
-  const authenticated = await page.evaluate(async () => {
+  const authentication = await page.evaluate(async () => {
     try {
       const response = await fetch("/api/auth/session", {
         credentials: "include",
       });
-      if (!response.ok) return false;
+      const contentType = response.headers.get("content-type");
+      if (!response.ok || !contentType?.includes("json"))
+        return {
+          authenticated: false,
+          status: response.status,
+          contentType,
+          reason: "session response unavailable",
+        };
       const session = await response.json();
-      return Boolean(session?.user?.id || session?.user?.email);
-    } catch {
-      return false;
+      return {
+        authenticated: Boolean(session?.user?.id || session?.user?.email),
+        status: response.status,
+        contentType,
+        reason: "session user check",
+      };
+    } catch (error) {
+      return {
+        authenticated: false,
+        status: 0,
+        contentType: null,
+        reason: error instanceof Error ? error.name : "network error",
+      };
     }
   });
-  if (!authenticated)
+  if (!authentication.authenticated)
     throw new Error(
-      "ChatGPT is not authenticated. Run npm run test:live:auth and sign in to the test account again.",
+      `ChatGPT authentication could not be verified in the existing browser: HTTP ${authentication.status}, ${authentication.contentType ?? "no content type"}, ${authentication.reason}. Check that browser session before retrying.`,
     );
   await expect(
     composerIn(page),
@@ -147,6 +164,7 @@ export const test = base.extend<{
       live: true,
       storageState: useOpenProfile ? undefined : authPath,
       cdpEndpoint,
+      browserContextId: process.env.LIVE_BROWSER_CONTEXT_ID,
       suspendedExtensionId: process.env.LIVE_SUSPENDED_EXTENSION_ID,
       suspendedExtensionPath: process.env.LIVE_SUSPENDED_EXTENSION_PATH,
     });

@@ -14,6 +14,7 @@ export interface PageEvents {
   send: (repeat: boolean) => boolean;
   /** The user attached a file. */
   files: () => void;
+  popupKey?: (event: KeyboardEvent) => boolean;
 }
 
 /**
@@ -46,6 +47,15 @@ export function watchPage(
   document.addEventListener(
     "keydown",
     (event) => {
+      const composer = findComposer();
+      const withinComposer =
+        event.target instanceof Node &&
+        Boolean(composer?.contains(event.target));
+      if (withinComposer && events.popupKey?.(event)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
       const newline = event.shiftKey || event.isComposing;
       if (event.key === "Enter" && !newline && inForm(event.target))
         ask(event, event.repeat);

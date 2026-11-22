@@ -117,7 +117,23 @@ function row(
     kicker.textContent = detail.kicker;
     text.append(kicker);
   }
-  text.append(value);
+  const shown = document.createElement("span");
+  shown.className = "original-value";
+  shown.title = value;
+  const chars = Array.from(value);
+  if (detail.token && chars.length > 36) {
+    shown.classList.add("middle-truncated");
+    const head = document.createElement("span");
+    head.className = "original-head";
+    head.textContent = chars.slice(0, -12).join("");
+    const tail = document.createElement("span");
+    tail.className = "original-tail";
+    tail.textContent = chars.slice(-12).join("");
+    shown.append(head, tail);
+  } else shown.textContent = value;
+  text.append(shown);
+  item.dataset.search =
+    `${value} ${detail.token ?? ""} ${detail.kicker ?? ""}`.toLowerCase();
   item.append(text);
   if (detail.token) {
     const token = document.createElement("span");
@@ -154,7 +170,7 @@ function originalRow(item: ReviewItem, allowed: boolean): HTMLLIElement {
     const allowedChip = document.createElement("span");
     allowedChip.className = "scope allowed";
     allowedChip.textContent = "Allowed";
-    entry.append(allowedChip);
+    entry.querySelector(".kicker")!.append(allowedChip);
   }
   const toggle = document.createElement("button");
   toggle.type = "button";
@@ -433,7 +449,10 @@ element("lookup-marker").addEventListener("input", () => {
   element("lookup-result").textContent = "";
   for (const item of element("originals").querySelectorAll("li"))
     item.hidden =
-      query !== "" && !(item.textContent ?? "").toLowerCase().includes(query);
+      query !== "" &&
+      !(item.dataset.search ?? item.textContent ?? "")
+        .toLowerCase()
+        .includes(query);
 });
 for (const id of ["settings", "vault-settings"])
   element(id).addEventListener("click", () => chrome.runtime.openOptionsPage());

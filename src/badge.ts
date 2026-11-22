@@ -49,18 +49,21 @@ const STYLE = `
   .wrap {
     position: fixed; z-index: 2147483647; display: flex;
     flex-direction: column-reverse; align-items: flex-end; gap: 8px;
+    pointer-events: none;
     font: 13px/1.45 var(--df-sans); color: var(--df-text);
   }
   .dot {
     box-sizing: border-box; flex: none; width: var(--size);
-    height: var(--size); padding: 0; border: 0; border-radius: var(--radius);
+    height: var(--size); padding: 0; border: 1px solid var(--df-circle-border); border-radius: var(--radius);
     display: grid; place-items: center; cursor: pointer;
     background: #1A2226; color: #fff; font-family: inherit;
     /* The logo, dots and count grow with the badge, up to a 48px badge's */
     --inner: min(var(--size), 48px);
     font-size: calc(var(--inner) * 0.4); font-weight: 600; line-height: 1;
     font-variant-numeric: tabular-nums;
+    transition: background-color 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out, box-shadow 140ms ease-out, opacity 140ms ease-out;
   }
+  .dot, .panel, .paste-toast { pointer-events: auto; }
   .dot:focus-visible { outline: 2px solid var(--df-focus); outline-offset: 2px; }
   .dot svg { display: block; width: calc(var(--inner) * 0.55); height: auto; }
   .dots {
@@ -99,11 +102,13 @@ const STYLE = `
   .dot.checking[data-previous="found"] { background: #C0362C; }
   .dot.checking[data-previous]::after {
     content: ""; position: absolute; inset: -3px; border-radius: inherit;
-    box-shadow: 0 0 0 2px #A7B2B1; animation: ring 1.2s ease-in-out infinite;
+    box-shadow: 0 0 0 2px #A7B2B1; opacity: 0.45; animation: halo-in 140ms ease-out;
   }
   @keyframes show { to { opacity: 1; } }
   @keyframes hide { to { opacity: 0; } }
-  @keyframes ring { 50% { opacity: 0.2; } }
+  @keyframes halo-in { from { opacity: 0; } to { opacity: 0.45; } }
+  @keyframes popup-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes toast-in { from { opacity: 0; } to { opacity: 1; } }
   /* Failed differs from found by shape and lightness, not hue alone */
   .dot.failed {
     background: #1A2226; color: #FF7A1A; box-shadow: inset 0 0 0 2px #FF7A1A;
@@ -124,6 +129,7 @@ const STYLE = `
     border: 1px solid var(--df-line); border-radius: var(--df-radius-panel);
     background: var(--df-surface); color: var(--df-text); padding: 12px;
   }
+  .panel:not([hidden]) { animation: popup-in 140ms ease-out; }
   .head { display: flex; align-items: center; gap: 4px; margin: 0 0 8px; }
   .head h2 {
     flex: 1; margin: 0; font-size: 14px; font-weight: 600;
@@ -147,12 +153,12 @@ const STYLE = `
   }
   .preview .original {
     min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    color: var(--df-muted);
+    color: var(--df-text); font-weight: 500;
   }
   .preview .to { display: flex; align-items: center; gap: 6px; min-width: 0; }
   .preview .kept-token { padding: 2px 8px; border: 1px dashed var(--df-line); border-radius: 999px; color: var(--df-muted); font: 11px/1.4 system-ui, sans-serif; }
   .preview [data-kept="true"] .original, .preview [data-kept="true"] .type { opacity: 0.65; }
-  .preview .to svg { flex: none; color: var(--df-muted); }
+  .preview .to svg { flex: none; color: var(--df-muted); opacity: .65; }
   .token {
     display: inline-block; max-width: 150px; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; padding: 1px 8px;
@@ -185,11 +191,15 @@ const STYLE = `
   button.icon { width: 32px; padding: 0; border-color: transparent; color: var(--df-muted); }
   button.icon:hover:not(:disabled), button.icon[aria-expanded="true"] { color: var(--df-text); }
   button.primary {
-    background: var(--df-accent); color: #fff; border-color: var(--df-accent);
+    background: var(--df-primary); color: var(--df-primary-text); border-color: var(--df-primary);
   }
-  button.primary:hover:not(:disabled) { background: var(--df-accent-hover); }
+  button.primary:hover:not(:disabled) { opacity: 0.85; }
   button.act:disabled { opacity: 0.4; cursor: default; }
   /* In flow under the actions, so it never covers Undo or the findings */
+  .paste-toast { padding: 8px 12px; border: 1px solid var(--df-line); border-radius: 999px; background: var(--df-surface); color: var(--df-text); }
+  .paste-toast:not([hidden]) { animation: toast-in 140ms ease-out; }
+  .paste-toast button { border:0; background:transparent; color:inherit; font:inherit; text-decoration:underline; cursor:pointer; }
+  .redact-note { font-size:11px; color:var(--df-muted); margin-left:auto; }
   .more {
     flex-basis: 100%; display: flex; flex-direction: column; padding: 4px;
     border: 1px solid var(--df-line); border-radius: 12px;
@@ -200,6 +210,12 @@ const STYLE = `
   }
   .more button.act svg { color: var(--df-muted); }
   .spin { animation: spin 1s linear infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .dot { transition: none; }
+    .panel:not([hidden]), .paste-toast:not([hidden]), .dots i, .spin,
+    .dot.checking .dots, .dot.checking:not([data-previous]) .mark,
+    .dot.checking[data-previous]::after { animation: none; }
+  }
   [hidden] { display: none !important; }
 `;
 
@@ -291,6 +307,7 @@ export class Badge {
   private resize = new ResizeObserver(() => this.reposition());
   private frame = 0;
   private busy = false;
+  private readonly toast: HTMLDivElement;
   private readonly more: HTMLDivElement;
   private readonly moreButton: HTMLButtonElement;
   private readonly previewList: HTMLUListElement;
@@ -348,7 +365,7 @@ export class Badge {
               <button class="act icon more-toggle" type="button" title="More actions" aria-haspopup="menu" aria-expanded="false" aria-controls="draft-more">${iconLabel("more", "More")}</button>
             </div>
             <div class="more" id="draft-more" role="menu" hidden>
-              <button class="act redact" type="button" role="menuitem" title="Remove the values without keeping them">${icon("redact")}Redact</button>
+              <button class="act redact" type="button" role="menuitem" title="Remove the values without keeping them">${icon("redact")}Redact<span class="redact-note">Not saved to vault</span></button>
               <button class="act allow" type="button" role="menuitem" title="Always allow these exact values for their detected type. Always flag still wins.">${icon("allow")}Always allow</button>
               <button class="act sidebar" type="button" role="menuitem">${icon("sidebar")}Open sidebar</button>
             </div>
@@ -371,6 +388,21 @@ export class Badge {
     this.actions = root.querySelector(".actions")!;
     this.more = root.querySelector(".more")!;
     this.moreButton = root.querySelector(".more-toggle")!;
+    this.toast = document.createElement("div");
+    this.toast.className = "paste-toast";
+    this.toast.setAttribute("role", "status");
+    this.toast.hidden = true;
+    const toastText = document.createElement("span");
+    const toastUndo = document.createElement("button");
+    toastUndo.type = "button";
+    toastUndo.className = "toast-undo";
+    toastUndo.textContent = "Undo";
+    toastUndo.addEventListener("click", () => {
+      this.toast.hidden = true;
+      actions.undo();
+    });
+    this.toast.append(toastText, toastUndo);
+    this.wrap.append(this.toast);
     this.previewList = root.querySelector(".preview")!;
     this.progress = root.querySelector(".progress")!;
     const tooltip = root.querySelector<HTMLElement>(".tooltip")!;
@@ -409,7 +441,11 @@ export class Badge {
       .querySelector(".retry")!
       .addEventListener("click", () => actions.retry?.());
     root.addEventListener("keydown", (event) => {
-      if (event instanceof KeyboardEvent && event.key === "Escape") {
+      if (
+        event instanceof KeyboardEvent &&
+        event.key === "Escape" &&
+        !event.isComposing
+      ) {
         event.preventDefault();
         event.stopPropagation();
         if (!this.more.hidden) {
@@ -420,6 +456,32 @@ export class Badge {
           this.close();
           this.dot.focus();
         }
+      }
+    });
+
+    root.addEventListener("keydown", (event) => {
+      if (!(event instanceof KeyboardEvent)) return;
+      const target = event.target;
+      if (
+        event.key === "Enter" &&
+        (event.repeat || event.isComposing) &&
+        target instanceof HTMLButtonElement
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (
+        target instanceof HTMLElement &&
+        target !== this.buttons.pseudonymize &&
+        target.closest(
+          "button, input, textarea, select, [contenteditable=true]",
+        )
+      )
+        return;
+      if (this.keyboard(event)) {
+        event.preventDefault();
+        event.stopPropagation();
       }
     });
 
@@ -615,8 +677,40 @@ export class Badge {
     this.paused.textContent = reason;
     this.paused.hidden = reason === null;
     this.buttons.send.hidden = reason === null;
+    this.buttons.send.textContent = "Send as is";
     this.showActions();
     if (reason !== null) this.openPopup();
+    this.place();
+  }
+
+  /** Keyboard action only for an already-open popup; never the opening send key. */
+  keyboard(event: KeyboardEvent): boolean {
+    if (
+      this.panel.hidden ||
+      event.isComposing ||
+      event.shiftKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.metaKey
+    )
+      return false;
+    if (event.key === "Escape") {
+      this.close();
+      return true;
+    }
+    if (event.key !== "Enter" || !this.more.hidden) return false;
+    if (event.repeat || this.busy) return true;
+    const primary = this.buttons.pseudonymize;
+    if (primary.hidden) return false;
+    if (primary.disabled) return true;
+    primary.click();
+    return true;
+  }
+
+  replaced(count: number): void {
+    this.toast.querySelector("span")!.textContent =
+      `Replaced ${count} ${count === 1 ? "item" : "items"} · `;
+    this.toast.hidden = false;
     this.place();
   }
 
@@ -627,6 +721,7 @@ export class Badge {
    */
   offer(history: { undo: boolean; redo: boolean }): void {
     this.history = history;
+    if (!history.undo) this.toast.hidden = true;
     this.showActions();
   }
 
@@ -743,7 +838,7 @@ export class Badge {
     this.place();
   }
 
-  private close(): void {
+  close(): void {
     this.panel.hidden = true;
     this.more.hidden = true;
     this.moreButton.setAttribute("aria-expanded", "false");
@@ -761,10 +856,10 @@ export class Badge {
     count.animate(
       [
         { transform: "scale(1)" },
-        { transform: "scale(1.14)" },
+        { transform: "scale(1.06)" },
         { transform: "scale(1)" },
       ],
-      { duration: 260, easing: "ease-out" },
+      { duration: 160, easing: "ease-out" },
     );
   }
 
@@ -775,16 +870,16 @@ export class Badge {
     const found = this.kind === "found" || rechecking;
     this.buttons.redact.hidden = !found;
     this.buttons.pseudonymize.hidden = !found;
-    this.buttons.dismiss.hidden = !found;
+    const intercepted = !this.paused.hidden;
+    this.buttons.dismiss.hidden = !found || intercepted;
+    this.buttons.send.disabled = this.busy;
     const skipped =
       this.previewList.querySelectorAll('[data-kept="true"]').length;
     const chosen = this.previewList.childElementCount - skipped;
     const allow = this.panel.querySelector<HTMLButtonElement>(".allow")!;
     allow.innerHTML = `${icon("allow")}Always allow skipped (${skipped})`;
     allow.disabled = this.busy || !found || rechecking || skipped === 0;
-    this.buttons.pseudonymize.textContent = skipped
-      ? `Replace ${chosen}`
-      : "Replace";
+    this.buttons.pseudonymize.textContent = `${skipped ? `Replace ${chosen}` : "Replace"}${intercepted ? " & send" : ""}`;
     for (const check of this.previewList.querySelectorAll<HTMLButtonElement>(
       ".choose",
     ))
@@ -871,7 +966,12 @@ export class Badge {
   private placePanel(): void {
     if (this.panel.hidden || this.wrap.hidden) return;
     const dot = this.dot.getBoundingClientRect();
-    const above = dot.top - GAP * 2;
+    // The Undo toast occupies the strip above the circle. Keep the fixed
+    // popup outside that strip so its controls cannot intercept Undo clicks.
+    const anchorTop = this.toast.hidden
+      ? dot.top
+      : Math.min(dot.top, this.toast.getBoundingClientRect().top);
+    const above = anchorTop - GAP * 2;
     const below = window.innerHeight - dot.bottom - GAP * 2;
     this.panel.style.maxHeight = `${Math.max(0, above, below)}px`;
     const { width, height } = this.panel.getBoundingClientRect();
@@ -879,7 +979,7 @@ export class Badge {
       GAP,
       Math.min(dot.right - width, window.innerWidth - width - GAP),
     )}px`;
-    const top = dot.top - GAP - height;
+    const top = anchorTop - GAP - height;
     this.panel.style.top = `${top >= GAP ? top : dot.bottom + GAP}px`;
   }
 }

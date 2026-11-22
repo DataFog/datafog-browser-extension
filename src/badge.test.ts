@@ -288,3 +288,35 @@ test("a re-check keeps the last result in view, and clean differs from idle", ()
   expect(dot.dataset.previous).toBeUndefined();
   expect(replace.disabled).toBe(false);
 });
+
+test("an open popup leaves the Undo toast unobstructed above the circle", () => {
+  const { badge, wrap, box, scroller } = mount();
+  setBox(scroller, { top: 0, right: 1024, bottom: 768, left: 0 });
+  setBox(box, { top: 0, right: 800, bottom: 240, left: 100 });
+  const dot = wrap.querySelector<HTMLButtonElement>(".dot")!;
+  const panel = wrap.querySelector<HTMLElement>(".panel")!;
+  const toast = wrap.querySelector<HTMLElement>(".paste-toast")!;
+  setBox(dot, { top: 180, bottom: 236, left: 808, right: 864 });
+  setBox(panel, { top: 0, bottom: 127, left: 0, right: 320 });
+  setBox(toast, { top: 138, bottom: 177, left: 678, right: 864 });
+  badge.show({ kind: "found", counts: { EMAIL: 2 } });
+  dot.click();
+  badge.offer({ undo: true, redo: false });
+  badge.replaced(2);
+  expect(toast.hidden).toBe(false);
+  expect(panel.hidden).toBe(false);
+  // With no room above the toast, the popup moves below the circle.
+  expect(panel.style.top).toBe("244px");
+});
+
+test("transparent space around the circle and Undo toast lets provider controls receive clicks", () => {
+  const { badge, wrap } = mount();
+  badge.show({ kind: "found", counts: { EMAIL: 1 } });
+  badge.offer({ undo: true, redo: false });
+  badge.replaced(1);
+  expect(getComputedStyle(wrap).pointerEvents).toBe("none");
+  for (const selector of [".dot", ".panel", ".paste-toast"])
+    expect(getComputedStyle(wrap.querySelector(selector)!).pointerEvents).toBe(
+      "auto",
+    );
+});

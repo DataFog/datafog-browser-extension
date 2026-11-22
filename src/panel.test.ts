@@ -210,7 +210,9 @@ test("original Always allow saves the typed choice and hides the action after co
   openOriginalMenu();
   rowButton("allow").click();
   await settle();
-  expect($("originals").querySelector(".allowed")!.textContent).toBe("Allowed");
+  expect($("originals").querySelector(".kicker .allowed")!.textContent).toBe(
+    "Allowed",
+  );
   expect(rowButton("allow")).toBeNull();
 });
 test("forget requires row confirmation, preserves data on cancel/failure and retries", async () => {
@@ -283,4 +285,27 @@ test("forget disables duplicate confirmation and invalidates an in-flight lookup
   expect($("lookup-result").textContent).not.toContain(ORIGINAL.original);
   finishForget({ saved: true });
   await settle();
+});
+
+test("long originals retain full tooltip, searchable middle and exact copy while their display splits", async () => {
+  const original = "prefix-very-long-sensitive-middle-value@example.com";
+  const writeText = vi.fn(async () => {});
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+  await start(() => ({ ...READY, originals: [{ ...ORIGINAL, original }] }));
+  const shown = document.querySelector<HTMLElement>(".middle-truncated")!;
+  expect(shown.title).toBe(original);
+  expect(shown.querySelector(".original-tail")!.textContent).toBe(
+    original.slice(-12),
+  );
+  fill("lookup-marker", "sensitive-middle");
+  expect(document.querySelector<HTMLLIElement>(".original-row")!.hidden).toBe(
+    false,
+  );
+  openOriginalMenu();
+  rowButton("copy").click();
+  await settle();
+  expect(writeText).toHaveBeenCalledWith(original);
 });

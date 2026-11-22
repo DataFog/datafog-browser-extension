@@ -46,7 +46,7 @@ const DEBOUNCE_MS = 400;
 const HOLD_TIMEOUT_MS = 3000;
 
 /** Why a send was held. */
-const HELD_WARNING = "Sending is paused. Press send again to send anyway.";
+const HELD_WARNING = "Choose how to send this message.";
 const HELD_FAILURE = "datafog couldn't check this text, so sending is paused.";
 
 /** How long to look for the chat box before warning it can't be found. */
@@ -93,6 +93,13 @@ let choicesText = "";
 let previewId: string | undefined;
 /** Whether checking is on. Assumed on if the setting can't be read, so a scan reports why. */
 let enabled = true;
+let autoReplaceOnPaste = false;
+let pasteIntent: {
+  element: HTMLElement;
+  text: string;
+  revision: number;
+} | null = null;
+let pasteEvent = 0;
 let settingsError = false;
 let expectedPolicyVersion: string | undefined;
 let policyRefresh = 0;
@@ -118,6 +125,7 @@ async function retrySettings(): ReturnType<typeof loadSettings> {
 function applySettings(settings: Awaited<ReturnType<typeof loadSettings>>) {
   if (policyRefresh !== 0) return;
   enabled = settings.enabled;
+  autoReplaceOnPaste = settings.autoReplaceOnPaste;
   expectedPolicyVersion = settings.policyVersion ?? expectedPolicyVersion;
   blockSends = settings.enabled && settings.blockSends;
 }
@@ -308,7 +316,21 @@ async function scanNow(force = false): Promise<void> {
     badge.show(
       found ? { kind: "found", counts: response.counts } : { kind: "clean" },
     );
-  settleHeldSend(text);
+  const pasted = pasteIntent;
+  if (
+    pasted &&
+    pasted.element === composer &&
+    pasted.text === text &&
+    pasted.revision === revision &&
+    found &&
+    previewId &&
+    autoReplaceOnPaste &&
+    response.enabled
+  ) {
+    pasteIntent = null;
+    dropHeldSend();
+    void transform("pseudonymize", true);
+  } else settleHeldSend(text);
 }
 
 /**
@@ -336,7 +358,12 @@ function allowSend(repeat: boolean): boolean {
   // A retired copy never holds a send; the newer copy decides
   if (isRetired()) return true;
   const text = composer ? readText(composer) : "";
-  if (sending || !blockSends || !text.trim()) return sendGoesAhead();
+  if (sending) return sendGoesAhead();
+  if (actionState.kind === "working") {
+    badge.holdSend("Wait for the current change to finish.");
+    return false;
+  }
+  if (!blockSends || !text.trim()) return sendGoesAhead();
   if (sendState.kind === "overridden" && sendState.text === text)
     return sendGoesAhead();
   if (sendState.kind === "held") {
@@ -352,16 +379,13 @@ function allowSend(repeat: boolean): boolean {
     return false;
   }
   if (scanState.kind === "unavailable" && text === scanState.text) {
+    sendState = { kind: "warned", text };
     badge.holdSend(HELD_FAILURE);
     return false;
   }
   if (!unresolved(text)) return sendGoesAhead();
-  // The second press after a warning counts as Send anyway
-  if (sendState.kind === "warned" && text === sendState.text) {
-    if (repeat) return false;
-    sendState = { kind: "overridden", text };
-    return sendGoesAhead();
-  }
+  // A native button's pointerdown may have closed the popup. Reopen the
+  // same explicit choices on every held send, never bypass the warning.
   warnSend(text);
   return false;
 }
@@ -378,7 +402,7 @@ function sendGoesAhead(): boolean {
 }
 
 /**
- * Warn about found values, holding the send until the next press.
+ * Hold a send until the user chooses an explicit popup action.
  *
  * @param text The text being sent.
  */
@@ -412,11 +436,11 @@ function holdForScan(text: string): void {
  */
 function settleHeldSend(text: string): void {
   if (sendState.kind !== "held") return;
-  const presses = sendState.presses;
   dropHeldSend();
-  if (scanState.kind === "unavailable" && text === scanState.text)
+  if (scanState.kind === "unavailable" && text === scanState.text) {
+    sendState = { kind: "warned", text };
     badge.holdSend(HELD_FAILURE);
-  else if (!unresolved(text) || presses > 1) sendAnyway();
+  } else if (!unresolved(text)) sendAnyway();
   else warnSend(text);
 }
 
@@ -453,6 +477,7 @@ function schedule(delay: number): void {
   // Moving seq on drops any answer about the text from before this change
   seq++;
   revision++;
+  pasteIntent = null;
   const superseded =
     actionState.kind === "working" || actionState.kind === "superseded"
       ? actionState.operationId
@@ -739,11 +764,19 @@ async function chooseFinding(index: number): Promise<void> {
   updateAction({ kind: "idle" });
 }
 
-async function transform(kind: "redact" | "pseudonymize"): Promise<void> {
+async function transform(
+  kind: "redact" | "pseudonymize",
+  pasted = false,
+): Promise<void> {
   if (!composer || actionState.kind === "working") return;
   if (findings.length > 0 && findings.every((item) => item.kept)) return;
   const element = composer;
   const text = readText(element);
+  const sendAfter =
+    !pasted &&
+    kind === "pseudonymize" &&
+    sendState.kind === "warned" &&
+    sendState.text === text;
   const capturedRevision = revision;
   const mine = ++operationId;
   updateAction({
@@ -825,6 +858,8 @@ async function transform(kind: "redact" | "pseudonymize"): Promise<void> {
   const applied = await replaceFound(element, text, response);
   if (
     composer !== element ||
+    mine !== operationId ||
+    capturedRevision !== revision ||
     (applied && !sameText(readText(element), response.text))
   )
     return;
@@ -840,6 +875,12 @@ async function transform(kind: "redact" | "pseudonymize"): Promise<void> {
         ? "Originals saved, but the editor did not accept the change. Nothing was sent."
         : "The editor didn't take the full change. Check your draft before sending.",
   });
+  if (applied && kind === "pseudonymize" && !sendAfter)
+    badge.replaced(response.edits.length);
+  if (applied && sendAfter) {
+    badge.close();
+    sendAnyway();
+  }
 }
 
 async function redactComposer(): Promise<void> {
@@ -907,6 +948,14 @@ async function replaceFound(
 /** A committed policy invalidates every pending scan and per-draft choice. */
 async function refreshPolicy(): Promise<void> {
   const refresh = ++policyRefresh;
+  const intercepted =
+    sendState.kind === "warned" &&
+    composer &&
+    sendState.text === readText(composer)
+      ? sendState.text
+      : null;
+  pasteIntent = null;
+  pasteEvent++;
   answerVisibility.refresh();
   seq++;
   operationId++;
@@ -917,13 +966,17 @@ async function refreshPolicy(): Promise<void> {
   badge.preview([]);
   badge.show({ kind: "checking" });
   dismissedText = null;
-  sendState = { kind: "ready" };
+  sendState =
+    intercepted === null
+      ? { kind: "ready" }
+      : { kind: "warned", text: intercepted };
   dropHeldSend();
   scanState = { kind: "dirty" };
   try {
     const settings = await loadSettings(location.hostname);
     if (refresh !== policyRefresh) return;
     enabled = settings.enabled;
+    autoReplaceOnPaste = settings.autoReplaceOnPaste;
     expectedPolicyVersion = settings.policyVersion ?? expectedPolicyVersion;
     settingsError = false;
     blockSends = settings.enabled && settings.blockSends;
@@ -1126,8 +1179,24 @@ function bind(element: HTMLElement): void {
     childList: true,
     subtree: true,
   });
-  // Pasted text lands after the event; scan on the next tick, not after a pause
-  element.addEventListener("paste", () => schedule(0));
+  // Capture before provider bubble handlers insert sanitized paste content;
+  // observe the resulting draft on the next tick without preventing the paste.
+  element.addEventListener(
+    "paste",
+    () => {
+      const before = readText(element);
+      const paste = ++pasteEvent;
+      window.setTimeout(() => {
+        if (paste !== pasteEvent || composer !== element) return;
+        const text = readText(element);
+        schedule(0);
+        // schedule may discover a provider edit without an input event.
+        if (autoReplaceOnPaste && enabled && text !== before && text.trim())
+          pasteIntent = { element, text, revision };
+      }, 0);
+    },
+    true,
+  );
   void ask({ type: "protection", protected: true });
   void ask<BlockSendsResponse>({ type: "block-sends" }).then((response) => {
     if (!("error" in response)) blockSends = response.blockSends;
@@ -1200,6 +1269,7 @@ async function warnMissing(): Promise<void> {
 watchPage(() => composer, {
   send: allowSend,
   files: () => badge.warnFiles(true),
+  popupKey: (event) => badge.keyboard(event),
 });
 
 const initial = findComposer();
