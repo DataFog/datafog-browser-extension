@@ -54,6 +54,9 @@ export interface ShadowState {
   transitionDuration: string;
 }
 
+/** DevTools errors for a host removed between calls, worth one more look. */
+const REPLACED = /Host replaced|Could not find node|No node with given id/;
+
 /** Inspect closed roots through DevTools, preserving production isolation. */
 export class ClosedShadow {
   constructor(
@@ -62,10 +65,30 @@ export class ClosedShadow {
   ) {}
 
   async state(selector: string): Promise<ShadowState> {
-    await this.page
-      .locator(this.hostSelector)
-      .first()
-      .waitFor({ state: "attached" });
+    // The extension can replace a host between DevTools calls, such as an
+    // answer's originals redrawn for a theme change, so look it up again
+    for (let attempt = 1; ; attempt++) {
+      await this.page
+        .locator(this.hostSelector)
+        .first()
+        .waitFor({ state: "attached" });
+      try {
+        return await this.inspect(selector);
+      } catch (error) {
+        if (attempt >= 5 || !REPLACED.test(String(error))) throw error;
+        await this.page.waitForTimeout(50);
+      }
+    }
+  }
+
+  /**
+   * Read one element's state inside the host's closed shadow root.
+   *
+   * @param selector The element's selector inside the shadow root.
+   * @returns The element's state.
+   * @throws If the host was replaced while it was being read.
+   */
+  private async inspect(selector: string): Promise<ShadowState> {
     const session = await this.page.context().newCDPSession(this.page);
     try {
       const { root } = await session.send("DOM.getDocument", {
@@ -76,6 +99,7 @@ export class ClosedShadow {
         nodeId: root.nodeId,
         selector: this.hostSelector,
       });
+      if (!nodeId) throw new Error(`Host replaced: ${this.hostSelector}`);
       const { node } = (await session.send("DOM.describeNode", {
         nodeId,
         depth: 1,
