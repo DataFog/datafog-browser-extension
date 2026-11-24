@@ -899,7 +899,7 @@ async function transform(
       ? mixed
         ? `Applied. ${response.redacted ?? 0} masked; ${response.replaced ?? 0} reversibly masked.${response.saved ? " Originals saved in your vault." : " Nothing was saved."}`
         : response.warning
-          ? "Masked. Originals saved; storage will retry a detail. Tokens still restore."
+          ? "Masked. Originals saved; storage will retry a detail. Placeholders still restore."
           : "Masked. Originals saved in your vault."
       : response.saved === true
         ? "Originals saved, but the editor did not accept the change. Nothing was sent."
