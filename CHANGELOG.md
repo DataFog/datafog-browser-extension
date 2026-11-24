@@ -4,6 +4,7 @@ Notable changes to the datafog browser extension. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+- Rename Redact to **Mask** and Replace to **Reversible mask**, and call tokens placeholders, such as **Show placeholders**.
 - Keep keyboard focus in place on the welcome page when it finishes loading after you've moved on, so Enter no longer opens a new chat tab by mistake.
 
 ## [1.1.0] - 2026-11-22
