@@ -30,7 +30,7 @@ for (const site of ["claude", "gemini", "grok", "deepseek"] as const) {
     await expect(chat.locator("#sent-count")).toHaveText("0");
     await expect
       .poll(async () => (await badge.state(".paste-toast")).text)
-      .toContain("Replaced 2 items");
+      .toContain("Masked 2 items");
     await badge.click(".toast-undo");
     await expect.poll(read).toBe(SAMPLE);
     await expect(chat.locator("#sent-count")).toHaveText("0");

@@ -374,7 +374,7 @@ async function refresh(): Promise<void> {
     // needs words
     element("originals-note").textContent = response.originals?.length
       ? ""
-      : "Nothing saved yet. Originals appear here after Replace.";
+      : "Nothing saved yet. Originals appear here after a reversible mask.";
     element("not-sensitive").replaceChildren(
       ...response.notSensitive.map((choice) =>
         row(

@@ -389,7 +389,7 @@ test("live: opt-in paste replaces locally with quick Undo and never sends", asyn
 
   await expect
     .poll(async () => (await badge.state(".paste-toast")).text)
-    .toContain("Replaced 2 items");
+    .toContain("Masked 2 items");
   await expect(userMessagesIn(chat)).toHaveCount(before);
   await badge.click(".toast-undo");
   await expect(composer).toHaveText(SAMPLE);
