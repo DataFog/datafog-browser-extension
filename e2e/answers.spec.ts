@@ -85,7 +85,7 @@ for (const site of sites) {
     await first.click("button");
     await expect
       .poll(async () => (await first.state("button")).text)
-      .toContain("Show tokens");
+      .toContain("Show placeholders");
     await expect(chat.locator("datafog-original")).toHaveCount(1);
     expect(
       (await extension.shadow(chat, "datafog-original").state("*")).text,
@@ -129,7 +129,7 @@ for (const site of sites) {
       .poll(() => chat.evaluate(() => navigator.clipboard.readText()))
       .toBe(`${EMAIL}${EMAIL} / [[EMAIL_UNKNOWN]]`);
     expect((await first.state('[role="status"]')).text).toContain(
-      "Unavailable placeholders remain as tokens.",
+      "Placeholders without a saved original stay as they are.",
     );
     await expect(chat.locator("#answer-one .provider-text")).toHaveText(text);
     await expect(chat.locator("#answer-two .provider-text")).toHaveText(marker);
@@ -140,7 +140,7 @@ for (const site of sites) {
     await second.click("button");
     await expect
       .poll(async () => (await second.state("button")).text)
-      .toContain("Show tokens");
+      .toContain("Show placeholders");
     await expect(chat.locator("datafog-original")).toHaveCount(2);
     const reducedReveal = extension.shadow(
       chat,
@@ -157,7 +157,7 @@ for (const site of sites) {
       .poll(async () => (await first.state("button")).text)
       .toContain("Show originals");
     await expect(chat.locator("datafog-original")).toHaveCount(1);
-    expect((await second.state("button")).text).toContain("Show tokens");
+    expect((await second.state("button")).text).toContain("Show placeholders");
     await chat
       .locator("#answer-one .provider-text")
       .evaluate((element, currentMarker) => {
@@ -169,7 +169,7 @@ for (const site of sites) {
     await first.click("button");
     await expect
       .poll(async () => (await first.state("button")).text)
-      .toContain("Show tokens");
+      .toContain("Show placeholders");
     await expect(chat.locator("#answer-one .provider-text")).toHaveText(
       `Streaming ${marker} completed`,
     );

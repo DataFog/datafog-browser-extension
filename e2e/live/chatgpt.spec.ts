@@ -249,7 +249,7 @@ test("live: placeholders survive a real response and answer-scoped Show/Hide", a
   await control.click("button");
   await expect
     .poll(async () => (await control.state("button")).text)
-    .toContain("Show tokens");
+    .toContain("Show placeholders");
   await expect(chat.locator("datafog-original")).toHaveCount(1);
   expect(
     (await extension.shadow(chat, "datafog-original").state("*")).text,

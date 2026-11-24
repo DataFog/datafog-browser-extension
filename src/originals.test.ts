@@ -305,7 +305,7 @@ test("explicit copy restores only its answer and explains unknown markers; nativ
   expect(write).toHaveBeenCalledWith("jane@example.com [[UNKNOWN_X]]");
   expect(
     document.querySelector("datafog-answer-control")!.shadowRoot!.textContent,
-  ).toContain("Unavailable placeholders remain as tokens");
+  ).toContain("Placeholders without a saved original stay as they are");
   expect(content.textContent).toBe("[[EMAIL_A]] [[UNKNOWN_X]]");
 });
 test.each(["streaming", "forgotten", "removed"])(
@@ -379,7 +379,7 @@ test("shown originals track provider palette changes in both directions without 
   content.style.color = "rgb(238, 240, 239)";
   await tick();
   expect(color()).toContain("color: rgb(238, 240, 239)");
-  expect(toggle().textContent).toBe("Show tokens");
+  expect(toggle().textContent).toBe("Show placeholders");
   content.style.color = "rgb(14, 19, 22)";
   await tick();
   expect(color()).toContain("color: rgb(14, 19, 22)");
