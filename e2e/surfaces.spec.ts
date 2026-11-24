@@ -616,15 +616,16 @@ for (const colorScheme of ["light", "dark"] as const) {
     await chat.locator("#prompt-textarea").fill(email);
     await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
     await badge.click(".dot");
+    // Each read is a separate snapshot, and the popup slides in for 140 ms,
+    // so compare rows once it has settled
+    const gap = async (selector: string) =>
+      Math.abs(
+        middle((await badge.state(".original")).rect) -
+          middle((await badge.state(selector)).rect),
+      );
+    await expect.poll(() => gap(".to")).toBeLessThanOrEqual(2);
+    await expect.poll(() => gap(".modes")).toBeLessThanOrEqual(2);
     const original = await badge.state(".original");
-    const target = await badge.state(".to");
-    const modes = await badge.state(".modes");
-    expect(
-      Math.abs(middle(original.rect) - middle(target.rect)),
-    ).toBeLessThanOrEqual(2);
-    expect(
-      Math.abs(middle(original.rect) - middle(modes.rect)),
-    ).toBeLessThanOrEqual(2);
     expect(original.title).toBe(email);
     expect(original.textOverflow).toBe("ellipsis");
     expect(original.scrollWidth).toBeGreaterThan(original.clientWidth);
