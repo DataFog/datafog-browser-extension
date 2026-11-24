@@ -1813,7 +1813,7 @@ test("paste replacement is opt-in, uses the exact preview, offers Undo and never
   const root = document.querySelector("datafog-badge")!.shadowRoot!;
   expect(root.querySelector<HTMLElement>(".paste-toast")!.hidden).toBe(false);
   expect(root.querySelector(".paste-toast")!.textContent).toContain(
-    "Replaced 1 item · Undo",
+    "Masked 1 item · Undo",
   );
   root.querySelector<HTMLButtonElement>(".toast-undo")!.click();
   await vi.advanceTimersByTimeAsync(0);
@@ -1996,7 +1996,7 @@ test("mixed row choices apply one saved batch and one Undo restores both occurre
   await vi.advanceTimersByTimeAsync(0);
   expect(box.value).toBe("[[EMAIL_NEW]] [EMAIL]");
   expect(root.querySelector(".progress")!.textContent).toContain(
-    "1 replaced; 1 redacted",
+    "1 masked; 1 reversibly masked",
   );
   await press("undo");
   expect(box.value).toBe(original);

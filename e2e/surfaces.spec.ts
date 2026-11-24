@@ -506,10 +506,10 @@ test("circle hover explains status, click opens actions, Escape and outside clic
   await badge.click(".mode-help");
   expect((await badge.state(".mode-tooltip")).visible).toBe(true);
   expect((await badge.state(".mode-tooltip")).text).toContain(
-    "Redact removes details without saving originals.",
+    "Mask hides details for good, without saving originals.",
   );
   expect((await badge.state(".mode-tooltip")).text).toContain(
-    "Replace saves originals and inserts reversible tokens.",
+    "Reversible mask saves originals so you can restore them later.",
   );
   await expect(badge.state(".sidebar")).rejects.toThrow();
   const firstLine = (await badge.state(".mode-tooltip p:first-child")).rect;

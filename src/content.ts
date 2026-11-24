@@ -897,10 +897,10 @@ async function transform(
     kind: applied ? "complete" : "failed",
     message: applied
       ? mixed
-        ? `Applied. ${response.replaced ?? 0} replaced; ${response.redacted ?? 0} redacted.${response.saved ? " Originals saved in your vault." : " Nothing was saved."}`
+        ? `Applied. ${response.redacted ?? 0} masked; ${response.replaced ?? 0} reversibly masked.${response.saved ? " Originals saved in your vault." : " Nothing was saved."}`
         : response.warning
-          ? "Replaced. Originals saved; storage will retry a detail. Tokens still restore."
-          : "Replaced. Originals saved in your vault."
+          ? "Masked. Originals saved; storage will retry a detail. Tokens still restore."
+          : "Masked. Originals saved in your vault."
       : response.saved === true
         ? "Originals saved, but the editor did not accept the change. Nothing was sent."
         : "The editor didn't take the full change. Check your draft before sending.",
@@ -908,7 +908,7 @@ async function transform(
   if (applied && !sendAfter)
     badge.replaced(
       response.edits.length,
-      mixed && (response.redacted ?? 0) > 0 ? "Applied" : "Replaced",
+      mixed && (response.redacted ?? 0) > 0 ? "Applied" : "Masked",
     );
   if (applied && sendAfter) {
     badge.close();
