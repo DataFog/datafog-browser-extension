@@ -346,16 +346,16 @@ export class Badge {
             <h2></h2>
             <div class="history">
               <button class="act icon undo" type="button"
-                title="Undo: put back the values datafog replaced">${iconLabel("undo", "Undo")}</button>
+                title="Undo: put back the values datafog masked">${iconLabel("undo", "Undo")}</button>
               <button class="act icon redo" type="button"
-                title="Redo: replace the same values again">${iconLabel("redo", "Redo")}</button>
+                title="Redo: mask the same values again">${iconLabel("redo", "Redo")}</button>
             </div>
             <button class="act icon close" type="button" title="Close">${iconLabel("remove", "Close")}</button>
           </div>
           <p class="files" hidden title="datafog only checks text in the chat box.">${icon("attachment", 14)}<span>Attached files aren't protected.</span></p>
           <p class="paused" hidden></p>
           <ul class="counts"></ul>
-          <div class="preview-head"><button class="act icon mode-help" type="button" aria-label="About Redact and Replace" aria-describedby="mode-tooltip">${icon("info", 14)}</button><div class="mode-tooltip" id="mode-tooltip" role="tooltip"><p>Redact removes details without saving originals.</p><p>Replace saves originals and inserts reversible tokens.</p></div></div><ul class="preview"></ul><p class="progress" role="status"></p><p class="note"></p>
+          <div class="preview-head"><button class="act icon mode-help" type="button" aria-label="About Mask and Reversible mask" aria-describedby="mode-tooltip">${icon("info", 14)}</button><div class="mode-tooltip" id="mode-tooltip" role="tooltip"><p>Mask hides details for good, without saving originals.</p><p>Reversible mask saves originals so you can restore them later.</p></div></div><ul class="preview"></ul><p class="progress" role="status"></p><p class="note"></p>
           <p class="report" hidden>
             Report this problem to
             <a href="mailto:${HELP_EMAIL}">${HELP_EMAIL}</a>
@@ -553,7 +553,7 @@ export class Badge {
     } else if (state.kind === "failed") {
       // Say so rather than look like a check still running
       const updated = state.code === "extension_reloaded";
-      const action = state.action ?? (state.counts ? "redact" : "check");
+      const action = state.action || state.counts ? "mask" : "check";
       const title = updated
         ? "datafog was updated"
         : `datafog couldn't ${action} this text`;
@@ -675,7 +675,7 @@ export class Badge {
     return true;
   }
 
-  replaced(count: number, action = "Replaced"): void {
+  replaced(count: number, action = "Masked"): void {
     this.toast.querySelector("span")!.textContent =
       `${action} ${count} ${count === 1 ? "item" : "items"} · `;
     this.toast.hidden = false;
@@ -772,7 +772,8 @@ export class Badge {
             button.type = "button";
             button.className = "mode";
             button.dataset.mode = mode;
-            button.textContent = mode === "replace" ? "Replace" : "Redact";
+            button.textContent =
+              mode === "replace" ? "Reversible mask" : "Mask";
             button.setAttribute(
               "aria-pressed",
               String((action ?? "replace") === mode),

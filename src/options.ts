@@ -301,7 +301,7 @@ deleteForm.addEventListener("submit", (event) => {
     deleteStatus.textContent =
       "error" in response
         ? `Deletion didn't finish. Some data may remain; delete again to finish. (${response.error})`
-        : "vault data deleted. Tokens already in chats can't be shown again.";
+        : "vault data deleted. Placeholders already in chats can't be shown again.";
     deleteStatus.classList.toggle("warning", "error" in response);
   })();
 });

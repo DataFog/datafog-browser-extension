@@ -186,7 +186,10 @@ function originalRow(item: ReviewItem, allowed: boolean): HTMLLIElement {
   const forgottenToken = document.createElement("span");
   forgottenToken.className = "token";
   forgottenToken.textContent = item.marker;
-  prompt.append(forgottenToken, " keep the token. It will no longer restore.");
+  prompt.append(
+    forgottenToken,
+    " keep the placeholder. It will no longer restore.",
+  );
   confirmation.append(prompt);
   const note = document.createElement("span");
   note.className = "original-status";
@@ -374,7 +377,7 @@ async function refresh(): Promise<void> {
     // needs words
     element("originals-note").textContent = response.originals?.length
       ? ""
-      : "Nothing saved yet. Originals appear here after Replace.";
+      : "Nothing saved yet. Originals appear here after a reversible mask.";
     element("not-sensitive").replaceChildren(
       ...response.notSensitive.map((choice) =>
         row(
@@ -435,7 +438,7 @@ element("lookup").addEventListener("submit", (event) => {
         ? "Couldn't read your vault. Try again."
         : response.restored
           ? response.text
-          : "No original saved for this token.";
+          : "No original saved for this placeholder.";
   });
 });
 // Typing filters the saved list; Enter looks up tokens that aren't listed

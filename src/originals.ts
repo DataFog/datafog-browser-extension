@@ -11,7 +11,7 @@ import { HOST_TOKENS } from "./tokens";
 
 const CONTROL_ICONS: Record<string, IconName> = {
   "Show originals": "show",
-  "Show tokens": "hide",
+  "Show placeholders": "hide",
   "Reading originals…": "loading",
   "Retry originals": "retry",
 };
@@ -22,7 +22,7 @@ function label(button: HTMLButtonElement, text: keyof typeof CONTROL_ICONS) {
   if (text === "Reading originals…")
     button.firstElementChild?.classList.add("spin");
   button.title = text;
-  button.setAttribute("aria-pressed", String(text === "Show tokens"));
+  button.setAttribute("aria-pressed", String(text === "Show placeholders"));
 }
 
 /** A partial or failed result: an alert icon, its words for screen readers. */
@@ -333,7 +333,7 @@ export function watchAnswers(
     }
     const shown = showOriginals(answer, response.values);
     control.state = shown ? "shown" : "hidden";
-    label(control.button, shown ? "Show tokens" : "Show originals");
+    label(control.button, shown ? "Show placeholders" : "Show originals");
     control.host.hidden = shown === 0;
     notice(
       control.note,
@@ -366,7 +366,7 @@ export function watchAnswers(
         notice(
           control.note,
           response.unrestored
-            ? "Copied with originals. Unavailable placeholders remain as tokens."
+            ? "Copied with originals. Placeholders without a saved original stay as they are."
             : "Copied with originals.",
         );
     } catch {
@@ -441,7 +441,7 @@ export function watchAnswers(
         copy.className = "copy-originals";
         copy.innerHTML = `${icon("copy", 14)}Copy with originals`;
         copy.title =
-          "Copy this answer with available originals. The site's Copy keeps tokens.";
+          "Copy this answer with available originals. The site's Copy keeps placeholders.";
         root.append(style, button, copy, note);
         control = {
           text,

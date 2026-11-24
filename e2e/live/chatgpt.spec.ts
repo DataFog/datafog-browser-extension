@@ -249,7 +249,7 @@ test("live: placeholders survive a real response and answer-scoped Show/Hide", a
   await control.click("button");
   await expect
     .poll(async () => (await control.state("button")).text)
-    .toContain("Show tokens");
+    .toContain("Show placeholders");
   await expect(chat.locator("datafog-original")).toHaveCount(1);
   expect(
     (await extension.shadow(chat, "datafog-original").state("*")).text,
@@ -389,7 +389,7 @@ test("live: opt-in paste replaces locally with quick Undo and never sends", asyn
 
   await expect
     .poll(async () => (await badge.state(".paste-toast")).text)
-    .toContain("Replaced 2 items");
+    .toContain("Masked 2 items");
   await expect(userMessagesIn(chat)).toHaveCount(before);
   await badge.click(".toast-undo");
   await expect(composer).toHaveText(SAMPLE);

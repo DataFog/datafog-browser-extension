@@ -4,6 +4,7 @@ Notable changes to the datafog browser extension. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+- Rename Redact to **Mask** and Replace to **Reversible mask**, and call tokens placeholders, such as **Show placeholders**.
 - Keep keyboard focus in place on the welcome page when it finishes loading after you've moved on, so Enter no longer opens a new chat tab by mistake.
 
 ## [1.1.0] - 2026-11-22
@@ -30,6 +31,7 @@ Notable changes to the datafog browser extension. The format follows [Keep a Cha
 - A welcome page opens once on a new install: pin datafog, reload any chat tab it could not reach, then a short "You're set". Chat tabs open at install or during an update are checked right away, without a reload, using the `scripting` permission and host access to the five chat sites.
 
 - Ship complete Lucide ISC/Feather MIT and Geist OFL notices in the extension archive; document the nonsensitive appearance bootstrap exception.
+- Rename Redact to **Mask** and Replace to **Reversible mask**, and call tokens placeholders, such as **Show placeholders**.
 
 ## [1.0.0] - 2026-11-18
 

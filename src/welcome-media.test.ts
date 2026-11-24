@@ -75,10 +75,8 @@ test("welcome clips are local silent demonstrations with captions and looping an
     );
     expect(video.getAttribute("aria-describedby")).toBeTruthy();
   });
-  expect(root.textContent).toContain(
-    "Replace sensitive details before you send.",
-  );
-  expect(root.textContent).toContain("The AI keeps the tokens.");
+  expect(root.textContent).toContain("Mask sensitive details before you send.");
+  expect(root.textContent).toContain("The AI keeps the placeholders.");
   expect(root.textContent).toContain("Copy your answer with details restored.");
 });
 test("only the selected visible clip starts once and explicit pause is respected", async () => {
@@ -173,7 +171,7 @@ test("a late play promise cannot restart a hidden clip and failures keep readabl
     "preview and caption",
   );
   expect(state.root.querySelector("figcaption")!.textContent).toContain(
-    "Replace sensitive",
+    "Mask sensitive",
   );
 });
 
