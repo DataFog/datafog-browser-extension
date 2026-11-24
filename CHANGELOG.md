@@ -4,6 +4,8 @@ Notable changes to the datafog browser extension. The format follows [Keep a Cha
 
 ## [Unreleased]
 
+- Keep keyboard focus in place on the welcome page when it finishes loading after you've moved on, so Enter no longer opens a new chat tab by mistake.
+
 ## [1.1.0] - 2026-11-22
 
 - Choose Replace or Redact per finding and apply mixed batches atomically, saving only Replace originals with one Undo. Add compact aligned rows, neutral selected modes, accessible explanations and a contrasting Apply button; remove Keep as is, More and the popup sidebar shortcut. Open the sidebar from Chrome’s toolbar, with only one native brand header. Refresh onboarding clips and storyboard to match.

@@ -52,6 +52,7 @@ const walkthrough = welcomeMedia(element("walkthrough"));
 
 let steps: WelcomeStep[] = ["pin", "done"];
 let index = 0;
+let shown: WelcomeStep | null = null;
 let pinTimer = 0;
 let vaultReady = false;
 let tabs: chrome.tabs.Tab[] = [];
@@ -91,6 +92,10 @@ function show(next: number): void {
   if (step === "pin") watchPin();
   if (step === "done") renderVaultLine();
   walkthrough.setVisible(step === "done");
+  // Move focus only for a new step, so a late refresh of the same step
+  // leaves keyboard users where they are
+  if (step === shown) return;
+  shown = step;
   (
     document.querySelector<HTMLElement>(`[data-step="${step}"] .primary`) ??
     document.querySelector<HTMLElement>(`[data-step="${step}"] button`)
