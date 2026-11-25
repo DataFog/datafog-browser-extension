@@ -174,11 +174,15 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Fail if a required job failed or was cancelled
+      # Only success and skipped pass. A matrix can report other results, such
+      # as abandoned when a runner never picked up one of its jobs.
+      - name: Fail unless every required job succeeded or was skipped
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
           echo "Job results: $RESULTS"
-          if [[ "$RESULTS" == *failure* || "$RESULTS" == *cancelled* ]]; then
-            exit 1
-          fi
+          for result in $RESULTS; do
+            if [[ "$result" != success && "$result" != skipped ]]; then
+              exit 1
+            fi
+          done
