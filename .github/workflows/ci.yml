@@ -111,3 +111,24 @@ jobs:
           path: |
             playwright-report/
             test-results/
+
+  # The one check for branch rules to require, so jobs that are skipped or
+  # only run in some events don't need their own entries
+  ci-passed:
+    name: CI passed
+    needs:
+      - checks
+      - extension-integration
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Fail if a required job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          if [[ "$RESULTS" == *failure* || "$RESULTS" == *cancelled* ]]; then
+            exit 1
+          fi
