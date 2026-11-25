@@ -25,6 +25,8 @@ test("Replace saves automatically in the popup and supports Undo/Redo", async ({
     .toBe(false);
   await badge.click(".undo");
   await expect(composer).toHaveText(`Contact ${EMAIL}`);
+  // The rescan after Undo redraws the popup, which moves Redo
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("1");
   await badge.click(".redo");
   await expect(composer).toHaveText(replaced);
   await expect(chat.locator("#sent-count")).toHaveText("0");
@@ -422,6 +424,8 @@ test("one mixed Apply replaces, redacts and skips independently with one Undo an
   if (!(await badge.state(".panel")).visible) await badge.click(".dot");
   await badge.click(".undo");
   await expect(composer).toHaveText(source);
+  // The rescan after Undo redraws the popup, which moves Redo
+  await expect.poll(async () => (await badge.state(".dot")).text).toBe("3");
   await badge.click(".redo");
   await expect(composer).toHaveText(
     `Email ${marker}; redact [EMAIL]; keep ${kept}`,
