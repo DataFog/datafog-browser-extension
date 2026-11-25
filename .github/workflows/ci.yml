@@ -131,8 +131,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Hosted runner images come with Chrome and Edge, so the tests use the
-      # installed browser instead of downloading another copy
+      # Ubuntu's hosted image already runs Chrome. Install the stable channel
+      # without Playwright's extra font packages for Linux.
+      - name: Install Google Chrome on Linux
+        if: ${{ matrix.browser == 'chrome' && runner.os == 'Linux' }}
+        run: npx playwright install chrome
+
+      - name: Install Google Chrome and system dependencies
+        if: ${{ matrix.browser == 'chrome' && runner.os != 'Linux' }}
+        run: npx playwright install --with-deps chrome
+
       - name: Run extension integration tests
         run: npm run test:integration -- --shard=${{ matrix.shard }}/2
 
