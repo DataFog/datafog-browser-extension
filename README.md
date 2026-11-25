@@ -15,7 +15,15 @@ datafog checks what you type into ChatGPT, Claude, Gemini, Grok and DeepSeek for
 - **Choose what to check for**, grouped by how accurately each type is found, and which sites to check in the settings. Changes save as you make them.
 - **Hold sends** (optional, off by default): **Apply & send** saves the required originals and applies the current mixed preview before sending once. Unchecking every row offers **Send as is** as an explicit choice. Proactive Apply never sends.
 - **Automatically replace on paste** (optional, off by default) saves originals and replaces the pasted draft locally, with a quick **Undo**. Pasting never sends a message.
-- **Warns you** when a file is attached, since files aren't checked, and when a chat box can't be found, so the page isn't protected.
+- **Warns you** when a file is attached directly to the provider, and when a chat box can't be found, so the page isn't protected.
+
+## Scan a PDF
+
+Open the target conversation and click the datafog toolbar icon. In **Files**, drop a PDF or choose a file. Review the extracted text and any page warnings. Switch between **Original** and **As sent** to see exactly what will enter the draft. Open the larger viewer for a side-by-side list of findings.
+
+Choose **Reversible mask** to save the original in the vault, **Mask** for a permanent label, or uncheck an occurrence to keep its text. **Insert** appends the reviewed document to the existing draft. **Undo** removes the insertion while the draft is unchanged. Sending remains a separate action in the chat.
+
+Rampart checks names and addresses by default in drafts and PDFs. Settings also offers the DataFog CNN. The extension installs OCRia’s Latin OCR model with LiteParse, so scanned PDFs work offline from the first use.
 
 ## Install
 
@@ -49,8 +57,8 @@ Removing datafog deletes its vault, settings and lists from Chrome. Values behin
 ## Limitations
 
 - Runs only on ChatGPT, Claude, Gemini, Grok and DeepSeek, in Google Chrome on desktop.
-- Checks text in the chat box only, not attached files.
-- Detection isn't exhaustive. Names and mailing addresses come from a small model that misses some in everyday chat text; other types are pattern-based.
+- The provider’s own upload button attaches the original file. Use **Scan PDF** in the datafog side panel to insert reviewed text. The extension does not produce a redacted PDF.
+- Both name and address models can miss identifying text or flag ordinary words. Review the full extracted text, especially spelling, addresses split across lines, and page order.
 - Redaction is one way: `[EMAIL]` can't be turned back into the original.
 - Unknown or deleted markers cannot be restored.
 - Access to the Chrome profile is the trust boundary: automatic local key access is not an additional password barrier. Missing keys or damaged storage produce an error; the extension does not silently reset existing data.

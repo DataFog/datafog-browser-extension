@@ -33,7 +33,18 @@ export class ModelScanner {
   /**
    * @param open Starts a session with the model loaded.
    */
-  constructor(private readonly open: () => Promise<ModelSession>) {}
+  constructor(private open: () => Promise<ModelSession>) {}
+
+  /** Switch the lazy session factory after all previously queued scans finish. */
+  selectModel(open: () => Promise<ModelSession>): Promise<void> {
+    const next = this.queue.then(async () => {
+      if (this.open === open) return;
+      await this.close();
+      this.open = open;
+    });
+    this.queue = next.catch(() => {});
+    return next;
+  }
 
   /**
    * Find values, one scan at a time: a session takes one request at once.

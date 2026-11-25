@@ -23,6 +23,7 @@ import {
   type Request,
 } from "./messages";
 import { ModelScanner } from "./model";
+import { RampartSession } from "./rampart";
 import {
   blockingSends,
   forSite,
@@ -36,12 +37,15 @@ import { VaultHost } from "./vault";
 const engine = ready();
 
 // The model loads on the first scan that needs it
-const model = new ModelScanner(() =>
+const openCnn = () =>
   CnnSession.open({
     // Its Worker loads from Core's own unbundled files
     workerUrl: chrome.runtime.getURL("datafog/wasm/cnn/worker.js"),
-  }),
-);
+  });
+const openRampart = () => RampartSession.open();
+const model = new ModelScanner(openRampart);
+const selectModel = (settings: Settings) =>
+  model.selectModel(settings.detector === "cnn" ? openCnn : openRampart);
 
 const devices = new DeviceKeys();
 // Device keys load once; requests wait on them, as on Core
@@ -341,8 +345,138 @@ async function handle(message: OffscreenRequest): Promise<unknown> {
     accessState = { phase: "ready", routing };
   }
   const settings = forSite(normalizeSettings(stored.settings), message.host);
+  await selectModel(settings);
   let result: unknown;
   switch (request.type) {
+    case "pdf-preview-cancel":
+      host.pdfCancel(request.previewId);
+      result = { cancelled: true };
+      break;
+    case "pdf-preview": {
+      if (!settings.enabled)
+        throw Object.assign(new Error(), { code: "protection_disabled" });
+      result = await host.pdfPreview(
+        request.chunks,
+        request.draft,
+        settings,
+        await policyVersion(stored),
+      );
+      break;
+    }
+    case "pdf-apply": {
+      const version = await policyVersion(stored);
+      if (!settings.enabled || request.policyVersion !== version)
+        throw Object.assign(new Error(), { code: "pdf_review_expired" });
+      const response = await host.pdfApply(
+        request.previewId,
+        request.draft,
+        settings,
+        version,
+      );
+      if (response.saved) {
+        try {
+          await commitPreferences({
+            ...stored,
+            markers: [
+              ...new Set([
+                ...stored.markers,
+                ...response.chunks.flatMap(
+                  (chunk) => chunk.text.match(/\[\[[A-Z0-9_]+\]\]/g) ?? [],
+                ),
+              ]),
+            ],
+          });
+        } catch {
+          result = { ...response, warning: "originals_index_unavailable" };
+          break;
+        }
+      }
+      result = response;
+      break;
+    }
+    case "pdf-scan": {
+      if (!settings.enabled)
+        throw Object.assign(new Error(), { code: "protection_disabled" });
+      if (request.text.length > 10000)
+        throw Object.assign(new Error(), { code: "pdf_chunk_too_large" });
+      result = {
+        policyVersion: await policyVersion(stored),
+        findings: await host.pdfReview(request.text, settings),
+      };
+      break;
+    }
+    case "pdf-commit": {
+      const version = await policyVersion(stored);
+      if (
+        !settings.enabled ||
+        request.policyVersion !== version ||
+        request.text.length > 10000
+      )
+        throw Object.assign(new Error(), { code: "pdf_review_expired" });
+      const preview = await host.preview(
+        request.text,
+        settings,
+        -2,
+        0,
+        version,
+      );
+      // No unreviewed or changed span may enter the composer. A paste may have
+      // used Core's single reservation since scan; recreate and validate here.
+      if (
+        preview.findings.length !== request.findings.length ||
+        preview.findings.some(
+          (item) =>
+            !request.findings.some(
+              (chosen) =>
+                chosen.start === item.start &&
+                chosen.end === item.end &&
+                chosen.entityType === item.entityType &&
+                chosen.original === item.original &&
+                ["keep", "redact", "replace"].includes(chosen.action),
+            ),
+        )
+      ) {
+        host.cancel();
+        throw Object.assign(new Error(), { code: "pdf_review_expired" });
+      }
+      if (
+        !preview.previewId ||
+        request.findings.every((item) => item.action === "keep")
+      ) {
+        host.cancel();
+        result = { text: request.text, edits: [], saved: false };
+        break;
+      }
+      const selected = await host.select(
+        request.text,
+        settings,
+        -2,
+        preview.previewId,
+        version,
+        request.findings.filter((item) => item.action === "keep"),
+        request.findings.filter((item) => item.action === "redact"),
+      );
+      const response = await host.apply(
+        request.text,
+        -2,
+        settings,
+        selected.previewId,
+        version,
+      );
+      if (response.saved) {
+        await commitPreferences({
+          ...stored,
+          markers: [
+            ...new Set([
+              ...stored.markers,
+              ...(response.text.match(/\[\[[A-Z0-9_]+\]\]/g) ?? []),
+            ]),
+          ],
+        });
+      }
+      result = response;
+      break;
+    }
     case "scan":
     case "select": {
       const version = await policyVersion(stored);
@@ -397,6 +531,7 @@ async function handle(message: OffscreenRequest): Promise<unknown> {
       if (!isPreferences(next))
         throw Object.assign(new Error(), { code: "preferences_invalid" });
       await commitPreferences(next);
+      await selectModel(next.settings);
       result = { saved: true, policyVersion: await policyVersion(next) };
       break;
     }

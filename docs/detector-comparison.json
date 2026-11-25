@@ -1,0 +1,459 @@
+{
+  "browser": "158.0.8127.88",
+  "fixtureOrigin": "Locally authored synthetic acceptance examples; training overlap unknown. No held-out generalization claim.",
+  "records": [
+    {
+      "detector": "cnn",
+      "language": "en",
+      "text": "My name is Zoe\u0308 Hartwell. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. Please contact Nadia Whitcombe.",
+      "gold": [
+        {
+          "value": "Zoe\u0308 Hartwell",
+          "type": "PERSON"
+        },
+        {
+          "value": "Nadia Whitcombe",
+          "type": "PERSON"
+        }
+      ],
+      "milliseconds": 169,
+      "findings": [],
+      "leaks": ["Zoe\u0308 Hartwell", "Nadia Whitcombe"],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 0
+    },
+    {
+      "detector": "cnn",
+      "language": "en",
+      "text": "Please contact Elara Whitcombe about the appointment.",
+      "gold": [
+        {
+          "value": "Elara Whitcombe",
+          "type": "PERSON"
+        }
+      ],
+      "milliseconds": 4,
+      "findings": [],
+      "leaks": ["Elara Whitcombe"],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 0
+    },
+    {
+      "detector": "cnn",
+      "language": "en",
+      "text": "I spoke to Nadia yesterday.",
+      "gold": [
+        {
+          "value": "Nadia",
+          "type": "PERSON"
+        }
+      ],
+      "milliseconds": 3,
+      "findings": [],
+      "leaks": ["Nadia"],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 0
+    },
+    {
+      "detector": "cnn",
+      "language": "en",
+      "text": "\ud83d\ude00 My name is Jos\u00e9 Mu\u00f1oz. Email jose@example.org.",
+      "gold": [
+        {
+          "value": "Jos\u00e9 Mu\u00f1oz",
+          "type": "PERSON"
+        },
+        {
+          "value": "jose@example.org",
+          "type": "EMAIL"
+        }
+      ],
+      "milliseconds": 5,
+      "findings": [
+        {
+          "start": 32,
+          "end": 48,
+          "original": "jose@example.org",
+          "entityType": "EMAIL",
+          "action": "replace"
+        }
+      ],
+      "leaks": ["Jos\u00e9 Mu\u00f1oz"],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 1
+    },
+    {
+      "detector": "cnn",
+      "language": "en",
+      "text": "My mailing address is 319 Cedar Lane\nUnit 7B\nPortland, OR 97205.",
+      "gold": [
+        {
+          "value": "319 Cedar Lane\nUnit 7B\nPortland, OR 97205",
+          "type": "ADDRESS"
+        }
+      ],
+      "milliseconds": 7,
+      "findings": [
+        {
+          "start": 22,
+          "end": 63,
+          "original": "319 Cedar Lane\nUnit 7B\nPortland, OR 97205",
+          "entityType": "ADDRESS",
+          "action": "replace"
+        }
+      ],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 1
+    },
+    {
+      "detector": "cnn",
+      "language": "es",
+      "text": "Me llamo Luc\u00eda Vald\u00e9s y mi correo es lucia@example.org.",
+      "gold": [
+        {
+          "value": "Luc\u00eda Vald\u00e9s",
+          "type": "PERSON"
+        },
+        {
+          "value": "lucia@example.org",
+          "type": "EMAIL"
+        }
+      ],
+      "milliseconds": 4,
+      "findings": [
+        {
+          "start": 37,
+          "end": 54,
+          "original": "lucia@example.org",
+          "entityType": "EMAIL",
+          "action": "replace"
+        }
+      ],
+      "leaks": ["Luc\u00eda Vald\u00e9s"],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 1
+    },
+    {
+      "detector": "cnn",
+      "language": "fr",
+      "text": "Je m'appelle \u00c9lodie Moreau. Merci de me contacter.",
+      "gold": [
+        {
+          "value": "\u00c9lodie Moreau",
+          "type": "PERSON"
+        }
+      ],
+      "milliseconds": 3,
+      "findings": [],
+      "leaks": ["\u00c9lodie Moreau"],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 0
+    },
+    {
+      "detector": "cnn",
+      "language": "de",
+      "text": "Mein Name ist J\u00fcrgen Wei\u00df. Bitte rufen Sie mich an.",
+      "gold": [
+        {
+          "value": "J\u00fcrgen Wei\u00df",
+          "type": "PERSON"
+        }
+      ],
+      "milliseconds": 3,
+      "findings": [],
+      "leaks": ["J\u00fcrgen Wei\u00df"],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 0
+    },
+    {
+      "detector": "cnn",
+      "language": "en",
+      "text": "The meeting is tomorrow. Please bring the quarterly report.",
+      "gold": [],
+      "milliseconds": 2,
+      "findings": [],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 0
+    },
+    {
+      "detector": "cnn",
+      "language": "en",
+      "text": "I enjoy cedar trees and walking along the river.",
+      "gold": [],
+      "milliseconds": 2,
+      "findings": [],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 0
+    },
+    {
+      "detector": "rampart",
+      "language": "en",
+      "text": "My name is Zoe\u0308 Hartwell. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. The report contains routine observations. Please contact Nadia Whitcombe.",
+      "gold": [
+        {
+          "value": "Zoe\u0308 Hartwell",
+          "type": "PERSON"
+        },
+        {
+          "value": "Nadia Whitcombe",
+          "type": "PERSON"
+        }
+      ],
+      "milliseconds": 683,
+      "findings": [
+        {
+          "start": 11,
+          "end": 24,
+          "original": "Zoe\u0308 Hartwell",
+          "entityType": "PERSON",
+          "action": "replace"
+        },
+        {
+          "start": 4241,
+          "end": 4256,
+          "original": "Nadia Whitcombe",
+          "entityType": "PERSON",
+          "action": "replace"
+        }
+      ],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 2
+    },
+    {
+      "detector": "rampart",
+      "language": "en",
+      "text": "Please contact Elara Whitcombe about the appointment.",
+      "gold": [
+        {
+          "value": "Elara Whitcombe",
+          "type": "PERSON"
+        }
+      ],
+      "milliseconds": 17,
+      "findings": [
+        {
+          "start": 15,
+          "end": 30,
+          "original": "Elara Whitcombe",
+          "entityType": "PERSON",
+          "action": "replace"
+        }
+      ],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 1
+    },
+    {
+      "detector": "rampart",
+      "language": "en",
+      "text": "I spoke to Nadia yesterday.",
+      "gold": [
+        {
+          "value": "Nadia",
+          "type": "PERSON"
+        }
+      ],
+      "milliseconds": 13,
+      "findings": [
+        {
+          "start": 11,
+          "end": 16,
+          "original": "Nadia",
+          "entityType": "PERSON",
+          "action": "replace"
+        }
+      ],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 1
+    },
+    {
+      "detector": "rampart",
+      "language": "en",
+      "text": "\ud83d\ude00 My name is Jos\u00e9 Mu\u00f1oz. Email jose@example.org.",
+      "gold": [
+        {
+          "value": "Jos\u00e9 Mu\u00f1oz",
+          "type": "PERSON"
+        },
+        {
+          "value": "jose@example.org",
+          "type": "EMAIL"
+        }
+      ],
+      "milliseconds": 18,
+      "findings": [
+        {
+          "start": 14,
+          "end": 24,
+          "original": "Jos\u00e9 Mu\u00f1oz",
+          "entityType": "PERSON",
+          "action": "replace"
+        },
+        {
+          "start": 32,
+          "end": 48,
+          "original": "jose@example.org",
+          "entityType": "EMAIL",
+          "action": "replace"
+        }
+      ],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 2
+    },
+    {
+      "detector": "rampart",
+      "language": "en",
+      "text": "My mailing address is 319 Cedar Lane\nUnit 7B\nPortland, OR 97205.",
+      "gold": [
+        {
+          "value": "319 Cedar Lane\nUnit 7B\nPortland, OR 97205",
+          "type": "ADDRESS"
+        }
+      ],
+      "milliseconds": 21,
+      "findings": [
+        {
+          "start": 22,
+          "end": 63,
+          "original": "319 Cedar Lane\nUnit 7B\nPortland, OR 97205",
+          "entityType": "ADDRESS",
+          "action": "replace"
+        }
+      ],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 1
+    },
+    {
+      "detector": "rampart",
+      "language": "es",
+      "text": "Me llamo Luc\u00eda Vald\u00e9s y mi correo es lucia@example.org.",
+      "gold": [
+        {
+          "value": "Luc\u00eda Vald\u00e9s",
+          "type": "PERSON"
+        },
+        {
+          "value": "lucia@example.org",
+          "type": "EMAIL"
+        }
+      ],
+      "milliseconds": 21,
+      "findings": [
+        {
+          "start": 9,
+          "end": 21,
+          "original": "Luc\u00eda Vald\u00e9s",
+          "entityType": "PERSON",
+          "action": "replace"
+        },
+        {
+          "start": 37,
+          "end": 54,
+          "original": "lucia@example.org",
+          "entityType": "EMAIL",
+          "action": "replace"
+        }
+      ],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 2
+    },
+    {
+      "detector": "rampart",
+      "language": "fr",
+      "text": "Je m'appelle \u00c9lodie Moreau. Merci de me contacter.",
+      "gold": [
+        {
+          "value": "\u00c9lodie Moreau",
+          "type": "PERSON"
+        }
+      ],
+      "milliseconds": 19,
+      "findings": [
+        {
+          "start": 13,
+          "end": 26,
+          "original": "\u00c9lodie Moreau",
+          "entityType": "PERSON",
+          "action": "replace"
+        }
+      ],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 1
+    },
+    {
+      "detector": "rampart",
+      "language": "de",
+      "text": "Mein Name ist J\u00fcrgen Wei\u00df. Bitte rufen Sie mich an.",
+      "gold": [
+        {
+          "value": "J\u00fcrgen Wei\u00df",
+          "type": "PERSON"
+        }
+      ],
+      "milliseconds": 19,
+      "findings": [
+        {
+          "start": 14,
+          "end": 25,
+          "original": "J\u00fcrgen Wei\u00df",
+          "entityType": "PERSON",
+          "action": "replace"
+        }
+      ],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 1
+    },
+    {
+      "detector": "rampart",
+      "language": "en",
+      "text": "The meeting is tomorrow. Please bring the quarterly report.",
+      "gold": [],
+      "milliseconds": 15,
+      "findings": [],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 0
+    },
+    {
+      "detector": "rampart",
+      "language": "en",
+      "text": "I enjoy cedar trees and walking along the river.",
+      "gold": [],
+      "milliseconds": 15,
+      "findings": [],
+      "leaks": [],
+      "falseReplacements": [],
+      "falseReplacementCharacters": 0,
+      "exact": 0
+    }
+  ]
+}

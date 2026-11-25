@@ -17,6 +17,8 @@ for (const notice of [
   "THIRD_PARTY_NOTICES.md",
   "licenses/lucide-LICENSE.txt",
   "fonts/OFL.txt",
+  "PDF_NOTICES.md",
+  "licenses/rampart/LICENSE",
 ]) {
   if (!existsSync(`dist/${notice}`))
     throw new Error(`dist/${notice} is missing.`);

@@ -5,3 +5,9 @@ harness/
 .review/
 package-lock.json
 .playwright/
+assets/rampart/model/
+licenses/rampart/
+assets/ocria/
+licenses/liteparse/
+test-results/
+playwright-report/

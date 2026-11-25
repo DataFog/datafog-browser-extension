@@ -1054,7 +1054,53 @@ function answerText(element: HTMLElement | null): string | null {
  * @param request The request.
  * @returns The response.
  */
+const pdfDocumentId = crypto.randomUUID();
+// Returning to an earlier URL must not resurrect an old PDF insertion target.
+window.addEventListener("popstate", () => {
+  revision++;
+});
+(window as Window & { navigation?: EventTarget }).navigation?.addEventListener(
+  "currententrychange",
+  () => {
+    revision++;
+  },
+);
 async function answer(request: TabRequest): Promise<object> {
+  if (request.type === "pdf-draft") {
+    if (!composer) return { error: "no_chat_box" };
+    return {
+      text: readText(composer),
+      revision,
+      url: location.href,
+      documentId: pdfDocumentId,
+    };
+  }
+  if (request.type === "pdf-check" || request.type === "pdf-insert-approved") {
+    const draft = request.draft;
+    if (
+      !composer ||
+      draft.documentId !== pdfDocumentId ||
+      location.href !== draft.url ||
+      revision !== draft.revision ||
+      readText(composer) !== draft.text
+    )
+      return { error: "pdf_draft_changed" };
+    if (request.type === "pdf-check") return { valid: true };
+    const text = draft.text + (draft.text ? "\n\n" : "") + request.text;
+    const applied = await replaceFound(composer, draft.text, {
+      text,
+      edits: [
+        {
+          start: draft.text.length,
+          end: draft.text.length,
+          replacement: text.slice(draft.text.length),
+        },
+      ],
+    });
+    if (!applied) return { error: "pdf_insertion_unconfirmed" };
+    if (composer && sameText(readText(composer), text)) badge.inserted();
+    return { inserted: true };
+  }
   if (request.type === "chat-text") {
     return { text: composer ? readText(composer) : null };
   }
@@ -1157,6 +1203,7 @@ function redoRedaction(): void {
  */
 function bind(element: HTMLElement): void {
   composer = element;
+  revision++;
   lastScanned = "";
   redaction = null;
   newContent(element);

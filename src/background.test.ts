@@ -60,6 +60,11 @@ let installed: (details: { reason: string }) => void = () => {};
 const executeScript = vi.fn(
   async (_injection: { target: { tabId: number } }): Promise<unknown[]> => [],
 );
+const getTab = vi.fn(async (id: number) => ({
+  id,
+  active: true,
+  url: "https://chatgpt.com/c/test",
+}));
 const createTab = vi.fn(async (_properties: object) => ({}));
 let stored: object;
 
@@ -166,7 +171,12 @@ beforeEach(async () => {
         },
       },
       scripting: { executeScript },
-      tabs: { sendMessage: tabMessage, query: queryTabs, create: createTab },
+      tabs: {
+        get: getTab,
+        sendMessage: tabMessage,
+        query: queryTabs,
+        create: createTab,
+      },
     },
   });
   await import("./background");
@@ -803,4 +813,35 @@ test("selection uses sender tab rather than a caller supplied reservation tab", 
       },
     }),
   );
+});
+
+test("PDF apply checks the bound draft before forwarding an exact preview", async () => {
+  const draft = {
+    tabId: 7,
+    url: "https://chatgpt.com/c/test",
+    text: "draft",
+    revision: 2,
+    documentId: "doc",
+  };
+  const request = {
+    type: "pdf-apply" as const,
+    draft,
+    previewId: "reserved",
+    policyVersion: "policy",
+  };
+  sendMessage.mockResolvedValueOnce({
+    result: {
+      chunks: [{ id: "page", text: "[[EMAIL_ABC123]]", edits: [] }],
+      saved: true,
+    },
+  });
+  await send(request, PANEL);
+  expect(tabMessage).toHaveBeenCalledWith(7, { type: "pdf-check", draft });
+  expect(sendMessage).toHaveBeenCalledWith(
+    expect.objectContaining({ request }),
+  );
+  sendMessage.mockClear();
+  tabMessage.mockResolvedValueOnce({ error: "pdf_draft_changed" });
+  expect(await send(request, PANEL)).toEqual({ error: "pdf_draft_changed" });
+  expect(sendMessage).not.toHaveBeenCalled();
 });

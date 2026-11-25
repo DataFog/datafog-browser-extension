@@ -30,6 +30,7 @@ const autoReplaceOnPaste = document.querySelector<HTMLInputElement>(
   "#auto-replace-on-paste",
 )!;
 const blockSends = document.querySelector<HTMLInputElement>("#block-sends")!;
+const detector = document.querySelector<HTMLSelectElement>("#detector");
 const status = document.querySelector<HTMLSpanElement>("#status")!;
 
 followTheme(document.documentElement);
@@ -112,6 +113,7 @@ async function render(): Promise<void> {
     `version ${chrome.runtime.getManifest().version}`;
   const settings = await loadSettings();
   renderSites(settings.off);
+  if (detector) detector.value = settings.detector ?? "rampart";
   blockSends.checked = settings.blockSends;
   autoReplaceOnPaste.checked = settings.autoReplaceOnPaste;
   for (const radio of document.querySelectorAll<HTMLInputElement>(
@@ -179,6 +181,8 @@ function save(change: Partial<Settings>): Promise<void> {
  * @returns The changed setting, or null for anything else.
  */
 function changeFrom(control: EventTarget | null): Partial<Settings> | null {
+  if (detector && control === detector)
+    return { detector: detector.value === "cnn" ? "cnn" : "rampart" };
   if (control === autoReplaceOnPaste)
     return { autoReplaceOnPaste: autoReplaceOnPaste.checked };
   if (control === blockSends) return { blockSends: blockSends.checked };
@@ -231,7 +235,14 @@ async function restoreDefaults(): Promise<void> {
     blockSends: hold,
     autoReplaceOnPaste: paste,
   } = DEFAULT_SETTINGS;
-  await save({ off, entities, blockSends: hold, autoReplaceOnPaste: paste });
+  await save({
+    off,
+    entities,
+    blockSends: hold,
+    autoReplaceOnPaste: paste,
+    detector: DEFAULT_SETTINGS.detector,
+  });
+  if (detector) detector.value = DEFAULT_SETTINGS.detector ?? "rampart";
   for (const box of document.querySelectorAll<HTMLInputElement>("#sites input"))
     box.checked = !off.includes(box.value);
   for (const box of document.querySelectorAll<HTMLInputElement>("#types input"))

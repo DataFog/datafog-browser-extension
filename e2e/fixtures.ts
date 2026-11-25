@@ -145,10 +145,15 @@ export class ClosedShadow {
 
   async click(selector: string): Promise<void> {
     await expect
-      .poll(async () => (await this.state(selector)).visible)
+      .poll(
+        async () => {
+          const state = await this.state(selector);
+          return state.visible && !state.disabled;
+        },
+        { message: `${selector} should become actionable` },
+      )
       .toBe(true);
-    const { rect, disabled } = await this.state(selector);
-    expect(disabled, `${selector} should be enabled`).toBe(false);
+    const { rect } = await this.state(selector);
     // A real mouse click carries the user gesture needed to open a side panel.
     await this.page.mouse.click(
       rect.x + rect.width / 2,
@@ -864,12 +869,10 @@ export class Extension {
       }
     }
     if (!panel) throw new Error("Native side panel target was not attached");
-    await expect(
-      panel
-        .locator("#unlocked, #vault-error")
-        .filter({ visible: true })
-        .first(),
-    ).toBeVisible();
+    await expect(panel.locator("#vault-chip")).toHaveAttribute(
+      "data-access",
+      /^(ready|unavailable)$/,
+    );
     return panel;
   }
 

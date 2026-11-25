@@ -23,6 +23,10 @@ import {
 
 import type {
   ApplyResponse,
+  PdfFinding,
+  PdfDraft,
+  PdfPreviewChunk,
+  PdfPreviewResponse,
   CreatedVault,
   KeepPlace,
   MarkedSensitive,
@@ -64,8 +68,10 @@ export type Vault = Pick<
 /** The parts of Core's adapter the host uses. */
 export type Owner = Pick<
   FogVaultWorkspace,
+  | "prepareBatch"
   | "prepare"
   | "prepareReview"
+  | "review"
   | "prepareForget"
   | "preparePolicyChanges"
   | "policy"
@@ -272,6 +278,13 @@ export class VaultHost<V extends Vault = Vault> {
     revision: number;
     policyVersion: string;
   } | null = null;
+  private pdfReservation: {
+    plan: WorkspaceVaultPlan;
+    response: PdfPreviewResponse;
+    draftKey: string;
+    settings: Settings;
+    replaced: number;
+  } | null = null;
   private waiting: Waiting | null = null;
   /** Counts review preparations, so a cancelled or replaced one is dropped. */
   private turn = 0;
@@ -331,6 +344,191 @@ export class VaultHost<V extends Vault = Vault> {
     this.drop();
     await this.saveChoice(this.owner, entityType, value, "not_sensitive");
     this.deps.notify();
+  }
+
+  /** Read-only review includes remembered originals without occupying Core's plan slot. */
+  async pdfReview(text: string, settings: Settings): Promise<PdfFinding[]> {
+    const owner = this.owner;
+    if (!owner || owner.closed) throw failure("vault_unavailable");
+    const found = await this.deps.findings(text, settings);
+    if (owner !== this.owner || owner.closed)
+      throw failure("vault_unavailable");
+    const review = owner.review({
+      text,
+      scannerFindings: found,
+      userSelections: [],
+    });
+    if (review.conflicts.length) throw failure("pdf_conflicting_findings");
+    return review.candidates
+      .filter((item) => item.selected)
+      .map((item) => ({
+        start: item.utf16Range.start,
+        end: item.utf16Range.end,
+        original: text.slice(item.utf16Range.start, item.utf16Range.end),
+        entityType: item.finding.entityType,
+        action: "replace",
+      }));
+  }
+
+  /** Reserve a whole file in one Core batch; this does not commit any mapping. */
+  async pdfPreview(
+    chunks: PdfPreviewChunk[],
+    draft: PdfDraft,
+    settings: Settings,
+    policyVersion: string,
+  ): Promise<PdfPreviewResponse> {
+    const owner = this.owner;
+    if (!owner || owner.closed) throw failure("vault_unavailable");
+    if (
+      !Array.isArray(chunks) ||
+      !chunks.length ||
+      chunks.length > 200 ||
+      new Set(chunks.map((chunk) => chunk.id)).size !== chunks.length ||
+      chunks.some(
+        (chunk) =>
+          typeof chunk.id !== "string" ||
+          typeof chunk.text !== "string" ||
+          chunk.text.length > 10000 ||
+          chunk.policyVersion !== policyVersion,
+      ) ||
+      chunks.reduce((total, chunk) => total + chunk.text.length, 0) > 1_000_000
+    )
+      throw failure("pdf_review_expired");
+    const inputs = [];
+    const redactions: RedactEdit[][] = [];
+    let replaced = 0;
+    for (const chunk of chunks) {
+      const authoritative = await this.pdfReview(chunk.text, settings);
+      if (
+        !Array.isArray(chunk.findings) ||
+        authoritative.length !== chunk.findings.length ||
+        new Set(chunk.findings.map((item) => `${item.start}:${item.end}`))
+          .size !== chunk.findings.length ||
+        authoritative.some(
+          (item) =>
+            !chunk.findings.some(
+              (chosen) =>
+                chosen.start === item.start &&
+                chosen.end === item.end &&
+                chosen.original === item.original &&
+                chosen.entityType === item.entityType &&
+                ["replace", "redact", "keep"].includes(chosen.action),
+            ),
+        )
+      )
+        throw failure("pdf_review_expired");
+      const findings = chunk.findings
+        .filter((item) => item.action === "replace")
+        .map((item) => ({
+          entityType: item.entityType,
+          matchedText: item.original,
+          range: {
+            unit: "utf8_bytes" as const,
+            start: new TextEncoder().encode(chunk.text.slice(0, item.start))
+              .length,
+            end: new TextEncoder().encode(chunk.text.slice(0, item.end)).length,
+          },
+          detectorName: "workspace-review",
+        }));
+      replaced += findings.length;
+      inputs.push({ text: chunk.text, findings });
+      redactions.push(
+        chunk.findings
+          .filter((item) => item.action === "redact")
+          .map((item) => ({
+            start: item.start,
+            end: item.end,
+            replacement: transform(
+              item.original,
+              [
+                {
+                  entityType: item.entityType,
+                  matchedText: item.original,
+                  byteRange: {
+                    start: 0,
+                    end: new TextEncoder().encode(item.original).length,
+                  },
+                  codepointRange: {
+                    start: 0,
+                    end: Array.from(item.original).length,
+                  },
+                  detectorName: "workspace-review",
+                },
+              ],
+              { default: { strategy: "redact" } },
+            ).text,
+          })),
+      );
+    }
+    if (owner !== this.owner || owner.closed)
+      throw failure("vault_unavailable");
+    this.drop();
+    const plan = owner.prepareBatch(inputs, this.deps.randomId());
+    try {
+      const previews = plan.previews();
+      if (previews.length !== chunks.length)
+        throw failure("pdf_review_expired");
+      const response: PdfPreviewResponse = {
+        previewId: crypto.randomUUID(),
+        policyVersion,
+        chunks: previews.map((preview, index) => {
+          const edits = [
+            ...editsOf(preview).edits,
+            ...redactions[index],
+          ].toSorted((a, b) => a.start - b.start);
+          let text = chunks[index].text;
+          for (const edit of edits.toReversed())
+            text =
+              text.slice(0, edit.start) +
+              edit.replacement +
+              text.slice(edit.end);
+          return { id: chunks[index].id, text, edits };
+        }),
+      };
+      this.pdfReservation = {
+        plan,
+        response,
+        draftKey: JSON.stringify(draft),
+        settings,
+        replaced,
+      };
+      return response;
+    } catch (error) {
+      plan.discard();
+      throw error;
+    }
+  }
+
+  /** Commit the exact displayed batch; never regenerate a token at insertion. */
+  async pdfApply(
+    previewId: string,
+    draft: PdfDraft,
+    settings: Settings,
+    policyVersion: string,
+  ): Promise<PdfPreviewResponse & { saved: boolean }> {
+    const reserved = this.pdfReservation;
+    const owner = this.owner;
+    if (
+      !reserved ||
+      !owner ||
+      owner.closed ||
+      reserved.response.previewId !== previewId ||
+      reserved.response.policyVersion !== policyVersion ||
+      reserved.draftKey !== JSON.stringify(draft) ||
+      !sameChecks(reserved.settings, settings)
+    )
+      throw failure("pdf_review_expired");
+    this.pdfReservation = null;
+    if (reserved.replaced) await this.save(owner, reserved.plan);
+    else reserved.plan.discard();
+    return { ...reserved.response, saved: reserved.replaced > 0 };
+  }
+
+  /** An old panel cannot cancel another panel's or a paste's reservation. */
+  pdfCancel(previewId: string): void {
+    if (this.pdfReservation?.response.previewId !== previewId) return;
+    this.pdfReservation.plan.discard();
+    this.pdfReservation = null;
   }
 
   /** Retain the exact Core allocation until consumed or explicitly superseded. */
@@ -1121,6 +1319,8 @@ export class VaultHost<V extends Vault = Vault> {
   /** Discard the review's plan, freeing the adapter's one slot. */
   private drop(): void {
     this.reservation = null;
+    this.pdfReservation?.plan.discard();
+    this.pdfReservation = null;
     this.review?.plan.discard();
     this.review = null;
   }

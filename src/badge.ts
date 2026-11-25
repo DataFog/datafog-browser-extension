@@ -676,8 +676,15 @@ export class Badge {
   }
 
   replaced(count: number, action = "Masked"): void {
-    this.toast.querySelector("span")!.textContent =
-      `${action} ${count} ${count === 1 ? "item" : "items"} · `;
+    this.showUndoToast(`${action} ${count} ${count === 1 ? "item" : "items"}`);
+  }
+
+  inserted(): void {
+    this.showUndoToast("Inserted");
+  }
+
+  private showUndoToast(message: string): void {
+    this.toast.querySelector("span")!.textContent = message + " · ";
     this.toast.hidden = false;
     this.place();
   }

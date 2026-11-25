@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <title>datafog</title>
     <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="pdf-panel.css" />
     <style>
       body {
         font: 13px/1.5 var(--sans);
@@ -68,7 +69,7 @@
        */
       .tabs {
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         margin: 0 -12px 4px;
         padding: 0 12px;
         border-bottom: 1px solid var(--line);
@@ -479,9 +480,17 @@
     <nav class="tabs" aria-label="Sidebar views">
       <button
         type="button"
+        data-view="files"
+        data-icon="file"
+        aria-pressed="true"
+      >
+        Files
+      </button>
+      <button
+        type="button"
         data-view="data"
         data-icon="originals"
-        aria-pressed="true"
+        aria-pressed="false"
       >
         Originals
       </button>
@@ -494,12 +503,98 @@
         Rules
       </button>
     </nav>
+    <section id="pdf-tools" data-section="files" aria-label="Files">
+      <div id="pdf-empty">
+        <label
+          id="pdf-drop"
+          for="pdf-file"
+          tabindex="0"
+          role="button"
+          aria-label="Choose a PDF"
+          aria-disabled="false"
+        >
+          <span class="pdf-upload-icon" data-icon="upload"></span>
+          <span>Choose or drop a PDF</span>
+          <input
+            id="pdf-file"
+            type="file"
+            accept="application/pdf,.pdf"
+            class="sr"
+          />
+        </label>
+      </div>
+      <div id="pdf-file-card" hidden>
+        <span class="pdf-file-icon" data-icon="file"></span>
+        <span id="pdf-file-name"></span
+        ><span id="pdf-finding-count" hidden></span>
+        <button
+          id="pdf-cancel"
+          class="icon"
+          type="button"
+          data-icon="remove"
+          aria-label="Remove file"
+          title="Remove file"
+          disabled
+        ></button>
+      </div>
+      <div id="pdf-reading" hidden>
+        <div class="pdf-progress-row">
+          <progress id="pdf-progress" max="1" value="0"></progress
+          ><span id="pdf-progress-label"></span>
+        </div>
+        <div class="pdf-skeleton" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+      </div>
+      <p id="pdf-status" role="status" aria-live="polite"></p>
+      <div id="pdf-review" hidden>
+        <div class="pdf-toolbar">
+          <div class="pdf-modes" aria-label="Preview mode">
+            <button id="pdf-original" type="button" aria-pressed="true">
+              Original</button
+            ><button id="pdf-as-sent" type="button" aria-pressed="false">
+              As sent
+            </button>
+          </div>
+          <button
+            id="pdf-larger"
+            class="icon"
+            type="button"
+            data-icon="expand"
+            aria-label="Open larger view"
+            title="Open larger view"
+          ></button>
+        </div>
+        <div class="pdf-page-row">
+          <label class="sr" for="pdf-page">Review page</label
+          ><select id="pdf-page"></select
+          ><span id="pdf-page-warning" role="status"></span>
+        </div>
+        <div id="pdf-preview" aria-label="Document preview"></div>
+        <div id="pdf-findings" hidden></div>
+        <div class="pdf-footer">
+          <button
+            id="pdf-copy"
+            type="button"
+            class="icon"
+            data-icon="copy"
+            aria-label="Copy as sent"
+            title="Copy as sent"
+            disabled
+          ></button
+          ><button id="pdf-insert" type="button" disabled>Insert</button>
+        </div>
+      </div>
+      <div id="pdf-inserted" hidden>
+        <button id="pdf-another" type="button">Choose another PDF</button>
+      </div>
+    </section>
     <p id="vault-error" class="error" role="alert" hidden></p>
     <button id="retry-access" type="button" data-icon="retry" hidden>
       Retry
     </button>
     <div id="unlocked" hidden>
-      <section data-section="data">
+      <section data-section="data" hidden>
         <div class="card">
           <form id="lookup" class="search">
             <label class="sr" for="lookup-marker">Find a placeholder</label

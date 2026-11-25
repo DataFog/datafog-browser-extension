@@ -106,6 +106,7 @@ test("live: allowlist and global off apply to the real composer", async ({
   await composer.fill(SAMPLE);
   await found(badge, 2);
   const panel = await extension.panel();
+  await panel.locator('[data-view="data"]').click();
   await panel.locator('[data-view="rules"]').click();
   await panel.locator("#allowlist-value").fill(EMAIL);
   await panel.locator("#allowlist-add button").click();
@@ -147,6 +148,7 @@ test("live: Always allow persists and rechecks an unchanged draft", async ({
   await expect(composer).toContainText("[[EMAIL_");
   await badge.click(".undo");
   const panel = await extension.panel();
+  await panel.locator('[data-view="data"]').click();
   const row = panel.locator("#originals li").filter({ hasText: EMAIL });
   await row.locator(".original-menu-toggle").click();
   await row.locator('[data-action="allow"]').click();

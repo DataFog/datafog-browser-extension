@@ -148,3 +148,34 @@ test("passes deny list phrases to the model's scan", async () => {
   await scan;
   expect(sessions[0].configs[0]).toMatchObject({ deny: ["Project Atlas"] });
 });
+
+test("model switch waits for active scans, closes the old worker and opens lazily", async () => {
+  const replacement = new FakeSession();
+  const openReplacement = vi.fn(async () => replacement);
+  const first = scanner.scan("old one", ["PERSON"]);
+  const second = scanner.scan("old two", ["PERSON"]);
+  const switched = scanner.selectModel(openReplacement);
+  const third = scanner.scan("new one", ["PERSON"]);
+  await settle();
+  expect(sessions[0].closed).toBe(0);
+  expect(openReplacement).not.toHaveBeenCalled();
+  sessions[0].next();
+  await first;
+  await settle();
+  expect(sessions[0].scans).toEqual(["old one", "old two"]);
+  expect(sessions[0].closed).toBe(0);
+  sessions[0].next();
+  await second;
+  await switched;
+  await settle();
+  expect(sessions[0].closed).toBe(1);
+  expect(replacement.scans).toEqual(["new one"]);
+  replacement.next();
+  await third;
+  await scanner.selectModel(openReplacement);
+  expect(replacement.closed).toBe(0);
+  const another = vi.fn(async () => new FakeSession());
+  await scanner.selectModel(another);
+  expect(replacement.closed).toBe(1);
+  expect(another).not.toHaveBeenCalled();
+});

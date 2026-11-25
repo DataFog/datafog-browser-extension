@@ -281,3 +281,24 @@ test("paste replacement is opt-in, saved with other encrypted preferences and re
   );
   expect(stored.settings?.allowlist).toEqual(["keep@example.com"]);
 });
+
+test("shows Rampart for legacy settings and preserves an explicit CNN choice", async () => {
+  stored = { settings: {} };
+  await start();
+  const select = document.querySelector<HTMLSelectElement>("#detector")!;
+  expect(select.value).toBe("rampart");
+  select.value = "cnn";
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  await vi.waitFor(() => expect(stored.settings?.detector).toBe("cnn"));
+});
+
+test("loads an existing CNN selection and resets it to the Rampart default", async () => {
+  stored = { settings: { detector: "cnn" } };
+  await start();
+  const select = document.querySelector<HTMLSelectElement>("#detector")!;
+  expect(select.value).toBe("cnn");
+  vi.stubGlobal("confirm", () => true);
+  click("#restore");
+  await vi.waitFor(() => expect(stored.settings?.detector).toBe("rampart"));
+  expect(select.value).toBe("rampart");
+});
