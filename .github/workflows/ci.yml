@@ -59,8 +59,42 @@ jobs:
       - name: Unit tests
         run: npm test
 
+  # Browser tests are skipped when only documentation changed. Pushes to main
+  # always run them.
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Compare with the base commit
+        id: diff
+        env:
+          BASE: >-
+            ${{ github.event.pull_request.base.sha ||
+            github.event.merge_group.base_sha }}
+        run: |
+          if [[ -z "$BASE" ]]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE"
+          changed=$(git diff --name-only "$BASE" HEAD)
+          echo "$changed"
+          code=$(grep -vE '\.md$|^docs/|^assets/readme/|^LICENSE$' \
+            <<< "$changed" || true)
+          echo "code=$([[ -n "$code" ]] && echo true || echo false)" \
+            >> "$GITHUB_OUTPUT"
+
   extension-integration:
     name: Extension integration tests (${{ matrix.os }}, ${{ matrix.browser }})
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -118,6 +152,7 @@ jobs:
     name: CI passed
     needs:
       - checks
+      - changes
       - extension-integration
     if: ${{ always() }}
     runs-on: ubuntu-latest
