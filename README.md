@@ -22,7 +22,7 @@ datafog checks what you type into ChatGPT, Claude, Gemini, Grok, and DeepSeek fo
 - **Reversible mask** swaps a detail for a placeholder such as `[[EMAIL_7KQ4ZM]]` and keeps the original in your vault, so you can see it in answers or copy it back later.
 - **Vault** is where datafog keeps originals, rules, and settings, encrypted on your device.
 
-> ⚠️ datafog finds sensitive details automatically, so it can miss some or flag things that aren't sensitive. Treat it as a security layer for personal details, not a guarantee.
+⚠️ datafog finds sensitive details automatically, so it can miss some or flag things that aren't sensitive. Treat it not as a guarantee, but as a security layer for personal details.
 
 ## Install
 
