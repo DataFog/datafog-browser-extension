@@ -93,26 +93,30 @@ jobs:
             >> "$GITHUB_OUTPUT"
 
   extension-integration:
-    name: Extension integration tests (${{ matrix.os }}, ${{ matrix.browser }})
+    name: >-
+      Extension integration tests (${{ matrix.target.os }},
+      ${{ matrix.target.browser }}, ${{ matrix.shard }}/2)
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     # Pull requests get quick feedback from Linux. The merge queue, pushes to
     # main, and manual runs cover every OS. Edge comes installed on Windows
-    # runners. It doesn't block merges until it has passed reliably.
+    # runners. It doesn't block merges until it has passed reliably. Each
+    # target splits its tests across two runners.
     strategy:
       fail-fast: false
       matrix:
-        include: >-
+        shard: [1, 2]
+        target: >-
           ${{ fromJSON(github.event_name == 'pull_request'
           && '[{"os":"ubuntu-latest","browser":"chrome"}]'
           || '[{"os":"ubuntu-latest","browser":"chrome"},
           {"os":"macos-latest","browser":"chrome"},
           {"os":"windows-latest","browser":"chrome"},
           {"os":"windows-latest","browser":"msedge"}]') }}
-    runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.browser == 'msedge' }}
+    runs-on: ${{ matrix.target.os }}
+    continue-on-error: ${{ matrix.target.browser == 'msedge' }}
     env:
-      E2E_BROWSER: ${{ matrix.browser }}
+      E2E_BROWSER: ${{ matrix.target.browser }}
 
     steps:
       - name: Checkout
@@ -138,13 +142,15 @@ jobs:
         run: npx playwright install --with-deps chrome
 
       - name: Run extension integration tests
-        run: npm run test:integration
+        run: npm run test:integration -- --shard=${{ matrix.shard }}/2
 
       - name: Upload browser report and failure traces
         if: ${{ failure() && !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: extension-integration-${{ matrix.os }}-${{ matrix.browser }}
+          name: >-
+            extension-integration-${{ matrix.target.os }}-${{
+            matrix.target.browser }}-${{ matrix.shard }}
           retention-days: 7
           path: |
             playwright-report/
