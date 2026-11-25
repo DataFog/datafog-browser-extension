@@ -63,7 +63,52 @@ export type CoreRequest = Exclude<
  * A side panel request. Only extension pages may send these: they carry the
  * password, and the review shows the original values.
  */
+export interface PdfDraft {
+  tabId: number;
+  url: string;
+  text: string;
+  revision: number;
+  documentId: string;
+}
+export interface PdfFinding extends KeepPlace {
+  entityType: string;
+  original: string;
+  action: "replace" | "redact" | "keep";
+}
+export interface PdfPreviewChunk {
+  id: string;
+  text: string;
+  findings: PdfFinding[];
+  policyVersion: string;
+}
+export interface PdfPreviewResponse {
+  previewId: string;
+  policyVersion: string;
+  chunks: { id: string; text: string; edits: RedactEdit[] }[];
+}
+export type PdfRequest =
+  | { type: "pdf-preview"; draft: PdfDraft; chunks: PdfPreviewChunk[] }
+  | {
+      type: "pdf-apply";
+      draft: PdfDraft;
+      previewId: string;
+      policyVersion: string;
+    }
+  | { type: "pdf-preview-cancel"; previewId: string }
+  | { type: "pdf-target"; windowId: number }
+  | { type: "pdf-check-target"; draft: PdfDraft }
+  | { type: "pdf-scan"; text: string; draft: PdfDraft }
+  | {
+      type: "pdf-commit";
+      text: string;
+      draft: PdfDraft;
+      findings: PdfFinding[];
+      policyVersion: string;
+    }
+  | { type: "pdf-insert"; draft: PdfDraft; text: string };
+
 export type PanelRequest =
+  | PdfRequest
   /** autoUnlock: the panel just opened, so a remembered device may unlock. */
   | { type: "vault-status"; autoUnlock?: boolean }
   | { type: "update-status" }
@@ -121,6 +166,9 @@ export interface OffscreenRequest {
 
 /** A request the service worker sends a chat tab. */
 export type TabRequest =
+  | { type: "pdf-draft" }
+  | { type: "pdf-check"; draft: PdfDraft }
+  | { type: "pdf-insert-approved"; draft: PdfDraft; text: string }
   | { type: "chat-text" }
   | { type: "latest-answer" }
   | { type: "show-originals"; values: RestoredValue[] }

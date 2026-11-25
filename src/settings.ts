@@ -139,6 +139,8 @@ export const LABELS: Record<string, string> = {
 };
 
 export interface Settings {
+  /** Local name/address detector. Rampart is the default; an explicit CNN choice is retained. */
+  detector?: "cnn" | "rampart";
   /** Committed policy fingerprint, supplied on reads; never a setting. */
   policyVersion?: string;
   /**
@@ -160,6 +162,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   enabled: true,
+  detector: "rampart",
   off: [],
   entities: DEFAULT_ENTITIES,
   allowlist: [],
@@ -227,6 +230,7 @@ function sameItems(a: string[], b: string[]): boolean {
  */
 export function sameChecks(a: Settings, b: Settings): boolean {
   return (
+    (a.detector ?? "rampart") === (b.detector ?? "rampart") &&
     sameItems(a.entities, b.entities) &&
     sameItems(a.allowlist, b.allowlist) &&
     sameItems(a.denylist, b.denylist)
@@ -296,6 +300,7 @@ export function normalizeSettings(saved: Partial<Settings>): Settings {
     ...DEFAULT_SETTINGS,
     ...saved,
     off,
+    detector: saved.detector === "cnn" ? "cnn" : "rampart",
     autoReplaceOnPaste: saved.autoReplaceOnPaste === true,
   };
 }

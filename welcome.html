@@ -459,6 +459,34 @@
                 message addressed to Avery Morgan.
               </p>
             </figure>
+            <figure
+              id="demo-upload-panel"
+              data-demo-panel="upload"
+              role="group"
+              aria-labelledby="demo-upload-caption"
+              hidden
+            >
+              <video
+                id="demo-upload-video"
+                muted
+                playsinline
+                preload="metadata"
+                poster="assets/onboarding/upload.png"
+                aria-label="Review a PDF before inserting demonstration"
+                aria-describedby="demo-upload-caption demo-upload-description"
+              >
+                <source src="assets/onboarding/upload.webm" type="video/webm" />
+              </video>
+              <figcaption class="sr" id="demo-upload-caption">
+                Review a local PDF and insert only the approved text.
+              </figcaption>
+              <p class="sr" id="demo-upload-description">
+                A fictional PDF opens in Files. Sensitive details are
+                highlighted for review. As sent shows the approved replacements
+                before the text is inserted into the chat draft. The original
+                PDF is not attached to the provider.
+              </p>
+            </figure>
             <div class="demo-controls">
               <div class="demo-navigation" aria-label="Demonstrations">
                 <button
@@ -492,8 +520,16 @@
                     aria-controls="demo-copy-panel"
                     tabindex="-1"
                   ></button>
+                  <button
+                    type="button"
+                    data-demo-slide="3"
+                    aria-label="Show demonstration 4"
+                    aria-current="false"
+                    aria-controls="demo-upload-panel"
+                    tabindex="-1"
+                  ></button>
                 </div>
-                <span id="demo-position" aria-live="polite">1 / 3</span>
+                <span id="demo-position" aria-live="polite">1 / 4</span>
                 <button
                   type="button"
                   id="demo-next"

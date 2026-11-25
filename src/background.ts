@@ -9,6 +9,7 @@ import {
   NO_CHAT_BOX_UPDATE,
   toError,
   type CreatedVault,
+  type PdfDraft,
   type ErrorResponse,
   type OffscreenRequest,
   type PanelNotice,
@@ -313,6 +314,50 @@ async function applyPseudonyms(saved: Pseudonymized): Promise<void> {
  * @returns The response to send back.
  */
 async function handlePanel(request: PanelRequest): Promise<unknown> {
+  if (request.type === "pdf-target") {
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      windowId: request.windowId,
+    });
+    if (tab?.id === undefined) throw coded("no_tab");
+    const draft = await askTab<Omit<PdfDraft, "tabId">>(tab.id, {
+      type: "pdf-draft",
+    });
+    return { ...draft, tabId: tab.id };
+  }
+  if (
+    request.type === "pdf-scan" ||
+    request.type === "pdf-commit" ||
+    request.type === "pdf-preview" ||
+    request.type === "pdf-apply"
+  ) {
+    const tab = await chrome.tabs.get(request.draft.tabId);
+    if (tab.url !== request.draft.url) throw coded("pdf_target_changed");
+    if (
+      request.type === "pdf-commit" ||
+      request.type === "pdf-preview" ||
+      request.type === "pdf-apply"
+    ) {
+      if (!tab.active) throw coded("pdf_target_changed");
+      await askTab(tab.id!, { type: "pdf-check", draft: request.draft });
+    }
+    return forwardVault(request, hostOf(request.draft.url));
+  }
+  if (request.type === "pdf-check-target" || request.type === "pdf-insert") {
+    const tab = await chrome.tabs.get(request.draft.tabId);
+    if (!tab.active || tab.url !== request.draft.url)
+      throw coded("pdf_target_changed");
+    return askTab(
+      tab.id!,
+      request.type === "pdf-insert"
+        ? {
+            type: "pdf-insert-approved",
+            draft: request.draft,
+            text: request.text,
+          }
+        : { type: "pdf-check", draft: request.draft },
+    );
+  }
   if (request.type === "review-approve") return approveReview();
   if (request.type === "review-mark-sensitive")
     return markSensitive(request.index);
@@ -376,6 +421,14 @@ function fromExtensionPage(sender: chrome.runtime.MessageSender): boolean {
 }
 
 const PANEL_REQUESTS = new Set<string>([
+  "pdf-target",
+  "pdf-check-target",
+  "pdf-scan",
+  "pdf-preview",
+  "pdf-apply",
+  "pdf-preview-cancel",
+  "pdf-commit",
+  "pdf-insert",
   "vault-status",
   "update-status",
   "vault-create",

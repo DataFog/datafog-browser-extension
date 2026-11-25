@@ -1,0 +1,4 @@
+# Preserve release-pinned model hashes across Windows and Unix checkouts.
+assets/rampart/model/** -text
+assets/ocria/** -text
+e2e/pdf-fixtures/*.pdf -text

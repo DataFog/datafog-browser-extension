@@ -266,6 +266,16 @@
     <section class="card">
       <h2 data-icon="search">What to look for</h2>
       <div id="types"></div>
+      <label for="detector">Name and address detector</label>
+      <select id="detector">
+        <option value="rampart">Rampart (default, Latin scripts)</option>
+        <option value="cnn">DataFog CNN</option>
+      </select>
+      <p class="muted">
+        Both run on your device and may miss sensitive values. Rampart includes
+        detected city, region and postal components when Mailing address is
+        selected; countries are not modeled.
+      </p>
     </section>
     <section class="card">
       <h2 data-icon="preferences">Behavior</h2>

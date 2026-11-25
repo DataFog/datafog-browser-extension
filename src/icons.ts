@@ -19,6 +19,9 @@ import {
   Eye,
   EyeOff,
   Flag,
+  FileText,
+  Upload,
+  Maximize2,
   Globe,
   Info,
   KeyRound,
@@ -46,6 +49,9 @@ import {
 } from "lucide";
 
 export const ICONS = {
+  file: FileText,
+  upload: Upload,
+  expand: Maximize2,
   arrow: ArrowRight,
   play: Play,
   pause: Pause,

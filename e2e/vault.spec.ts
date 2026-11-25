@@ -56,6 +56,7 @@ test("automatic FogVault access survives browser restart and idle worker stop", 
   await extension.restart();
   const restarted = await extension.newChat();
   const panel = await extension.panel();
+  await panel.locator('[data-view="data"]').click();
   await expect(panel.locator("#unlocked")).toBeVisible();
   await expect(
     panel.locator("#create-password, #lock, #forget-device"),
@@ -81,6 +82,7 @@ test("Always allow is committed and rechecks the unchanged draft across restart"
   await expect(chat.locator("#prompt-textarea")).toContainText("[[EMAIL_");
   await badge.click(".undo");
   const panel = await extension.panel();
+  await panel.locator('[data-view="data"]').click();
   const row = panel.locator("#originals li").filter({ hasText: EMAIL });
   await row.locator(".original-menu-toggle").click();
   await row.locator('[data-action="allow"]').click();
@@ -140,6 +142,7 @@ test("deletion cancellation preserves originals and confirmation removes them", 
   );
   const marker = await chat.locator("#prompt-textarea").innerText();
   const panel = await extension.panel();
+  await panel.locator('[data-view="data"]').click();
   await expect(panel.locator("#originals")).toContainText(EMAIL);
   const options = await extension.options();
   await options.locator("#delete-open").click();
@@ -346,6 +349,7 @@ test("saved-original menu allows a value and confirmed Forget retires it across 
   await answerControl.click("button");
   await expect(chat.locator("datafog-original")).toHaveCount(1);
   const panel = await extension.panel();
+  await panel.locator('[data-view="data"]').click();
   const row = panel.locator("#originals li").filter({ hasText: marker });
   await row.locator(".original-menu-toggle").click();
   await row.locator('[data-action="forget"]').click();
@@ -372,6 +376,7 @@ test("saved-original menu allows a value and confirmed Forget retires it across 
   await extension.restart();
   await extension.newChat();
   const reopened = await extension.panel();
+  await reopened.locator('[data-view="data"]').click();
   await reopened.locator("#lookup-marker").fill(marker);
   await reopened.locator("#lookup button").click();
   await expect(reopened.locator("#lookup-result")).toContainText(
@@ -408,6 +413,7 @@ test("one mixed Apply replaces, redacts and skips independently with one Undo an
   );
   await expect(chat.locator("#sent-count")).toHaveText("0");
   const panel = await extension.panel();
+  await panel.locator('[data-view="data"]').click();
   await expect(panel.locator("#originals li")).toHaveCount(1);
   await expect(panel.locator("#originals li")).toContainText(EMAIL);
   await expect(panel.locator("#originals")).not.toContainText(redacted);

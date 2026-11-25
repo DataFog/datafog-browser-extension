@@ -62,7 +62,7 @@ function setup(reduced = false) {
 
 test("welcome clips are local silent demonstrations with captions and looping and no autoplay markup", () => {
   const { videos, root } = setup();
-  expect(videos).toHaveLength(3);
+  expect(videos).toHaveLength(4);
   videos.forEach((video) => {
     expect(video.muted).toBe(true);
     expect(video.loop).toBe(true);
@@ -78,6 +78,9 @@ test("welcome clips are local silent demonstrations with captions and looping an
   expect(root.textContent).toContain("Mask sensitive details before you send.");
   expect(root.textContent).toContain("The AI keeps the placeholders.");
   expect(root.textContent).toContain("Copy your answer with details restored.");
+  expect(root.textContent).toContain(
+    "Review a local PDF and insert only the approved text.",
+  );
 });
 test("only the selected visible clip starts once and explicit pause is respected", async () => {
   const state = setup();
@@ -202,18 +205,51 @@ test("arrows wrap manually while looping never advances the slide", async () => 
   state.controller.setVisible(true);
   state.root.querySelector<HTMLButtonElement>("#demo-prev")!.click();
   await Promise.resolve();
-  expect(state.tabs[2].getAttribute("aria-current")).toBe("true");
-  expect(state.root.querySelector("#demo-position")!.textContent).toBe("3 / 3");
+  expect(state.tabs[3].getAttribute("aria-current")).toBe("true");
+  expect(state.root.querySelector("#demo-position")!.textContent).toBe("4 / 4");
   expect(state.paused[0]).toBe(true);
-  state.videos[2].dispatchEvent(new Event("ended"));
-  expect(state.tabs[2].getAttribute("aria-current")).toBe("true");
+  state.videos[3].dispatchEvent(new Event("ended"));
+  expect(state.tabs[3].getAttribute("aria-current")).toBe("true");
   state.root.querySelector<HTMLButtonElement>("#demo-next")!.click();
   expect(state.tabs[0].getAttribute("aria-current")).toBe("true");
-  expect(state.root.querySelector("#demo-position")!.textContent).toBe("1 / 3");
-  expect(state.root.querySelectorAll("figcaption.sr")).toHaveLength(3);
+  expect(state.root.querySelector("#demo-position")!.textContent).toBe("1 / 4");
+  expect(state.root.querySelectorAll("figcaption.sr")).toHaveLength(4);
   expect(state.root.querySelector('[role="tab"]')).toBeNull();
   expect(state.button.querySelector("svg")).not.toBeNull();
   expect(state.button.querySelector(".sr")!.textContent).toBe(
     "Pause demonstration",
   );
+});
+
+test("keyboard End selects the upload poster under reduced motion and Home returns to the first clip", async () => {
+  const state = setup(true);
+  state.controller.setVisible(true);
+  state.tabs[0].focus();
+  state.tabs[0].dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "End",
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  expect(document.activeElement).toBe(state.tabs[3]);
+  expect(state.tabs[3].getAttribute("aria-current")).toBe("true");
+  expect(state.root.querySelector("#demo-position")!.textContent).toBe("4 / 4");
+  expect(state.plays.every((play) => play.mock.calls.length === 0)).toBe(true);
+  state.button.click();
+  await Promise.resolve();
+  expect(state.plays[3]).toHaveBeenCalledOnce();
+  expect(state.button.getAttribute("aria-controls")).toBe("demo-upload-video");
+  state.tabs[3].dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Home",
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  expect(document.activeElement).toBe(state.tabs[0]);
+  expect(state.paused.every(Boolean)).toBe(true);
+  expect(
+    state.root.querySelectorAll("figcaption:not(.sr), figure > p:not(.sr)"),
+  ).toHaveLength(0);
 });

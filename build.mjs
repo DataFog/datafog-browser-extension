@@ -6,6 +6,8 @@
  */
 
 import { context } from "esbuild";
+import { buildPdf } from "./build-pdf.mjs";
+import { buildRampart } from "./build-rampart.mjs";
 import { cpSync, mkdirSync } from "node:fs";
 
 const watch = process.argv.includes("--watch");
@@ -40,12 +42,15 @@ prepare(output("dist"), [
   "THIRD_PARTY_NOTICES.md",
   "licenses",
   "fonts",
-  "assets",
+  "assets/onboarding",
   "icons",
   "manifest.json",
   "offscreen.html",
   "options.html",
   "panel.html",
+  "pdf-viewer.html",
+  "pdf-viewer.css",
+  "pdf-panel.css",
   "theme.css",
   "welcome.html",
 ]);
@@ -59,9 +64,16 @@ for (const file of coreFiles) {
   });
 }
 prepare(output("harness"), ["harness.html"]);
+await Promise.all([buildPdf(output("dist")), buildRampart(output("dist"))]);
 
 const common = { bundle: true, target: "chrome120", logLevel: "info" };
 const builds = await Promise.all([
+  context({
+    ...common,
+    entryPoints: ["src/pdf-viewer.ts"],
+    outfile: output("dist/pdf-viewer.js"),
+    format: "iife",
+  }),
   // The service worker is a module so import.meta.url works for the wasm path
   context({
     ...common,

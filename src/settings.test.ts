@@ -125,3 +125,19 @@ test("paste replacement defaults safely off for older or malformed preferences",
     normalizeSettings({ autoReplaceOnPaste: true }).autoReplaceOnPaste,
   ).toBe(true);
 });
+
+test("uses Rampart for new and legacy settings while retaining explicit CNN", () => {
+  expect(DEFAULT_SETTINGS.detector).toBe("rampart");
+  expect(normalizeSettings({}).detector).toBe("rampart");
+  expect(normalizeSettings({ detector: undefined }).detector).toBe("rampart");
+  expect(normalizeSettings({ detector: "cnn" }).detector).toBe("cnn");
+  expect(normalizeSettings({ detector: "rampart" }).detector).toBe("rampart");
+});
+
+test("legacy checks match the Rampart default, but an explicit CNN choice invalidates them", () => {
+  const legacy = { ...DEFAULT_SETTINGS, detector: undefined };
+  expect(sameChecks(legacy, DEFAULT_SETTINGS)).toBe(true);
+  expect(sameChecks(legacy, { ...DEFAULT_SETTINGS, detector: "cnn" })).toBe(
+    false,
+  );
+});

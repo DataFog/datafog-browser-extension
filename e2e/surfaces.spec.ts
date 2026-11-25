@@ -144,7 +144,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     await expect(chat.locator("#prompt-textarea")).toHaveText("[EMAIL]");
     const sidePanel = await extension.panel();
     await sidePanel.emulateMedia({ colorScheme });
-    await expect(sidePanel.locator("#unlocked")).toBeVisible();
+    await expect(sidePanel.locator("#pdf-drop")).toBeVisible();
     await expect(
       sidePanel.locator("header.top .brand, header.top .logo"),
     ).toHaveCount(0);
@@ -331,15 +331,15 @@ test("the welcome page walks a new install through pinning to done", async ({
     "Getting started",
   );
   await expect(welcome.getByRole("tab")).toHaveCount(0);
-  await expect(welcome.locator("[data-demo-slide]")).toHaveCount(3);
+  await expect(welcome.locator("[data-demo-slide]")).toHaveCount(4);
   await expect(
     welcome.getByText("Silent demo · Fictional details", { exact: true }),
   ).toHaveCount(0);
   await expect(welcome.locator('[data-step="done"] > p:not(.sr)')).toHaveCount(
     0,
   );
-  for (const name of ["replace", "originals", "copy"]) {
-    const index = ["replace", "originals", "copy"].indexOf(name);
+  for (const name of ["replace", "originals", "copy", "upload"]) {
+    const index = ["replace", "originals", "copy", "upload"].indexOf(name);
     if (index > 0) await welcome.locator("#demo-next").click();
     const panel = welcome.locator(`[data-demo-panel="${name}"]`);
     const video = panel.locator("video");
@@ -365,13 +365,16 @@ test("the welcome page walks a new install through pinning to done", async ({
     expect(media.poster).toBe(
       new URL(`assets/onboarding/${name}.png`, welcome.url()).href,
     );
-    expect(media.duration).toBeCloseTo(name === "replace" ? 6 : 3, 1);
+    if (name === "upload") {
+      expect(Number.isFinite(media.duration)).toBe(true);
+      expect(media.duration).toBeGreaterThan(0);
+    } else expect(media.duration).toBeCloseTo(name === "replace" ? 6 : 3, 1);
     expect(media.muted).toBe(true);
     expect(media.loop).toBe(true);
     await expect
       .poll(() => video.evaluate((element: HTMLVideoElement) => element.paused))
       .toBe(false);
-    if (name === "copy") {
+    if (name === "upload") {
       await video.evaluate((element: HTMLVideoElement) => {
         element.currentTime = element.duration - 0.1;
       });
@@ -380,7 +383,7 @@ test("the welcome page walks a new install through pinning to done", async ({
           video.evaluate((element: HTMLVideoElement) => element.currentTime),
         )
         .toBeLessThan(1);
-      await expect(welcome.locator('[data-demo-slide="2"]')).toHaveAttribute(
+      await expect(welcome.locator('[data-demo-slide="3"]')).toHaveAttribute(
         "aria-current",
         "true",
       );
@@ -389,7 +392,7 @@ test("the welcome page walks a new install through pinning to done", async ({
     await expect
       .poll(() => video.evaluate((element: HTMLVideoElement) => element.paused))
       .toBe(true);
-    for (const other of ["replace", "originals", "copy"].filter(
+    for (const other of ["replace", "originals", "copy", "upload"].filter(
       (value) => value !== name,
     )) {
       expect(
@@ -401,12 +404,12 @@ test("the welcome page walks a new install through pinning to done", async ({
   }
 
   await welcome.locator("#demo-prev").click();
-  await expect(welcome.locator('[data-demo-slide="1"]')).toHaveAttribute(
+  await expect(welcome.locator('[data-demo-slide="2"]')).toHaveAttribute(
     "aria-current",
     "true",
   );
   await welcome.locator("#demo-next").click();
-  await expect(welcome.locator('[data-demo-slide="2"]')).toHaveAttribute(
+  await expect(welcome.locator('[data-demo-slide="3"]')).toHaveAttribute(
     "aria-current",
     "true",
   );
@@ -456,9 +459,9 @@ test("welcome clips respect reduced motion and still support explicit keyboard p
     "href",
     "https://claude.ai/",
   );
-  for (const name of ["replace", "originals", "copy"]) {
+  for (const name of ["replace", "originals", "copy", "upload"]) {
     const tab = welcome.locator(
-      `[data-demo-slide="${["replace", "originals", "copy"].indexOf(name)}"]`,
+      `[data-demo-slide="${["replace", "originals", "copy", "upload"].indexOf(name)}"]`,
     );
     await tab.focus();
     await welcome.keyboard.press("Enter");
@@ -471,7 +474,7 @@ test("welcome clips respect reduced motion and still support explicit keyboard p
       })),
     ).toEqual({ paused: true, time: 0 });
   }
-  const video = welcome.locator('[data-demo-panel="copy"] video');
+  const video = welcome.locator('[data-demo-panel="upload"] video');
   const playback = welcome.locator("#demo-playback");
   await playback.focus();
   await welcome.keyboard.press("Enter");

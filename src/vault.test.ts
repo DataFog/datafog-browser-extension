@@ -131,6 +131,8 @@ function makeOwner(): FakeOwner {
     closed: false,
     discards: 0,
     failNextSave: null,
+    prepareBatch: (inputs, operationId) =>
+      wrap(workspace.prepareBatch(inputs, operationId)),
     prepare: (text, findings, operationId) =>
       wrap(workspace.prepare(text, findings, operationId)),
     prepareForget: (codes, operationId) =>
@@ -139,6 +141,7 @@ function makeOwner(): FakeOwner {
       wrap(workspace.prepareReview(inputs, operationId)),
     preparePolicyChanges: (edits, operationId) =>
       wrap(workspace.preparePolicyChanges(edits, operationId)),
+    review: (input) => workspace.review(input),
     policy: () => workspace.policy(),
     commit: async () => {
       if (made.failNextSave) {
@@ -1160,4 +1163,187 @@ test("Redact can label a trusted recalled original without a fresh detector matc
   );
   expect(result.text).toBe("Ask [EMAIL] or [EMAIL] today");
   expect(commit).not.toHaveBeenCalled();
+});
+
+test("PDF read-only review preserves an interactive paste reservation", async () => {
+  await host.create("correct horse", null, true);
+  const paste = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  const pdf = await host.pdfReview("🙂 zoe@example.org", DEFAULT_SETTINGS);
+  expect(pdf).toMatchObject([
+    { start: 3, end: 18, original: "zoe@example.org", action: "replace" },
+  ]);
+  const saved = await host.replace(
+    TEXT,
+    7,
+    DEFAULT_SETTINGS,
+    paste.previewId,
+    "policy",
+  );
+  expect(host.restore(saved.text).text).toBe(TEXT);
+});
+
+test("PDF review includes remembered originals when fresh detection is disabled", async () => {
+  await host.create("correct horse", null, true);
+  const first = await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  await host.replace(TEXT, 7, DEFAULT_SETTINGS, first.previewId, "policy");
+  const review = await host.pdfReview(TEXT, {
+    ...DEFAULT_SETTINGS,
+    entities: [],
+  });
+  expect(review).toHaveLength(2);
+  expect(review.map((item) => item.original)).toEqual(
+    first.findings.map((item) => item.original),
+  );
+});
+
+const PDF_DRAFT = {
+  tabId: 7,
+  url: "https://chatgpt.com/c/test",
+  text: "Existing draft",
+  revision: 1,
+  documentId: "document",
+};
+async function pdfChunksForTest() {
+  const texts = [
+    "Email jane@example.com and redact al@example.org.",
+    "Keep zoe@example.org and repeat jane@example.com.",
+  ];
+  return Promise.all(
+    texts.map(async (text, index) => ({
+      id: String(index),
+      text,
+      policyVersion: "policy",
+      findings: (await host.pdfReview(text, DEFAULT_SETTINGS)).map((item) => ({
+        ...item,
+        action:
+          item.original === "al@example.org"
+            ? ("redact" as const)
+            : item.original === "zoe@example.org"
+              ? ("keep" as const)
+              : ("replace" as const),
+      })),
+    })),
+  );
+}
+
+test("PDF batch preview uses exact tokens without saving and commits the displayed mixed actions once", async () => {
+  await host.create("correct horse", null, true);
+  const commit = vi.spyOn(owner, "commit");
+  const preview = await host.pdfPreview(
+    await pdfChunksForTest(),
+    PDF_DRAFT,
+    DEFAULT_SETTINGS,
+    "policy",
+  );
+  expect(commit).not.toHaveBeenCalled();
+  expect(preview.chunks[0].text).toMatch(
+    /^Email \[\[EMAIL_[A-Z0-9]+\]\] and redact \[EMAIL\]\.$/,
+  );
+  expect(preview.chunks[1].text).toContain("Keep zoe@example.org");
+  const token = preview.chunks[0].edits[0].replacement;
+  expect(preview.chunks[1].text).toContain(token);
+  expect(host.restore(token).text).toBe(token);
+  const applied = await host.pdfApply(
+    preview.previewId,
+    PDF_DRAFT,
+    DEFAULT_SETTINGS,
+    "policy",
+  );
+  expect(applied.chunks).toEqual(preview.chunks);
+  expect(applied.saved).toBe(true);
+  expect(commit).toHaveBeenCalledOnce();
+  expect(host.restore(token).text).toBe("jane@example.com");
+  expect(host.restore("[EMAIL]").text).toBe("[EMAIL]");
+  await expect(
+    host.pdfApply(preview.previewId, PDF_DRAFT, DEFAULT_SETTINGS, "policy"),
+  ).rejects.toMatchObject({ code: "pdf_review_expired" });
+});
+
+test("PDF exact preview expires after a competing paste and cannot be cancelled by an old id", async () => {
+  await host.create("correct horse", null, true);
+  const preview = await host.pdfPreview(
+    await pdfChunksForTest(),
+    PDF_DRAFT,
+    DEFAULT_SETTINGS,
+    "policy",
+  );
+  host.pdfCancel("stale-id");
+  await host.preview(TEXT, DEFAULT_SETTINGS, 7, 1, "policy");
+  await expect(
+    host.pdfApply(preview.previewId, PDF_DRAFT, DEFAULT_SETTINGS, "policy"),
+  ).rejects.toMatchObject({ code: "pdf_review_expired" });
+});
+
+test("PDF preview rejects changed draft or policy and returns no output after a failed commit", async () => {
+  await host.create("correct horse", null, true);
+  const preview = await host.pdfPreview(
+    await pdfChunksForTest(),
+    PDF_DRAFT,
+    DEFAULT_SETTINGS,
+    "policy",
+  );
+  await expect(
+    host.pdfApply(
+      preview.previewId,
+      { ...PDF_DRAFT, revision: 2 },
+      DEFAULT_SETTINGS,
+      "policy",
+    ),
+  ).rejects.toMatchObject({ code: "pdf_review_expired" });
+  await expect(
+    host.pdfApply(preview.previewId, PDF_DRAFT, DEFAULT_SETTINGS, "new-policy"),
+  ).rejects.toMatchObject({ code: "pdf_review_expired" });
+  owner.failNextSave = { code: "vault_write_failed" };
+  await expect(
+    host.pdfApply(preview.previewId, PDF_DRAFT, DEFAULT_SETTINGS, "policy"),
+  ).rejects.toMatchObject({ code: "vault_write_failed" });
+});
+
+test("PDF all-Keep and Redact-only previews allocate no durable mappings", async () => {
+  await host.create("correct horse", null, true);
+  const chunks = await pdfChunksForTest();
+  for (const chunk of chunks)
+    for (const item of chunk.findings) item.action = "keep";
+  const commit = vi.spyOn(owner, "commit");
+  const preview = await host.pdfPreview(
+    chunks,
+    PDF_DRAFT,
+    DEFAULT_SETTINGS,
+    "policy",
+  );
+  const kept = await host.pdfApply(
+    preview.previewId,
+    PDF_DRAFT,
+    DEFAULT_SETTINGS,
+    "policy",
+  );
+  expect(kept.chunks.map((chunk) => chunk.text)).toEqual(
+    chunks.map((chunk) => chunk.text),
+  );
+  expect(kept.saved).toBe(false);
+  for (const chunk of chunks)
+    for (const item of chunk.findings) item.action = "redact";
+  const redacted = await host.pdfPreview(
+    chunks,
+    PDF_DRAFT,
+    DEFAULT_SETTINGS,
+    "policy",
+  );
+  expect(redacted.chunks[0].text).toBe("Email [EMAIL] and redact [EMAIL].");
+  await host.pdfApply(
+    redacted.previewId,
+    PDF_DRAFT,
+    DEFAULT_SETTINGS,
+    "policy",
+  );
+  expect(commit).not.toHaveBeenCalled();
+});
+
+test("PDF preview rejects omitted or duplicated findings", async () => {
+  await host.create("correct horse", null, true);
+  const chunks = await pdfChunksForTest();
+  chunks[0].findings.pop();
+  await expect(
+    host.pdfPreview(chunks, PDF_DRAFT, DEFAULT_SETTINGS, "policy"),
+  ).rejects.toMatchObject({ code: "pdf_review_expired" });
 });

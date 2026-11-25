@@ -1,3 +1,4 @@
+import "./pdf-panel";
 /** Independent saved-data, policy, and preferences sidebar. */
 import type {
   ErrorResponse,
@@ -21,7 +22,7 @@ const element = (id: string) => document.getElementById(id)!;
 const status = element("vault-state");
 const error = element("vault-error");
 const saved = element("save-status");
-let activeView: "data" | "rules" = "data";
+let activeView: "files" | "data" | "rules" = "files";
 let access: "initializing" | "ready" | "unavailable" = "initializing";
 let renderVersion = 0;
 /** How long "Saved" shows, in ms. */
@@ -89,7 +90,9 @@ for (const button of document.querySelectorAll<HTMLElement>("[data-view]"))
   button.addEventListener(
     "click",
     () =>
-      (button.dataset.view === "data" || button.dataset.view === "rules") &&
+      (button.dataset.view === "files" ||
+        button.dataset.view === "data" ||
+        button.dataset.view === "rules") &&
       selectView(button.dataset.view),
   );
 
@@ -339,6 +342,34 @@ async function mutate(action: () => Promise<void>): Promise<void> {
     busy = false;
   }
 }
+/** Keep row-owned menus, focus and pending actions across identical status reads. */
+const originalKeys = new WeakMap<Element, string>();
+function renderOriginals(response: VaultStatus): void {
+  const list = element("originals");
+  const previous = new Map(
+    Array.from(list.children, (entry) => [originalKeys.get(entry), entry]),
+  );
+  for (const [index, item] of (response.originals ?? []).entries()) {
+    const allowed = response.notSensitive.some(
+      (choice) =>
+        choice.entityType === item.entityType && choice.value === item.original,
+    );
+    const key = JSON.stringify([
+      item.marker,
+      item.original,
+      item.entityType,
+      allowed,
+    ]);
+    const entry = previous.get(key) ?? originalRow(item, allowed);
+    previous.delete(key);
+    originalKeys.set(entry, key);
+    if (list.children[index] !== entry)
+      list.insertBefore(entry, list.children[index] ?? null);
+  }
+  while (list.children.length > (response.originals?.length ?? 0))
+    list.lastElementChild!.remove();
+}
+
 async function refresh(): Promise<void> {
   const version = ++renderVersion;
   element("lookup-result").textContent = "";
@@ -361,18 +392,7 @@ async function refresh(): Promise<void> {
   } else {
     access = response.state === "unlocked" ? "ready" : "unavailable";
     error.hidden = true;
-    element("originals").replaceChildren(
-      ...(response.originals ?? []).map((item) =>
-        originalRow(
-          item,
-          response.notSensitive.some(
-            (choice) =>
-              choice.entityType === item.entityType &&
-              choice.value === item.original,
-          ),
-        ),
-      ),
-    );
+    renderOriginals(response);
     // Older tokens still restore through search, so only an empty list
     // needs words
     element("originals-note").textContent = response.originals?.length

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Review document · DataFog</title>
+    <link rel="stylesheet" href="pdf-viewer.css" />
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon32.png" width="24" height="24" alt="DataFog" />
+      <h1 id="file-name">Document review</h1>
+      <div class="view-tabs" aria-label="Document view">
+        <button id="original" type="button" aria-pressed="true">Original</button
+        ><button id="as-sent" type="button" aria-pressed="false">
+          As sent
+        </button>
+      </div>
+      <button
+        id="back"
+        type="button"
+        title="Back to sidebar"
+        aria-label="Back to sidebar"
+      >
+        ↙</button
+      ><button
+        id="close"
+        type="button"
+        title="Close larger view"
+        aria-label="Close larger view"
+      >
+        ×
+      </button>
+    </header>
+    <main>
+      <section class="document-pane" aria-label="Document">
+        <div id="page-warning" role="status"></div>
+        <div class="paper-scroll">
+          <article
+            id="document-text"
+            aria-label="Extracted document text"
+          ></article>
+        </div>
+        <nav aria-label="Document pages">
+          <button id="previous" type="button" aria-label="Previous page">
+            ‹</button
+          ><span id="page-count"></span
+          ><button id="next" type="button" aria-label="Next page">›</button>
+        </nav>
+      </section>
+      <aside>
+        <h2 id="finding-count">Connecting to sidebar…</h2>
+        <ul id="finding-list"></ul>
+        <div class="actions">
+          <button id="copy" type="button">Copy as sent</button
+          ><button id="insert" class="primary" type="button">Insert</button>
+        </div>
+      </aside>
+    </main>
+    <footer id="status" role="status"></footer>
+    <script src="pdf-viewer.js"></script>
+  </body>
+</html>

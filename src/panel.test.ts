@@ -17,6 +17,7 @@ const READY: VaultStatus = {
   originals: [],
 };
 let send: ReturnType<typeof vi.fn>;
+let localStorageState: Record<string, unknown>;
 let settings = { ...DEFAULT_SETTINGS };
 let listener: (message: object) => void;
 const $ = (id: string) => document.getElementById(id)!;
@@ -53,6 +54,7 @@ beforeEach(() => {
   document.body.innerHTML = BODY;
   settings = structuredClone(DEFAULT_SETTINGS);
   send = vi.fn();
+  localStorageState = {};
   vi.stubGlobal("chrome", {
     runtime: {
       sendMessage: send,
@@ -68,7 +70,15 @@ beforeEach(() => {
       openOptionsPage: vi.fn(),
       reload: vi.fn(),
     },
-    storage: { onChanged: { addListener: vi.fn() } },
+    storage: {
+      local: {
+        get: vi.fn(async () => ({ ...localStorageState })),
+        set: vi.fn(async (value: Record<string, unknown>) => {
+          Object.assign(localStorageState, value);
+        }),
+      },
+      onChanged: { addListener: vi.fn() },
+    },
     windows: { getCurrent: async () => ({ id: 1 }) },
   });
 });
@@ -321,4 +331,66 @@ test("sidebar header leaves branding to Chrome and retains vault and settings co
   ]);
   expect($("vault-state").textContent).toBeTruthy();
   expect($("settings").getAttribute("title")).toBe("Settings");
+});
+
+test("new users can choose a PDF immediately with a single upload label", async () => {
+  await start();
+  const picker = document.querySelector<HTMLInputElement>("#pdf-file")!;
+  expect(picker.disabled).toBe(false);
+  expect(document.querySelector("#pdf-license-accept")).toBeNull();
+  expect($("pdf-empty").textContent?.trim()).toBe("Choose or drop a PDF");
+  expect(chrome.storage.local.get).not.toHaveBeenCalledWith("pdfOcrLicense");
+  expect(chrome.storage.local.set).not.toHaveBeenCalled();
+  const choose = vi.spyOn(picker, "click");
+  $("pdf-drop").dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+  );
+  expect(choose).toHaveBeenCalledOnce();
+});
+
+test("Files is the default independent sidebar view with an accessible local drop zone", async () => {
+  await start();
+  const files = document.querySelector<HTMLElement>('[data-view="files"]')!;
+  expect(files.getAttribute("aria-pressed")).toBe("true");
+  expect($("pdf-tools").hidden).toBe(false);
+  expect($("pdf-tools").dataset.state).toBe("empty");
+  expect($("pdf-drop").getAttribute("role")).toBe("button");
+  expect($("pdf-drop").getAttribute("tabindex")).toBe("0");
+  document.querySelector<HTMLElement>('[data-view="data"]')!.click();
+  expect($("pdf-tools").hidden).toBe(true);
+  expect(
+    document.querySelector<HTMLElement>('[data-section="data"]')!.hidden,
+  ).toBe(false);
+  files.click();
+  expect($("pdf-tools").hidden).toBe(false);
+  expect(
+    document.querySelector<HTMLElement>('[data-section="data"]')!.hidden,
+  ).toBe(true);
+});
+
+test("unchanged status refreshes preserve an open Originals menu and Forget confirmation", async () => {
+  let originals = [ORIGINAL];
+  await start(() => ({ ...READY, originals }));
+  const row = $("originals").firstElementChild;
+  openOriginalMenu();
+  const focused = document.activeElement;
+  listener({ target: "panel", type: "vault-changed" });
+  await settle();
+  expect($("originals").firstElementChild).toBe(row);
+  expect(document.activeElement).toBe(focused);
+  expect(document.querySelector<HTMLElement>(".original-menu")!.hidden).toBe(
+    false,
+  );
+  rowButton("forget").click();
+  listener({ target: "panel", type: "vault-changed" });
+  await settle();
+  expect($("originals").firstElementChild).toBe(row);
+  expect(document.querySelector<HTMLElement>(".forget-confirm")!.hidden).toBe(
+    false,
+  );
+  expect(document.activeElement).toBe(rowButton("cancel-forget"));
+  originals = [];
+  listener({ target: "panel", type: "vault-changed" });
+  await settle();
+  expect($("originals").children).toHaveLength(0);
 });
