@@ -16,6 +16,12 @@ on:
 permissions:
   contents: read
 
+# Opening a PR with a label sends opened and labeled at once. Only the newest
+# run per PR matters.
+concurrency:
+  group: changelog-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   changelog:
     name: Changelog policy
