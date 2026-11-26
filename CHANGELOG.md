@@ -10,12 +10,7 @@ Notable changes to the datafog browser extension. The format follows [Keep a Cha
 - Drop or choose a local PDF in the Files tab. Review highlighted findings in the sidebar or expand the document into a larger viewer.
 - Add a silent onboarding demonstration of dropping a PDF and selecting findings in the document viewer.
 - Switch between Original and As sent, adjust masking for individual occurrences, and undo an insertion in the chat draft.
-
-## [1.2.0] - 2026-11-24
-
 - Scan a local PDF in the side panel, review findings by page, and insert the approved text into the current chat draft. Scanned pages and raster text in mixed documents use the bundled OCRia Latin model.
-- Use Rampart by default for on-device name and address checks. The DataFog CNN remains available in settings.
-
 - Rename Redact to **Mask** and Replace to **Reversible mask**, and call tokens placeholders, such as **Show placeholders**.
 - Keep keyboard focus in place on the welcome page when it finishes loading after you've moved on, so Enter no longer opens a new chat tab by mistake.
 
