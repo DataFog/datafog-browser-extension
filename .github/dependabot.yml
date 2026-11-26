@@ -8,6 +8,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Wait a week after a release, since hijacked releases are usually caught
+    # and pulled within days. Security updates aren't delayed.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: chore
     groups:
@@ -24,5 +28,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: ci

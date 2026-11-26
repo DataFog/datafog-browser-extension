@@ -15,7 +15,12 @@ export default defineConfig({
   // A one-off failure on a shared runner shouldn't cost a full merge queue
   // run. Tests that pass on retry are still reported as flaky.
   retries: process.env.CI ? 1 : 0,
-  reporter: [["list"], ["html", { open: "never" }]],
+  // In CI, also list flaky and failed tests on the run's summary page
+  reporter: [
+    ["list"],
+    ...(process.env.CI ? [["github"] as const] : []),
+    ["html", { open: "never" }],
+  ],
   outputDir: "test-results",
   use: { headless: true },
 });
