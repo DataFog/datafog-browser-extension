@@ -60,8 +60,9 @@ jobs:
       - name: Unit tests
         run: npm test
 
-  # Browser tests are skipped when only documentation changed. Pushes to main
-  # always run them.
+  # Browser tests are skipped when only documentation changed, and on pushes
+  # to main, which get exactly the code the merge queue already tested. Manual
+  # runs always run them.
   changes:
     name: Detect code changes
     runs-on: ubuntu-latest
@@ -80,6 +81,10 @@ jobs:
             ${{ github.event.pull_request.base.sha ||
             github.event.merge_group.base_sha }}
         run: |
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [[ -z "$BASE" ]]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -98,10 +103,10 @@ jobs:
       ${{ matrix.target.browser }}, ${{ matrix.shard }}/2)
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
-    # Pull requests get quick feedback from Linux. The merge queue, pushes to
-    # main, and manual runs cover every OS. Edge comes installed on Windows
-    # runners. It doesn't block merges until it has passed reliably. Each
-    # target splits its tests across two runners.
+    # Pull requests get quick feedback from Linux. The merge queue and manual
+    # runs cover every OS. Edge comes installed on Windows runners. It doesn't
+    # block merges until it has passed reliably. Each target splits its tests
+    # across two runners.
     strategy:
       fail-fast: false
       matrix:
@@ -114,6 +119,8 @@ jobs:
           {"os":"windows-latest","browser":"chrome"},
           {"os":"windows-latest","browser":"msedge"}]') }}
     runs-on: ${{ matrix.target.os }}
+    # About twice the slowest shard, so a hung browser can't hold the queue
+    timeout-minutes: 20
     continue-on-error: ${{ matrix.target.browser == 'msedge' }}
     env:
       E2E_BROWSER: ${{ matrix.target.browser }}
@@ -169,11 +176,15 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Fail if a required job failed or was cancelled
+      # Only success and skipped pass. A matrix can report other results, such
+      # as abandoned when a runner never picked up one of its jobs.
+      - name: Fail unless every required job succeeded or was skipped
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
           echo "Job results: $RESULTS"
-          if [[ "$RESULTS" == *failure* || "$RESULTS" == *cancelled* ]]; then
-            exit 1
-          fi
+          for result in $RESULTS; do
+            if [[ "$result" != success && "$result" != skipped ]]; then
+              exit 1
+            fi
+          done

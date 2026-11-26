@@ -2,6 +2,7 @@
 import { build } from "esbuild";
 import { cp, mkdir, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 export async function buildRampart(out) {
   const manifest = JSON.parse(
     await readFile("assets/rampart/manifest.json", "utf8"),
@@ -32,9 +33,16 @@ export async function buildRampart(out) {
   );
   const runtime = transformersRequire.resolve("onnxruntime-web");
   const { dirname, join } = await import("node:path");
-  for (const name of [
-    "ort-wasm-simd-threaded.jsep.mjs",
-    "ort-wasm-simd-threaded.jsep.wasm",
-  ])
-    await cp(join(dirname(runtime), name), `${out}/rampart/${name}`);
+  // Copy the runtime files the bundled worker loads. Their names change
+  // between ONNX Runtime releases, so read them from the bundle.
+  const worker = await readFile(`${out}/rampart/worker.js`, "utf8");
+  const names = new Set(worker.match(/ort-wasm[\w.-]*\.(?:mjs|wasm)/g));
+  if (!names.size)
+    throw new Error("Rampart worker references no ONNX Runtime files");
+  for (const name of names) {
+    const source = join(dirname(runtime), name);
+    if (!existsSync(source))
+      throw new Error(`Rampart worker needs a missing runtime file: ${name}`);
+    await cp(source, `${out}/rampart/${name}`);
+  }
 }
