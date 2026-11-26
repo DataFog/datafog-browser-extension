@@ -12,6 +12,9 @@ export default defineConfig({
   // by file keeps those shards even.
   workers: process.env.CI ? 1 : undefined,
   fullyParallel: true,
+  // A one-off failure on a shared runner shouldn't cost a full merge queue
+  // run. Tests that pass on retry are still reported as flaky.
+  retries: process.env.CI ? 1 : 0,
   reporter: [["list"], ["html", { open: "never" }]],
   outputDir: "test-results",
   use: { headless: true },

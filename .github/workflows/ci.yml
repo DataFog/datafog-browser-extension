@@ -119,6 +119,8 @@ jobs:
           {"os":"windows-latest","browser":"chrome"},
           {"os":"windows-latest","browser":"msedge"}]') }}
     runs-on: ${{ matrix.target.os }}
+    # About twice the slowest shard, so a hung browser can't hold the queue
+    timeout-minutes: 20
     continue-on-error: ${{ matrix.target.browser == 'msedge' }}
     env:
       E2E_BROWSER: ${{ matrix.target.browser }}
